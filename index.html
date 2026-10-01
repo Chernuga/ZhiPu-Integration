@@ -1,0 +1,1753 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content">
+<title>DeepSeek</title>
+<style>
+  :root {
+    --bg: #1a1a1a; --sidebar-bg: #141414; --hover: #252525; --active: #2a2a2a;
+    --border: #2a2a2a; --user-bubble: #2f2f2f;
+    --accent: #679efe; --accent-hover: #3d5ce8;
+    --text: #ececec; --text-muted: #8a8a8a; --text-dim: #6b6b6b;
+    --code-bg: #0f0f0f; --input-bg: #2a2a2a;
+    --shadow: 0 2px 12px rgba(0,0,0,.35);
+  }
+  [data-theme="light"] {
+    --bg: #ffffff; --sidebar-bg: #f9f9f9; --hover: #f0f0f0; --active: #ececec;
+    --border: #e5e5e5; --user-bubble: #f4f4f4;
+    --text: #1a1a1a; --text-muted: #7a7a7a; --text-dim: #999;
+    --code-bg: #f5f5f5; --input-bg: #ffffff;
+    --shadow: 0 2px 12px rgba(0,0,0,.08);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg); color: var(--text);
+    font-size: 15px; line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+    height: 100vh;
+    height: 100dvh;
+  }
+  button { font: inherit; background: none; border: none; color: inherit; cursor: pointer; }
+  textarea { font: inherit; color: inherit; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: rgba(128,128,128,.28); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(128,128,128,.5); }
+  ::-webkit-scrollbar-track { background: transparent; }
+
+  .app { display: flex; height: 100%; overflow: hidden; }
+
+  /* Sidebar */
+  .sidebar {
+    width: 260px; flex-shrink: 0; background: var(--sidebar-bg);
+    display: flex; flex-direction: column;
+    transition: margin-left .22s ease; border-right: 1px solid transparent;
+  }
+  .sidebar.collapsed { margin-left: -260px; }
+  .sidebar-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 14px 8px;
+  }
+  .logo {
+    display: flex; align-items: center; gap: 8px;
+    font-weight: 600; font-size: 15px; color: var(--text);
+    padding: 4px 6px; user-select: none;
+  }
+  .logo-mark {
+    width: 22px; height: 22px; border-radius: 6px;
+    background: var(--accent); color: #fff;
+    display: grid; place-items: center; font-size: 13px; font-weight: 700;
+  }
+  .icon-btn {
+    width: 32px; height: 32px; border-radius: 8px;
+    display: grid; place-items: center; color: var(--text-muted);
+    transition: background .15s, color .15s;
+  }
+  .icon-btn:hover { background: var(--hover); color: var(--text); }
+  .icon-btn:disabled { opacity: .35; cursor: not-allowed; }
+  .icon-btn:disabled:hover { background: none; color: var(--text-muted); }
+  .icon-btn svg { width: 18px; height: 18px; }
+
+  .new-chat-btn {
+    margin: 4px 12px 10px; padding: 9px 12px;
+    display: flex; align-items: center; gap: 10px;
+    border-radius: 9px; color: var(--text);
+    font-size: 14px; font-weight: 500;
+    transition: background .15s; border: 1px solid var(--border);
+  }
+  .new-chat-btn:hover { background: var(--hover); }
+  .new-chat-btn svg { width: 16px; height: 16px; }
+
+  .conv-list { flex: 1; overflow-y: auto; padding: 6px 8px 12px; }
+  .conv-group-label {
+    font-size: 11px; color: var(--text-dim); font-weight: 600;
+    text-transform: uppercase; letter-spacing: .04em; padding: 12px 8px 4px;
+  }
+  .conv-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px; border-radius: 8px;
+    cursor: pointer; color: var(--text);
+    font-size: 13.5px; line-height: 1.3;
+    transition: background .12s; position: relative;
+  }
+  .conv-item:hover { background: var(--hover); }
+  .conv-item.active { background: var(--active); }
+  .conv-title {
+    flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    min-width: 0;
+  }
+  .conv-delete {
+    opacity: 0; width: 22px; height: 22px; border-radius: 5px;
+    display: grid; place-items: center; color: var(--text-muted);
+    flex-shrink: 0; transition: opacity .12s, background .12s;
+  }
+  .conv-item:hover .conv-delete { opacity: 1; }
+  .conv-delete:hover { background: var(--active); color: var(--text); }
+  .conv-delete svg { width: 14px; height: 14px; }
+
+  .sidebar-footer {
+    padding: 10px 12px 14px; border-top: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .user-avatar {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: linear-gradient(135deg, #4D6BFE, #7d8ffb);
+    color: #fff; display: grid; place-items: center;
+    font-size: 12px; font-weight: 600; flex-shrink: 0;
+  }
+  .user-name { flex: 1; font-size: 13.5px; color: var(--text); }
+  .sidebar-footer .icon-btn { width: 28px; height: 28px; }
+  .sidebar-footer .icon-btn svg { width: 16px; height: 16px; }
+
+  /* Main */
+  .main { flex: 1; display: flex; flex-direction: column; min-width: 0; background: var(--bg); }
+  .topbar {
+    height: 56px; flex-shrink: 0;
+    display: flex; align-items: center; gap: 6px; padding: 0 14px;
+  }
+  .menu-btn { display: none; }
+  .sidebar.collapsed ~ .main .menu-btn { display: grid; }
+  .model-selector {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 10px; border-radius: 8px;
+    font-size: 15px; font-weight: 600; color: var(--text);
+    transition: background .15s; position: relative;
+  }
+  .model-selector:hover { background: var(--hover); }
+  .model-selector svg { width: 14px; height: 14px; color: var(--text-muted); }
+  .topbar-right { margin-left: auto; display: flex; gap: 4px; }
+
+  .model-menu {
+    position: absolute; top: calc(100% + 6px); left: 0;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 10px; box-shadow: var(--shadow);
+    padding: 5px; min-width: 240px; z-index: 40;
+    display: none; max-height: 60vh; overflow-y: auto;
+  }
+  .model-menu.open { display: block; }
+  .model-menu button {
+    display: flex; align-items: center; gap: 10px;
+    width: 100%; text-align: left;
+    padding: 8px 10px; border-radius: 7px;
+    font-size: 13.5px; color: var(--text);
+  }
+  .model-menu button:hover { background: var(--hover); }
+  .model-menu button.active { background: var(--active); }
+  .model-menu .m-desc { color: var(--text-muted); font-size: 11.5px; margin-left: auto; }
+  .model-menu .m-empty { padding: 10px 12px; font-size: 13px; color: var(--text-muted); }
+
+  /* Messages */
+  .messages { flex: 1; overflow-y: auto; padding: 0 24px; scroll-behavior: smooth; }
+  .messages-inner { max-width: 768px; margin: 0 auto; padding-bottom: 24px; }
+
+  .empty-state {
+    max-width: 768px; margin: 0 auto;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    min-height: 100%; padding-bottom: 120px; text-align: center;
+  }
+  .empty-logo {
+    width: 52px; height: 52px; border-radius: 14px;
+    background: var(--accent); color: #fff;
+    display: grid; place-items: center; font-size: 24px; font-weight: 700;
+    margin-bottom: 22px;
+  }
+  .empty-title { font-size: 26px; font-weight: 600; margin-bottom: 6px; }
+  .empty-sub { color: var(--text-muted); font-size: 15px; margin-bottom: 28px; }
+
+  .msg { padding: 22px 0; }
+  .msg-user { display: flex; justify-content: flex-end; }
+  .msg-user .bubble {
+    background: var(--user-bubble); color: var(--text);
+    padding: 10px 14px; border-radius: 18px;
+    max-width: 78%;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .bubble-text { white-space: pre-wrap; word-wrap: break-word; line-height: 1.55; }
+  .bubble-attachments { display: flex; flex-direction: column; gap: 6px; }
+  .bubble-image {
+    max-width: 100%; max-height: 320px;
+    border-radius: 10px; display: block;
+    background: rgba(0,0,0,.15);
+  }
+  .bubble-file {
+    background: rgba(128,128,128,.18); padding: 6px 10px; border-radius: 8px;
+    font-size: 13px; color: var(--text); display: inline-flex; align-items: center; gap: 6px;
+  }
+  .bubble-file svg { width: 14px; height: 14px; flex-shrink: 0; }
+
+  .msg-assistant .content {
+    color: var(--text); font-size: 15px; line-height: 1.7; word-wrap: break-word;
+  }
+  .msg-assistant .content p { margin: 0 0 12px; }
+  .msg-assistant .content p:last-child { margin-bottom: 0; }
+  .msg-assistant .content code {
+    background: var(--code-bg); border: 1px solid var(--border);
+    padding: 1px 6px; border-radius: 5px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.88em;
+  }
+  .msg-assistant .content a { color: var(--accent); text-decoration: none; }
+  .msg-assistant .content a:hover { text-decoration: underline; }
+  .msg-assistant .content ul, .msg-assistant .content ol { padding-left: 22px; margin: 8px 0 12px; }
+  .msg-assistant .content li { margin: 3px 0; }
+  .msg-assistant .content strong { font-weight: 600; }
+
+  /* Code block wrapper + copy button */
+  .code-wrap { position: relative; margin: 12px 0; }
+  .code-wrap pre {
+    background: var(--code-bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px 14px; overflow-x: auto;
+    margin: 0; font-size: 13px; line-height: 1.55;
+  }
+  .code-wrap pre code {
+    background: none; border: none; padding: 0; border-radius: 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: inherit;
+  }
+  .code-copy {
+    position: absolute; top: 8px; right: 8px;
+    padding: 4px 9px; font-size: 12px; font-weight: 500;
+    background: rgba(128,128,128,.18); color: var(--text-muted);
+    border-radius: 6px; display: inline-flex; align-items: center; gap: 5px;
+    opacity: 0; transition: opacity .15s, background .15s, color .15s;
+    backdrop-filter: blur(4px);
+  }
+  .code-wrap:hover .code-copy,
+  .code-copy.copied { opacity: 1; }
+  .code-copy:hover { background: rgba(128,128,128,.32); color: var(--text); }
+  .code-copy.copied { background: rgba(40,180,90,.25); color: #6ee7a0; }
+  .code-copy svg { width: 12px; height: 12px; }
+
+  .msg-actions { display: flex; gap: 2px; margin-top: 8px; opacity: 0; transition: opacity .15s; }
+  .msg-assistant:hover .msg-actions,
+  .msg-actions.visible { opacity: 1; }
+  .msg-action {
+    width: 28px; height: 28px; border-radius: 6px;
+    display: grid; place-items: center; color: var(--text-muted);
+    transition: background .15s, color .15s;
+  }
+  .msg-action:hover { background: var(--hover); color: var(--text); }
+  .msg-action svg { width: 15px; height: 15px; }
+  .msg-action.success { color: #6ee7a0; }
+  .msg-action.failure { color: #ff6b6b; }
+
+  /* Reasoning / thinking block */
+  .reasoning-block {
+    margin: 0 0 14px;
+    border-left: 2px solid var(--border);
+    padding-left: 12px;
+    transition: border-color .2s;
+  }
+  .reasoning-block.active { border-left-color: var(--accent); }
+
+  .reasoning-block summary {
+    cursor: pointer; color: var(--text-muted);
+    font-size: 13.5px; user-select: none; list-style: none;
+    display: flex; align-items: center; gap: 8px;
+    padding: 3px 0;
+    transition: color .15s;
+  }
+  .reasoning-block summary:hover { color: var(--text); }
+  .reasoning-block summary::-webkit-details-marker { display: none; }
+
+  .reasoning-block .thinking-icon {
+    width: 15px; height: 15px;
+    flex-shrink: 0;
+    color: var(--text-muted);
+    transition: color .2s;
+  }
+  .reasoning-block.active .thinking-icon {
+    color: var(--accent);
+    animation: think-pulse 1.7s ease-in-out infinite;
+  }
+  @keyframes think-pulse {
+    0%, 100% { opacity: .55; transform: scale(1); }
+    50%      { opacity: 1;   transform: scale(1.1); }
+  }
+
+  .reasoning-block .reasoning-label { flex: 1; }
+  .reasoning-block .reasoning-label .reasoning-time {
+    color: var(--text-dim);
+    margin-left: 4px;
+    font-variant-numeric: tabular-nums;
+  }
+  .reasoning-block .chev {
+    width: 12px; height: 12px;
+    opacity: .55;
+    transition: transform .18s;
+  }
+  .reasoning-block[open] .chev { transform: rotate(90deg); }
+
+  .reasoning-block .reasoning-text {
+    margin-top: 8px; color: var(--text-muted);
+    font-size: 13.5px; line-height: 1.65; white-space: pre-wrap;
+    font-style: italic;
+    padding: 2px 0 4px;
+  }
+
+  .cursor {
+    display: inline-block; width: 8px; height: 15px;
+    background: var(--accent); vertical-align: text-bottom;
+    animation: blink 1s step-start infinite; margin-left: 2px; border-radius: 1px;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .error-msg {
+    color: #ff6b6b; font-size: 14px;
+    padding: 12px 14px; background: rgba(255,107,107,.08);
+    border-radius: 8px; border: 1px solid rgba(255,107,107,.2);
+  }
+
+  /* Input */
+  .input-area { padding: 12px 24px 20px; background: var(--bg); }
+  .input-box {
+    max-width: 768px; margin: 0 auto;
+    background: var(--input-bg); border: 1px solid var(--border);
+    border-radius: 22px; padding: 12px 14px 10px;
+    transition: border-color .15s, box-shadow .15s; box-shadow: var(--shadow);
+  }
+  .input-box:focus-within { border-color: rgba(77,107,254,.5); }
+  .input-box textarea {
+    width: 100%; background: none; border: none; outline: none;
+    resize: none; color: var(--text);
+    font-size: 15px; line-height: 1.55;
+    max-height: 220px; min-height: 24px; padding: 0; font-family: inherit;
+  }
+  .input-box textarea::placeholder { color: var(--text-dim); }
+
+  .input-attachments {
+    display: flex; flex-wrap: wrap; gap: 8px;
+    margin-bottom: 10px;
+  }
+  .input-attachments:empty { display: none; }
+  .attach-preview {
+    position: relative;
+    border-radius: 10px;
+    overflow: hidden;
+    background: var(--hover);
+    border: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .attach-preview.image { width: 84px; height: 84px; }
+  .attach-preview.image img {
+    width: 100%; height: 100%; object-fit: cover; display: block;
+  }
+  .attach-preview.file {
+    padding: 8px 30px 8px 10px;
+    max-width: 220px;
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12.5px; color: var(--text);
+  }
+  .attach-preview.file svg { width: 14px; height: 14px; flex-shrink: 0; color: var(--text-muted); }
+  .attach-preview .filename {
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .attach-remove {
+    position: absolute; top: 3px; right: 3px;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: rgba(0,0,0,.72); color: #fff;
+    display: grid; place-items: center;
+    font-size: 12px; line-height: 1; font-weight: 700;
+    transition: background .12s;
+  }
+  .attach-remove:hover { background: rgba(0,0,0,.92); }
+  .attach-preview.file .attach-remove { top: 50%; transform: translateY(-50%); }
+
+  .input-toggles { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 11px; border-radius: 16px;
+    font-size: 13px; color: var(--text-muted);
+    border: 1px solid var(--border); transition: all .15s; background: transparent;
+  }
+  .pill:hover { color: var(--text); border-color: var(--text-muted); }
+  .pill.active {
+    color: var(--accent); border-color: rgba(77,107,254,.55);
+    background: rgba(77,107,254,.1);
+  }
+  .pill[disabled] { opacity: .45; cursor: not-allowed; }
+  .pill svg { width: 14px; height: 14px; }
+  .pill .pill-thinking-icon { width: 14px; height: 14px; }
+
+  .input-bottom {
+    display: flex; align-items: center; justify-content: space-between; margin-top: 4px;
+  }
+  .input-bottom .left { display: flex; gap: 2px; }
+  .input-bottom .icon-btn { width: 30px; height: 30px; }
+  .input-bottom .icon-btn svg { width: 17px; height: 17px; }
+
+  .send-btn {
+    width: 32px; height: 32px; border-radius: 50%;
+    background: var(--accent); color: #fff;
+    display: grid; place-items: center;
+    transition: background .15s, transform .1s, opacity .15s;
+  }
+  .send-btn:hover { background: var(--accent-hover); }
+  .send-btn:active { transform: scale(.94); }
+  .send-btn:disabled { opacity: .35; cursor: not-allowed; }
+  .send-btn svg { width: 16px; height: 16px; }
+  .send-btn.stopping { background: var(--text-muted); }
+  .send-btn.stopping:hover { background: var(--text-dim); }
+
+  /* Modal */
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,.55);
+    display: none; align-items: center; justify-content: center;
+    z-index: 100; padding: 20px;
+  }
+  .modal-backdrop.open { display: flex; }
+  .modal {
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 14px; width: 100%; max-width: 560px;
+    padding: 24px; box-shadow: var(--shadow);
+    max-height: 90vh; overflow-y: auto;
+  }
+  .modal h2 { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
+  .modal .modal-sub { color: var(--text-muted); font-size: 13px; margin-bottom: 20px; }
+  .modal label {
+    display: block; font-size: 12.5px; font-weight: 600;
+    color: var(--text-muted); margin: 14px 0 6px;
+  }
+  .modal input, .modal select, .modal textarea {
+    width: 100%; padding: 9px 11px; font: inherit; font-size: 14px;
+    background: var(--input-bg); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text); outline: none;
+    transition: border-color .15s;
+  }
+  .modal textarea {
+    font-family: inherit; font-size: 13.5px; line-height: 1.55;
+    resize: vertical; min-height: 90px;
+  }
+  .modal textarea.mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12.5px; min-height: 140px;
+  }
+  .modal input:focus, .modal select:focus, .modal textarea:focus { border-color: var(--accent); }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 22px; }
+  .btn-primary {
+    padding: 8px 18px; border-radius: 8px;
+    background: var(--accent); color: #fff; font-weight: 500; font-size: 14px;
+  }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-secondary {
+    padding: 8px 16px; border-radius: 8px;
+    color: var(--text); font-size: 14px; border: 1px solid var(--border);
+  }
+  .btn-secondary:hover { background: var(--hover); }
+
+  .hint-inline { font-size: 12px; color: var(--text-dim); margin-top: 5px; line-height: 1.5; }
+  .hint-inline code {
+    background: var(--code-bg); border: 1px solid var(--border);
+    padding: 0 4px; border-radius: 3px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.92em;
+  }
+  .divider { height: 1px; background: var(--border); margin: 22px 0 4px; }
+
+  /* Settings checkbox row */
+  .checkrow {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px; margin-top: 6px;
+    border: 1px solid var(--border); border-radius: 8px;
+    cursor: pointer; font-size: 13.5px; color: var(--text);
+    transition: background .12s;
+  }
+  .checkrow:hover { background: var(--hover); }
+  .checkrow input { width: auto; margin: 0; padding: 0; flex-shrink: 0; }
+  .checkrow .check-desc { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
+  .checkrow .check-body { flex: 1; }
+
+  /* Mobile */
+  .backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,.5);
+    z-index: 30; display: none;
+  }
+  .backdrop.open { display: block; }
+
+  @media (max-width: 720px) {
+    .sidebar {
+      position: fixed; top: 0; left: 0; bottom: 0; z-index: 40;
+      margin-left: 0; box-shadow: var(--shadow);
+    }
+    .sidebar.collapsed { margin-left: -260px; }
+    .menu-btn { display: grid !important; }
+    .messages { padding: 0 16px; }
+    .input-area { padding: 10px 16px 16px; }
+    .msg-user .bubble { max-width: 88%; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="logo"><div class="logo-mark">D</div><span>DeepSeek</span></div>
+      <button class="icon-btn" id="collapseBtn" title="Close sidebar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/>
+        </svg>
+      </button>
+    </div>
+    <button class="new-chat-btn" id="newChatBtn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 5v14M5 12h14"/>
+      </svg>
+      New chat
+    </button>
+    <div class="conv-list" id="convList"></div>
+    <div class="sidebar-footer">
+      <div class="user-avatar" id="userAvatar">Y</div>
+      <div class="user-name" id="userName">You</div>
+      <button class="icon-btn" id="settingsBtn" title="Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+      </button>
+    </div>
+  </aside>
+
+  <div class="backdrop" id="backdrop"></div>
+
+  <main class="main">
+    <header class="topbar">
+      <button class="icon-btn menu-btn" id="menuBtn" title="Open sidebar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/>
+        </svg>
+      </button>
+      <div class="model-selector" id="modelSelector" tabindex="0">
+        <span id="modelLabel">Model</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M6 9l6 6 6-6"/>
+        </svg>
+        <div class="model-menu" id="modelMenu"></div>
+      </div>
+      <div class="topbar-right">
+        <button class="icon-btn" id="themeBtn" title="Toggle theme">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="messages" id="messages">
+      <div class="messages-inner" id="messagesInner"></div>
+    </div>
+
+    <div class="input-area">
+      <div class="input-box">
+        <div class="input-attachments" id="inputAttachments"></div>
+        <div class="input-toggles">
+          <button class="pill" id="deepthinkBtn" title="Enable extended reasoning">
+            <span class="pill-thinking-icon" id="deepthinkIcon"></span>
+            DeepThink
+          </button>
+          <button class="pill" id="searchBtn" disabled title="Not available on this endpoint">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" style="width:100%;height:100%;transform:translate3d(0,0,0);content-visibility:visible">
+  <defs>
+    <clipPath id="a">
+      <path d="M0 0h16v16H0z"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#a)" stroke-linecap="round" stroke-linejoin="round" stroke="currentColor" stroke-width="1.4" fill="none">
+    <path d="M8 14.85c1.598 0 2.894-3.067 2.894-6.85S9.598 1.15 8 1.15m0 13.7c-1.6 0-2.895-3.067-2.895-6.85S6.401 1.15 8 1.15" style="display:block"/>
+    <path d="M8 1.15a6.849 6.849 0 1 1 0 13.7 6.849 6.849 0 0 1 0-13.7M1.64 8h12.72" style="display:block"/>
+  </g>
+</svg>
+
+            Search
+          </button>
+        </div>
+        <textarea id="input" rows="1" placeholder="Message DeepSeek"></textarea>
+        <div class="input-bottom">
+          <div class="left">
+            <button class="icon-btn" id="attachBtn" title="Attach files">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M5.5498 9.75V5H6.9502V9.75C6.9502 10.3299 7.4201 10.7998 8 10.7998C8.5799 10.7998 9.0498 10.3299 9.0498 9.75V4.5C9.0498 2.9536 7.7964 1.7002 6.25 1.7002C4.7036 1.7002 3.4502 2.9536 3.4502 4.5V9.75C3.4502 12.2629 5.4871 14.2998 8 14.2998C10.5129 14.2998 12.5498 12.2629 12.5498 9.75V4H13.9502V9.75C13.9502 13.0361 11.2861 15.7002 8 15.7002C4.71391 15.7002 2.0498 13.0361 2.0498 9.75V4.5C2.04981 2.1804 3.9304 0.299806 6.25 0.299805C8.5696 0.299805 10.4502 2.1804 10.4502 4.5V9.75C10.4502 11.1031 9.3531 12.2002 8 12.2002C6.6469 12.2002 5.5498 11.1031 5.5498 9.75Z" fill="currentColor"/>
+</svg>
+
+            </button>
+            <input type="file" id="fileInput" multiple hidden
+              accept="image/*,text/*,.md,.json,.js,.ts,.jsx,.tsx,.py,.rb,.go,.rs,.java,.c,.cpp,.h,.sh,.yml,.yaml,.toml,.xml,.csv,.log,.html,.css,.sql,.php,.pl,.lua,.r,.swift,.kt" />
+          </div>
+          <button class="send-btn" id="sendBtn" disabled aria-label="Send">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8.3125 0.980206C8.66767 1.05312 8.97902 1.2042 9.2627 1.43235C9.48724 1.613 9.73029 1.85795 9.97949 2.10716L14.707 6.8347L13.293 8.24876L9 3.95579V15.0417H7V3.95579L2.70703 8.24876L1.29297 6.8347L6.02051 2.10716C6.26971 1.85795 6.51277 1.613 6.7373 1.43235C6.97662 1.23988 7.28445 1.04404 7.6875 0.980206C7.8973 0.947029 8.1031 0.955183 8.3125 0.980206Z" fill="currentColor"></path></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="modal-backdrop" id="settingsModal">
+  <div class="modal">
+    <h2>Settings</h2>
+    <div class="modal-sub">Connection details, model list, and custom instructions.</div>
+
+    <label for="sApiKey">API key</label>
+    <input type="password" id="sApiKey" placeholder="Paste your API key">
+
+    <label for="sWorkerUrl">Cloudflare Worker URL</label>
+    <input type="text" id="sWorkerUrl" placeholder="https://…workers.dev">
+    <div class="hint-inline">Required — api.z.ai and bigmodel.cn block direct browser calls via CORS preflight.</div>
+
+    <label for="sPlan">Endpoint</label>
+    <select id="sPlan">
+      <option value="coding">Coding Plan — api.z.ai/api/coding/paas/v4</option>
+      <option value="general">General — api.z.ai/api/paas/v4</option>
+    </select>
+
+    <label for="sBaseOverride">Override upstream base URL (optional)</label>
+    <input type="text" id="sBaseOverride" placeholder="e.g. https://open.bigmodel.cn/api/paas/v4">
+    <div class="hint-inline">Point the Worker's <code>/general</code> route at BigModel or another compatible endpoint.</div>
+
+    <div class="divider"></div>
+
+    <label for="sCustomInstructions">Custom instructions</label>
+    <textarea id="sCustomInstructions"
+      placeholder="e.g. You are a senior front-end engineer. Always produce complete, runnable code. Respond in Bulgarian unless asked otherwise."></textarea>
+    <div class="hint-inline">
+      Sent as a <code>system</code> message before every conversation. Applies to all chats.
+    </div>
+
+    <div class="divider"></div>
+
+    <label>Reasoning display</label>
+    <label class="checkrow" for="sReasoningExpanded">
+      <input type="checkbox" id="sReasoningExpanded">
+      <span class="check-body">
+        Show reasoning expanded by default
+        <div class="check-desc">When unchecked, reasoning blocks start collapsed. You can always expand them by clicking.</div>
+      </span>
+    </label>
+
+    <div class="divider"></div>
+
+    <label for="sModels">Models</label>
+    <textarea id="sModels" class="mono" spellcheck="false" placeholder="glm-5.3 | GLM-5.3 | Flagship&#10;glm-4.7-flash"></textarea>
+    <div class="hint-inline">
+      One model per line, format <code>id</code>, <code>id | Label</code>, or <code>id | Label | Description</code>.
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn-secondary" id="settingsCancel">Cancel</button>
+      <button class="btn-primary" id="settingsSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// =============================================================================
+// Constants & state
+// =============================================================================
+const SETTINGS_KEY = "deepseek-ui-settings";
+const CONV_KEY = "deepseek-ui-conversations";
+const ACTIVE_KEY = "deepseek-ui-active";
+
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_TEXT_BYTES  = 512 * 1024;
+const MAX_IMAGE_DIM   = 1568;
+
+const DEFAULT_MODELS = [
+  { id: "glm-5.3",        label: "GLM-5.3",        desc: "Flagship" },
+  { id: "glm-5.3-flash",  label: "GLM-5.3 Flash",  desc: "Fast" },
+  { id: "glm-5.3-flashx", label: "GLM-5.3 FlashX", desc: "Lite" },
+  { id: "glm-4.7-flash",  label: "GLM-4.7 Flash",  desc: "Free" },
+  { id: "glm-4.6",        label: "GLM-4.6",        desc: "Stable" },
+  { id: "glm-4.5-flash",  label: "GLM-4.5 Flash",  desc: "Free" },
+];
+
+const DEFAULT_SETTINGS = {
+  apiKey: "", workerUrl: "", plan: "coding", baseOverride: "",
+  customInstructions: "",
+  reasoningExpanded: true,
+  model: "glm-5.3", models: DEFAULT_MODELS, theme: "dark", deepthink: false,
+};
+
+const $ = (id) => document.getElementById(id);
+const el = (tag, props = {}, children = []) => {
+  const e = document.createElement(tag);
+  Object.assign(e, props);
+  for (const c of [].concat(children)) {
+    if (c == null) continue;
+    e.append(c.nodeType ? c : document.createTextNode(c));
+  }
+  return e;
+};
+
+// ---- DeepSeek "thinking" icon -------------------------------------------------
+// Rounded square frame with four petals meeting at a centre dot.
+const THINKING_ICON = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M8.00192 6.64454C8.75026 6.64454 9.35732 7.25169 9.35739 8.00001C9.35739 8.74838 8.7503 9.35548 8.00192 9.35548C7.25367 9.35533 6.64743 8.74829 6.64743 8.00001C6.6475 7.25178 7.25371 6.64468 8.00192 6.64454Z" fill="currentColor"/>
+  <path fill-rule="evenodd" clip-rule="evenodd" d="M9.97165 1.29981C11.5853 0.718916 13.271 0.642197 14.3144 1.68555C15.3577 2.72902 15.2811 4.41466 14.7002 6.02833C14.4707 6.66561 14.1504 7.32937 13.75 8.00001C14.1504 8.67062 14.4707 9.33444 14.7002 9.97169C15.2811 11.5854 15.3578 13.271 14.3144 14.3145C13.271 15.3579 11.5854 15.2811 9.97165 14.7002C9.3344 14.4708 8.67059 14.1505 7.99997 13.75C7.32933 14.1505 6.66558 14.4708 6.02829 14.7002C4.41461 15.2811 2.72899 15.3578 1.68552 14.3145C0.642155 13.271 0.71887 11.5854 1.29977 9.97169C1.52915 9.33454 1.84865 8.67049 2.24899 8.00001C1.84866 7.32953 1.52915 6.66544 1.29977 6.02833C0.718852 4.41459 0.64207 2.729 1.68552 1.68555C2.72897 0.642112 4.41456 0.718887 6.02829 1.29981C6.66541 1.52918 7.32949 1.8487 7.99997 2.24903C8.67045 1.84869 9.33451 1.52919 9.97165 1.29981ZM12.9404 9.2129C12.4391 9.893 11.8616 10.5681 11.2148 11.2149C10.568 11.8616 9.89296 12.4391 9.21286 12.9404C9.62532 13.1579 10.0271 13.338 10.4121 13.4766C11.9146 14.0174 12.9172 13.8738 13.3955 13.3955C13.8737 12.9173 14.0174 11.9146 13.4765 10.4121C13.3379 10.0271 13.1578 9.62535 12.9404 9.2129ZM3.05856 9.2129C2.84121 9.62523 2.66197 10.0272 2.52341 10.4121C1.98252 11.9146 2.12627 12.9172 2.60446 13.3955C3.08278 13.8737 4.08544 14.0174 5.58786 13.4766C5.97264 13.338 6.37389 13.1577 6.7861 12.9404C6.10624 12.4393 5.43168 11.8614 4.78513 11.2149C4.13823 10.5679 3.55992 9.89313 3.05856 9.2129ZM7.99899 3.792C7.23179 4.31419 6.45306 4.95512 5.70407 5.70411C4.95509 6.45309 4.31415 7.23184 3.79196 7.99903C4.3143 8.76666 4.95471 9.54653 5.70407 10.2959C6.45309 11.0449 7.23271 11.6848 7.99997 12.207C8.76725 11.6848 9.54683 11.0449 10.2959 10.2959C11.0449 9.54686 11.6848 8.76729 12.207 8.00001C11.6848 7.23275 11.0449 6.45312 10.2959 5.70411C9.5465 4.95475 8.76662 4.31434 7.99899 3.792ZM5.58786 2.52344C4.08533 1.98255 3.08272 2.12625 2.60446 2.6045C2.12621 3.08275 1.98252 4.08536 2.52341 5.5879C2.66189 5.97253 2.8414 6.37409 3.05856 6.78614C3.55983 6.10611 4.1384 5.43189 4.78513 4.78516C5.43186 4.13843 6.10606 3.55987 6.7861 3.0586C6.37405 2.84144 5.97249 2.66192 5.58786 2.52344ZM13.3955 2.6045C12.9172 2.12631 11.9146 1.98257 10.4121 2.52344C10.0272 2.66201 9.62519 2.84125 9.21286 3.0586C9.8931 3.55996 10.5679 4.13827 11.2148 4.78516C11.8614 5.43172 12.4392 6.10627 12.9404 6.78614C13.1577 6.37393 13.338 5.97267 13.4765 5.5879C14.0174 4.08549 13.8736 3.08281 13.3955 2.6045Z" fill="currentColor"/>
+</svg>
+`;
+
+const CHEVRON_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+  stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M9 6l6 6-6 6"/>
+</svg>`;
+
+// =============================================================================
+// Clipboard helper
+// =============================================================================
+async function copyText(text) {
+  if (navigator.clipboard && window.isSecureContext) {
+    try { await navigator.clipboard.writeText(text); return true; }
+    catch { /* fall through */ }
+  }
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.top = "-1000px";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    ta.setSelectionRange(0, ta.value.length);
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    return ok;
+  } catch { return false; }
+}
+
+function flashButton(btn, ok, originalHtml) {
+  const prev = originalHtml ?? btn.innerHTML;
+  btn.classList.toggle("success", ok);
+  btn.classList.toggle("failure", !ok);
+  btn.innerHTML = ok
+    ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>`
+    : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>`;
+  setTimeout(() => {
+    btn.innerHTML = prev;
+    btn.classList.remove("success", "failure");
+  }, 1400);
+}
+
+// =============================================================================
+// Model list parsing / serialization
+// =============================================================================
+function parseModelsText(text) {
+  const out = [];
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    const parts = line.split("|").map((s) => s.trim());
+    const id = parts[0];
+    if (!id) continue;
+    out.push({ id, label: parts[1] || id, desc: parts[2] || "" });
+  }
+  return out;
+}
+function serializeModels(models) {
+  return models.map((m) => {
+    const label = m.label || m.id;
+    const desc = m.desc || "";
+    if (desc) return `${m.id} | ${label} | ${desc}`;
+    if (label !== m.id) return `${m.id} | ${label}`;
+    return m.id;
+  }).join("\n");
+}
+
+// =============================================================================
+// Storage
+// =============================================================================
+function loadSettings() {
+  let stored = {};
+  try { stored = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? "{}"); }
+  catch { /* ignore */ }
+  if (!Array.isArray(stored.models) || stored.models.length === 0) {
+    stored.models = DEFAULT_MODELS;
+  }
+  const merged = { ...DEFAULT_SETTINGS, ...stored };
+  if (!merged.models.some((m) => m.id === merged.model)) {
+    merged.model = merged.models[0].id;
+  }
+  return merged;
+}
+function saveSettings() { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }
+
+function loadConversations() {
+  try { return JSON.parse(localStorage.getItem(CONV_KEY) ?? "[]"); }
+  catch { return []; }
+}
+
+let quotaWarned = false;
+function saveConversations() {
+  try {
+    localStorage.setItem(CONV_KEY, JSON.stringify(conversations));
+    return true;
+  } catch (err) {
+    const stripped = conversations.map((c) => ({
+      ...c,
+      messages: c.messages.map((m) => {
+        if (!m.attachments || !m.attachments.length) return m;
+        return {
+          ...m,
+          attachments: m.attachments.map((a) =>
+            a.type === "image" && a.dataUrl ? { ...a, dataUrl: null } : a
+          ),
+        };
+      }),
+    }));
+    try {
+      localStorage.setItem(CONV_KEY, JSON.stringify(stripped));
+      if (!quotaWarned) {
+        quotaWarned = true;
+        console.warn("Conversation storage hit quota. Image data stripped from saved history.");
+      }
+      return "partial";
+    } catch {
+      if (!quotaWarned) {
+        quotaWarned = true;
+        console.warn("Conversation storage hit quota and could not be saved.");
+      }
+      return false;
+    }
+  }
+}
+
+function loadActiveId() { return localStorage.getItem(ACTIVE_KEY) || null; }
+function saveActiveId(id) {
+  if (id) localStorage.setItem(ACTIVE_KEY, id);
+  else localStorage.removeItem(ACTIVE_KEY);
+}
+
+let settings = loadSettings();
+let conversations = loadConversations();
+let activeId = loadActiveId();
+let streamingAbort = null;
+let pendingAttachments = [];
+
+// =============================================================================
+// Conversation helpers
+// =============================================================================
+function newConversation() {
+  return {
+    id: "c_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8),
+    title: "New chat",
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    messages: [],
+    model: settings.model,
+  };
+}
+function getActive() { return conversations.find((c) => c.id === activeId) || null; }
+function ensureActive() {
+  let conv = getActive();
+  if (!conv) {
+    conv = newConversation();
+    conversations.unshift(conv);
+    activeId = conv.id;
+    saveConversations();
+    saveActiveId(activeId);
+  }
+  return conv;
+}
+function titleFrom(text, attachments) {
+  const t = text.trim().replace(/\s+/g, " ");
+  if (t) return t.slice(0, 42);
+  if (attachments && attachments.length) {
+    return attachments.length === 1
+      ? attachments[0].name.slice(0, 42)
+      : `${attachments.length} attachments`;
+  }
+  return "New chat";
+}
+
+// =============================================================================
+// Date grouping
+// =============================================================================
+function groupLabel(ts) {
+  const now = new Date();
+  const d = new Date(ts);
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startOfYesterday = startOfToday - 86400000;
+  const startOfWeek = startOfToday - 6 * 86400000;
+  const startOfMonth = startOfToday - 29 * 86400000;
+  if (ts >= startOfToday) return "Today";
+  if (ts >= startOfYesterday) return "Yesterday";
+  if (ts >= startOfWeek) return "Previous 7 days";
+  if (ts >= startOfMonth) return "Previous 30 days";
+  return d.toLocaleDateString(undefined, { month: "short", year: "numeric" });
+}
+
+// =============================================================================
+// Sidebar
+// =============================================================================
+function renderSidebar() {
+  const list = $("convList");
+  list.innerHTML = "";
+  if (conversations.length === 0) {
+    list.append(el("div", { className: "conv-group-label", textContent: "No conversations yet" }));
+    return;
+  }
+  const sorted = [...conversations].sort((a, b) => b.updatedAt - a.updatedAt);
+  let lastGroup = null;
+  for (const conv of sorted) {
+    const label = groupLabel(conv.updatedAt);
+    if (label !== lastGroup) {
+      list.append(el("div", { className: "conv-group-label", textContent: label }));
+      lastGroup = label;
+    }
+    const item = el("div", { className: "conv-item" + (conv.id === activeId ? " active" : "") });
+    item.append(el("span", { className: "conv-title", textContent: conv.title }));
+    const del = el("button", { className: "conv-delete", title: "Delete" });
+    del.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>`;
+    del.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (!confirm(`Delete "${conv.title}"?`)) return;
+      conversations = conversations.filter((c) => c.id !== conv.id);
+      if (activeId === conv.id) {
+        activeId = conversations[0]?.id ?? null;
+        saveActiveId(activeId);
+      }
+      saveConversations();
+      renderSidebar();
+      renderMessages();
+    });
+    item.append(del);
+    item.addEventListener("click", () => {
+      activeId = conv.id;
+      saveActiveId(activeId);
+      renderSidebar();
+      renderMessages();
+      $("input").focus();
+      closeSidebarOnMobile();
+    });
+    list.append(item);
+  }
+}
+
+// =============================================================================
+// Markdown rendering
+// =============================================================================
+function escapeHtml(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function renderMarkdown(text) {
+  const parts = text.split(/(```[^\n]*\n[\s\S]*?```)/g);
+  return parts.map((part) => {
+    const codeMatch = part.match(/^```([^\n]*)\n([\s\S]*?)```$/);
+    if (codeMatch) {
+      const code = escapeHtml(codeMatch[2]);
+      return `<pre><code>${code}</code></pre>`;
+    }
+    let p = escapeHtml(part);
+    p = p.replace(/`([^`\n]+)`/g, "<code>$1</code>");
+    p = p.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    p = p.replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>");
+    p = p.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+
+    const lines = p.split("\n");
+    const out = [];
+    let inList = false;
+    for (const line of lines) {
+      const bullet = line.match(/^\s*[-*]\s+(.*)$/);
+      if (bullet) {
+        if (!inList) { out.push("<ul>"); inList = true; }
+        out.push(`<li>${bullet[1]}</li>`);
+      } else {
+        if (inList) { out.push("</ul>"); inList = false; }
+        out.push(line);
+      }
+    }
+    if (inList) out.push("</ul>");
+
+    return out.join("\n")
+      .split(/\n{2,}/)
+      .map((chunk) => chunk.trim() ? `<p>${chunk.replace(/\n/g, "<br>")}</p>` : "")
+      .join("");
+  }).join("");
+}
+
+// =============================================================================
+// Code block decoration
+// =============================================================================
+function decorateCodeBlocks(container) {
+  const pres = container.querySelectorAll("pre");
+  for (const pre of pres) {
+    if (pre.parentElement && pre.parentElement.classList.contains("code-wrap")) continue;
+
+    const wrap = document.createElement("div");
+    wrap.className = "code-wrap";
+    pre.parentNode.insertBefore(wrap, pre);
+    wrap.appendChild(pre);
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "code-copy";
+    btn.title = "Copy code";
+    btn.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2"/>
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+      </svg>
+      <span>Copy</span>`;
+
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const codeEl = pre.querySelector("code");
+      const text = codeEl ? codeEl.textContent : pre.textContent;
+      const ok = await copyText(text);
+      const prevHtml = btn.innerHTML;
+      btn.classList.add("copied");
+      btn.innerHTML = ok
+        ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg><span>Copied</span>`
+        : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg><span>Failed</span>`;
+      setTimeout(() => {
+        btn.innerHTML = prevHtml;
+        btn.classList.remove("copied");
+      }, 1400);
+    });
+
+    wrap.appendChild(btn);
+  }
+}
+
+// =============================================================================
+// Reasoning block builder
+// =============================================================================
+// Builds the <details> element used for reasoning/thinking text.
+//   reasoning     — the text content
+//   { streaming } — true while the model is still emitting reasoning
+//   { durationMs } — optional, shown as "Thought for Xs" when finished
+function buildReasoningBlock(reasoning, opts = {}) {
+  const { streaming = false, durationMs = null } = opts;
+
+  const details = el("details", { className: "reasoning-block" + (streaming ? " active" : "") });
+
+  // Open by default while streaming, otherwise follow the user's preference.
+  details.open = streaming || settings.reasoningExpanded;
+
+  const summary = el("summary");
+
+  const iconWrap = el("span", { className: "thinking-icon" });
+  iconWrap.innerHTML = THINKING_ICON;
+  summary.append(iconWrap);
+
+  const label = el("span", { className: "reasoning-label" });
+  if (streaming) {
+    label.textContent = "Thinking…";
+  } else if (durationMs != null) {
+    const secs = Math.max(1, Math.round(durationMs / 1000));
+    label.append("Thought for ");
+    label.append(el("span", { className: "reasoning-time", textContent: `${secs}s` }));
+  } else {
+    label.textContent = "Thinking";
+  }
+  summary.append(label);
+
+  const chev = el("span", { className: "chev" });
+  chev.innerHTML = CHEVRON_ICON;
+  summary.append(chev);
+
+  details.append(summary);
+
+  const rtext = el("div", { className: "reasoning-text", textContent: reasoning });
+  details.append(rtext);
+
+  return details;
+}
+
+// =============================================================================
+// Message rendering
+// =============================================================================
+function renderMessages() {
+  const inner = $("messagesInner");
+  inner.innerHTML = "";
+  const conv = getActive();
+  if (!conv || conv.messages.length === 0) {
+    inner.append(emptyState());
+    return;
+  }
+  for (let i = 0; i < conv.messages.length; i++) {
+    inner.append(renderMessage(conv.messages[i], i));
+  }
+  requestAnimationFrame(scrollToBottom);
+}
+
+function emptyState() {
+  const wrap = el("div", { className: "empty-state" });
+  wrap.append(el("div", { className: "empty-logo", textContent: "D" }));
+  wrap.append(el("div", { className: "empty-title", textContent: "Hi, I'm DeepSeek." }));
+  wrap.append(el("div", { className: "empty-sub", textContent: "How can I help you today?" }));
+  return wrap;
+}
+
+function renderMessage(msg, index) {
+  if (msg.role === "user") {
+    const row = el("div", { className: "msg msg-user" });
+    const bubble = el("div", { className: "bubble" });
+
+    const attachments = msg.attachments ?? [];
+    if (attachments.length) {
+      const attWrap = el("div", { className: "bubble-attachments" });
+      for (const a of attachments) {
+        if (a.type === "image" && a.dataUrl) {
+          attWrap.append(el("img", { className: "bubble-image", src: a.dataUrl, alt: a.name }));
+        } else if (a.type === "image") {
+          const chip = el("div", { className: "bubble-file" });
+          chip.innerHTML = FILE_ICON;
+          chip.append(el("span", { textContent: `${a.name} (image not saved)` }));
+          attWrap.append(chip);
+        } else {
+          const chip = el("div", { className: "bubble-file" });
+          chip.innerHTML = FILE_ICON;
+          chip.append(el("span", { textContent: a.name }));
+          attWrap.append(chip);
+        }
+      }
+      bubble.append(attWrap);
+    }
+
+    if (msg.content) {
+      bubble.append(el("div", { className: "bubble-text", textContent: msg.content }));
+    }
+
+    row.append(bubble);
+    return row;
+  }
+
+  const row = el("div", { className: "msg msg-assistant" });
+  if (msg.reasoning) {
+    row.append(buildReasoningBlock(msg.reasoning, { durationMs: msg.reasoningMs ?? null }));
+  }
+
+  const content = el("div", { className: "content" });
+  content.innerHTML = renderMarkdown(msg.content || "");
+  decorateCodeBlocks(content);
+  row.append(content);
+  row.append(messageActions(index, msg));
+  return row;
+}
+
+function messageActions(index, msg) {
+  const bar = el("div", { className: "msg-actions" });
+
+  const copy = el("button", { className: "msg-action", title: "Copy message" });
+  const copySvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
+  copy.innerHTML = copySvg;
+  copy.addEventListener("click", async () => {
+    const ok = await copyText(msg.content || "");
+    flashButton(copy, ok, copySvg);
+  });
+  bar.append(copy);
+
+  const regen = el("button", { className: "msg-action", title: "Regenerate" });
+  regen.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>`;
+  regen.addEventListener("click", () => regenerateFrom(index));
+  bar.append(regen);
+
+  return bar;
+}
+
+function scrollToBottom() {
+  const m = $("messages");
+  m.scrollTop = m.scrollHeight;
+}
+
+// =============================================================================
+// Attachments: file reading
+// =============================================================================
+function readAsDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(file);
+  });
+}
+function readAsText(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = () => reject(r.error);
+    r.readAsText(file);
+  });
+}
+
+async function compressImage(file) {
+  const dataUrl = await readAsDataURL(file);
+  if (file.size < 512 * 1024) return dataUrl;
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const { width, height } = img;
+      const longest = Math.max(width, height);
+      const ratio = longest > MAX_IMAGE_DIM ? MAX_IMAGE_DIM / longest : 1;
+      const w = Math.round(width * ratio);
+      const h = Math.round(height * ratio);
+
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, w, h);
+
+      const outType = /png|webp|gif/i.test(file.type) ? "image/png" : "image/jpeg";
+      try {
+        resolve(canvas.toDataURL(outType, 0.85));
+      } catch {
+        resolve(dataUrl);
+      }
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
+async function addAttachmentFromFile(file) {
+  if (file.type.startsWith("image/")) {
+    if (file.size > MAX_IMAGE_BYTES) {
+      alert(`"${file.name}" is too large (max 5 MB for images).`);
+      return;
+    }
+    try {
+      const dataUrl = await compressImage(file);
+      pendingAttachments.push({
+        type: "image", name: file.name, mime: file.type, dataUrl, size: file.size,
+      });
+    } catch {
+      alert(`Could not read "${file.name}".`);
+    }
+    return;
+  }
+
+  if (file.size > MAX_TEXT_BYTES) {
+    alert(`"${file.name}" is too large (max 512 KB for text files).`);
+    return;
+  }
+  try {
+    const text = await readAsText(file);
+    pendingAttachments.push({
+      type: "text", name: file.name, text, size: file.size,
+    });
+  } catch {
+    alert(`Could not read "${file.name}".`);
+  }
+}
+
+function renderPendingAttachments() {
+  const wrap = $("inputAttachments");
+  wrap.innerHTML = "";
+  pendingAttachments.forEach((a, i) => {
+    const box = el("div", {
+      className: "attach-preview " + (a.type === "image" ? "image" : "file"),
+      title: a.name,
+    });
+
+    if (a.type === "image") {
+      box.append(el("img", { src: a.dataUrl, alt: a.name }));
+    } else {
+      box.innerHTML = FILE_ICON;
+      box.append(el("span", { className: "filename", textContent: a.name }));
+    }
+
+    const rm = el("button", { className: "attach-remove", title: "Remove", type: "button" });
+    rm.textContent = "×";
+    rm.addEventListener("click", () => {
+      pendingAttachments.splice(i, 1);
+      renderPendingAttachments();
+    });
+    box.append(rm);
+    wrap.append(box);
+  });
+}
+
+// =============================================================================
+// Build API-shaped messages from internal message records
+// =============================================================================
+function messageToApi(m) {
+  if (m.role === "assistant") {
+    return { role: "assistant", content: m.content || "" };
+  }
+
+  const attachments = m.attachments ?? [];
+  const images = attachments.filter((a) => a.type === "image" && a.dataUrl);
+  const texts  = attachments.filter((a) => a.type === "text");
+
+  let text = m.content || "";
+  for (const t of texts) {
+    text = `[Attached file: ${t.name}]\n\`\`\`\n${t.text}\n\`\`\`\n\n${text}`;
+  }
+
+  if (images.length === 0) {
+    return { role: "user", content: text };
+  }
+
+  return {
+    role: "user",
+    content: [
+      { type: "text", text: text || "(image attached)" },
+      ...images.map((img) => ({ type: "image_url", image_url: { url: img.dataUrl } })),
+    ],
+  };
+}
+
+// =============================================================================
+// API call
+// =============================================================================
+function buildRequestUrl() {
+  const worker = settings.workerUrl.replace(/\/+$/, "");
+  const plan = settings.plan;
+  if (worker) return `${worker}/${plan}/chat/completions`;
+  const base = settings.baseOverride || (plan === "coding"
+    ? "https://api.z.ai/api/coding/paas/v4"
+    : "https://api.z.ai/api/paas/v4");
+  return `${base}/chat/completions`;
+}
+
+async function streamCompletion({ messages, model, thinking, onDelta, onDone, onError }) {
+  const ctrl = new AbortController();
+  streamingAbort = ctrl;
+
+  const payload = {
+    model, messages, stream: true,
+    stream_options: { include_usage: true },
+    thinking: { type: thinking ? "enabled" : "disabled" },
+  };
+
+  let response;
+  try {
+    response = await fetch(buildRequestUrl(), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${settings.apiKey}`,
+      },
+      body: JSON.stringify(payload),
+      signal: ctrl.signal,
+    });
+  } catch (err) {
+    if (err.name === "AbortError") { onDone?.(); return; }
+    onError?.(new Error(settings.workerUrl
+      ? `Network error: ${err.message}`
+      : "Direct call blocked (CORS). Set a Worker URL in Settings."));
+    return;
+  }
+
+  if (!response.ok) {
+    let msg = `HTTP ${response.status}`;
+    try {
+      const j = await response.json();
+      msg += ` — ${j.error?.message ?? j.message ?? JSON.stringify(j)}`;
+    } catch {
+      try { msg += ` — ${await response.text()}`; } catch {}
+    }
+    onError?.(new Error(msg));
+    return;
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let fullText = "";
+  let reasoningText = "";
+  let usage = null;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const frames = buffer.split(/\r?\n\r?\n/);
+      buffer = frames.pop() || "";
+      for (const frame of frames) {
+        const dataLines = frame.split(/\r?\n/)
+          .filter((l) => l.startsWith("data:"))
+          .map((l) => l.slice(5).trim());
+        if (!dataLines.length) continue;
+        const raw = dataLines.join("\n");
+        if (raw === "[DONE]") continue;
+        let chunk;
+        try { chunk = JSON.parse(raw); } catch { continue; }
+        if (chunk.usage) usage = chunk.usage;
+        const delta = chunk.choices?.[0]?.delta;
+        if (!delta) continue;
+        let changed = false;
+        if (delta.reasoning_content) { reasoningText += delta.reasoning_content; changed = true; }
+        if (delta.content) { fullText += delta.content; changed = true; }
+        if (changed) onDelta?.({ content: fullText, reasoning: reasoningText });
+      }
+    }
+  } catch (err) {
+    if (err.name !== "AbortError") onError?.(err);
+  } finally {
+    reader.releaseLock();
+    streamingAbort = null;
+    onDone?.({ content: fullText, reasoning: reasoningText, usage });
+  }
+}
+
+// =============================================================================
+// Send
+// =============================================================================
+function setSending(sending) {
+  const btn = $("sendBtn");
+  const ta = $("input");
+  const attach = $("attachBtn");
+  if (sending) {
+    btn.classList.add("stopping");
+    btn.disabled = false;
+    btn.title = "Stop";
+    btn.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>`;
+    ta.disabled = true;
+    attach.disabled = true;
+  } else {
+    btn.classList.remove("stopping");
+    btn.title = "Send";
+    btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>`;
+    ta.disabled = false;
+    attach.disabled = false;
+    updateSendButton();
+  }
+}
+function updateSendButton() {
+  const btn = $("sendBtn");
+  if (btn.classList.contains("stopping")) return;
+  const hasText = $("input").value.trim().length > 0;
+  const hasAttachments = pendingAttachments.length > 0;
+  btn.disabled = !hasText && !hasAttachments;
+}
+
+async function send() {
+  const ta = $("input");
+  const text = ta.value.trim();
+  if (!text && pendingAttachments.length === 0) return;
+
+  if (!settings.apiKey) {
+    alert("Set your API key in Settings first.");
+    openSettings();
+    return;
+  }
+  if (!settings.workerUrl) {
+    if (!confirm("No Worker URL set. Direct API calls usually fail with a CORS error. Continue anyway?")) {
+      openSettings();
+      return;
+    }
+  }
+
+  const conv = ensureActive();
+  const attachmentsForMessage = pendingAttachments.map((a) => ({ ...a }));
+
+  if (conv.messages.length === 0) {
+    conv.title = titleFrom(text, attachmentsForMessage);
+  }
+
+  conv.messages.push({
+    role: "user",
+    content: text,
+    attachments: attachmentsForMessage,
+  });
+  conv.updatedAt = Date.now();
+  conv.model = settings.model;
+  saveConversations();
+  renderSidebar();
+
+  ta.value = "";
+  ta.style.height = "auto";
+  pendingAttachments = [];
+  renderPendingAttachments();
+  updateSendButton();
+
+  const inner = $("messagesInner");
+  if (inner.querySelector(".empty-state")) inner.innerHTML = "";
+
+  const userRow = renderMessage(conv.messages[conv.messages.length - 1], conv.messages.length - 1);
+  inner.append(userRow);
+
+  const assistantRow = el("div", { className: "msg msg-assistant" });
+  const contentEl = el("div", { className: "content" });
+  contentEl.innerHTML = `<span class="cursor"></span>`;
+  assistantRow.append(contentEl);
+  inner.append(assistantRow);
+  scrollToBottom();
+
+  setSending(true);
+
+  const outgoing = [];
+  const sys = settings.customInstructions.trim();
+  if (sys) outgoing.push({ role: "system", content: sys });
+  for (const m of conv.messages) outgoing.push(messageToApi(m));
+
+  const assistantMsg = { role: "assistant", content: "", reasoning: "" };
+  conv.messages.push(assistantMsg);
+
+  // Track when reasoning started so we can show "Thought for Xs".
+  let reasoningStartedAt = null;
+  let reasoningMs = null;
+
+  await streamCompletion({
+    messages: outgoing,
+    model: settings.model,
+    thinking: settings.deepthink,
+    onDelta: ({ content, reasoning }) => {
+      assistantMsg.content = content;
+      assistantMsg.reasoning = reasoning;
+
+      if (reasoning && reasoningStartedAt === null) reasoningStartedAt = performance.now();
+
+      assistantRow.innerHTML = "";
+
+      if (reasoning) {
+        // While reasoning is arriving, always open. Once content starts,
+        // fall back to the user's preference so the layout settles down.
+        const stillThinking = !content;
+        assistantRow.append(buildReasoningBlock(reasoning, { streaming: stillThinking }));
+      }
+
+      const c = el("div", { className: "content" });
+      c.innerHTML = renderMarkdown(content) + (streamingAbort ? `<span class="cursor"></span>` : "");
+      assistantRow.append(c);
+      scrollToBottom();
+    },
+    onDone: () => {
+      if (reasoningStartedAt !== null) {
+        reasoningMs = performance.now() - reasoningStartedAt;
+      }
+      assistantMsg.reasoningMs = reasoningMs;
+
+      assistantRow.innerHTML = "";
+      if (assistantMsg.reasoning) {
+        assistantRow.append(buildReasoningBlock(assistantMsg.reasoning, { durationMs: reasoningMs }));
+      }
+      const c = el("div", { className: "content" });
+      c.innerHTML = renderMarkdown(assistantMsg.content || "");
+      decorateCodeBlocks(c);
+      assistantRow.append(c);
+      assistantRow.append(messageActions(conv.messages.length - 1, assistantMsg));
+
+      conv.updatedAt = Date.now();
+      saveConversations();
+      renderSidebar();
+      setSending(false);
+      $("input").focus();
+    },
+    onError: (err) => {
+      assistantRow.innerHTML = "";
+      const errBox = el("div", { className: "error-msg", textContent: err.message });
+      assistantRow.append(errBox);
+      conv.messages.pop();
+      saveConversations();
+      setSending(false);
+    },
+  });
+}
+
+async function regenerateFrom(index) {
+  const conv = getActive();
+  if (!conv) return;
+  const target = conv.messages[index];
+  if (!target || target.role !== "assistant") return;
+  let userIdx = index - 1;
+  while (userIdx >= 0 && conv.messages[userIdx].role !== "user") userIdx--;
+  if (userIdx < 0) return;
+
+  const userMsg = conv.messages[userIdx];
+  $("input").value = userMsg.content || "";
+  pendingAttachments = (userMsg.attachments ?? []).map((a) => ({ ...a }));
+  renderPendingAttachments();
+  updateSendButton();
+
+  conv.messages = conv.messages.slice(0, userIdx);
+  saveConversations();
+  renderMessages();
+  send();
+}
+
+// =============================================================================
+// Input behavior
+// =============================================================================
+const inputEl = $("input");
+inputEl.addEventListener("input", () => {
+  inputEl.style.height = "auto";
+  inputEl.style.height = Math.min(inputEl.scrollHeight, 220) + "px";
+  updateSendButton();
+});
+inputEl.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    send();
+  }
+});
+$("sendBtn").addEventListener("click", () => {
+  if (streamingAbort) streamingAbort.abort();
+  else send();
+});
+$("deepthinkBtn").addEventListener("click", () => {
+  settings.deepthink = !settings.deepthink;
+  $("deepthinkBtn").classList.toggle("active", settings.deepthink);
+  saveSettings();
+});
+
+$("attachBtn").addEventListener("click", () => $("fileInput").click());
+$("fileInput").addEventListener("change", async (e) => {
+  const files = [...e.target.files];
+  for (const f of files) await addAttachmentFromFile(f);
+  e.target.value = "";
+  renderPendingAttachments();
+  updateSendButton();
+});
+
+// =============================================================================
+// Sidebar / theme / settings
+// =============================================================================
+$("newChatBtn").addEventListener("click", () => {
+  const conv = newConversation();
+  conversations.unshift(conv);
+  activeId = conv.id;
+  saveConversations();
+  saveActiveId(activeId);
+  renderSidebar();
+  renderMessages();
+  closeSidebarOnMobile();
+  $("input").focus();
+});
+$("collapseBtn").addEventListener("click", () => {
+  $("sidebar").classList.add("collapsed");
+  closeSidebarOnMobile();
+});
+$("menuBtn").addEventListener("click", () => {
+  $("sidebar").classList.remove("collapsed");
+  if (window.innerWidth <= 720) $("backdrop").classList.add("open");
+});
+$("backdrop").addEventListener("click", closeSidebarOnMobile);
+function closeSidebarOnMobile() {
+  if (window.innerWidth <= 720) {
+    $("sidebar").classList.add("collapsed");
+    $("backdrop").classList.remove("open");
+  }
+}
+if (window.innerWidth <= 720) $("sidebar").classList.add("collapsed");
+
+function applyTheme() { document.documentElement.setAttribute("data-theme", settings.theme); }
+$("themeBtn").addEventListener("click", () => {
+  settings.theme = settings.theme === "dark" ? "light" : "dark";
+  saveSettings();
+  applyTheme();
+});
+
+function renderModelMenu() {
+  const menu = $("modelMenu");
+  menu.innerHTML = "";
+  if (!settings.models.length) {
+    menu.append(el("div", { className: "m-empty", textContent: "No models configured. Add some in Settings." }));
+    $("modelLabel").textContent = "No models";
+    return;
+  }
+  for (const m of settings.models) {
+    const b = el("button", { className: settings.model === m.id ? "active" : "" });
+    b.append(el("span", { textContent: m.label || m.id }));
+    if (m.desc) b.append(el("span", { className: "m-desc", textContent: m.desc }));
+    b.addEventListener("click", () => {
+      settings.model = m.id;
+      saveSettings();
+      $("modelLabel").textContent = m.label || m.id;
+      menu.classList.remove("open");
+    });
+    menu.append(b);
+  }
+  const current = settings.models.find((m) => m.id === settings.model);
+  $("modelLabel").textContent = current ? (current.label || current.id) : settings.model;
+}
+$("modelSelector").addEventListener("click", (e) => {
+  if (e.target.closest(".model-menu")) return;
+  $("modelMenu").classList.toggle("open");
+});
+document.addEventListener("click", (e) => {
+  if (!e.target.closest("#modelSelector")) $("modelMenu").classList.remove("open");
+});
+
+function openSettings() {
+  $("sApiKey").value = settings.apiKey;
+  $("sWorkerUrl").value = settings.workerUrl;
+  $("sPlan").value = settings.plan;
+  $("sBaseOverride").value = settings.baseOverride;
+  $("sCustomInstructions").value = settings.customInstructions;
+  $("sReasoningExpanded").checked = !!settings.reasoningExpanded;
+  $("sModels").value = serializeModels(settings.models);
+  $("settingsModal").classList.add("open");
+}
+function closeSettings() { $("settingsModal").classList.remove("open"); }
+$("settingsBtn").addEventListener("click", openSettings);
+$("settingsCancel").addEventListener("click", closeSettings);
+$("settingsModal").addEventListener("click", (e) => {
+  if (e.target === $("settingsModal")) closeSettings();
+});
+$("settingsSave").addEventListener("click", () => {
+  settings.apiKey = $("sApiKey").value.trim();
+  settings.workerUrl = $("sWorkerUrl").value.trim();
+  settings.plan = $("sPlan").value;
+  settings.baseOverride = $("sBaseOverride").value.trim();
+  settings.customInstructions = $("sCustomInstructions").value;
+  settings.reasoningExpanded = $("sReasoningExpanded").checked;
+
+  const parsed = parseModelsText($("sModels").value);
+  if (parsed.length > 0) settings.models = parsed;
+  if (!settings.models.some((m) => m.id === settings.model)) {
+    settings.model = settings.models[0]?.id ?? "";
+  }
+
+  saveSettings();
+  renderModelMenu();
+  renderMessages();   // re-render so the new default state applies to history
+  closeSettings();
+});
+
+// =============================================================================
+// Boot
+// =============================================================================
+applyTheme();
+renderModelMenu();
+
+// Drop the thinking icon into the DeepThink pill.
+$("deepthinkIcon").innerHTML = THINKING_ICON;
+
+renderPendingAttachments();
+$("deepthinkBtn").classList.toggle("active", !!settings.deepthink);
+
+if (activeId && !conversations.find((c) => c.id === activeId)) {
+  activeId = conversations[0]?.id ?? null;
+  saveActiveId(activeId);
+}
+
+renderSidebar();
+renderMessages();
+updateSendButton();
+inputEl.focus();
+
+window.addEventListener("beforeunload", (e) => {
+  if (streamingAbort) { e.preventDefault(); e.returnValue = ""; }
+});
+</script>
+</body>
+</html>
