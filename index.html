@@ -7,103 +7,75 @@
 <style>
   /* =========================================================================
      Design tokens
-     Backgrounds, borders, accents, shadows and motion use DeepSeek's values.
-     Text colors and font stack use the previous values.
      ========================================================================= */
   :root {
-    /* --- Surfaces (dark theme) --- */
     --ds-bg-base:         #151517;
     --ds-bg-layer-1:      #232324;
     --ds-bg-layer-2:      #2c2c2e;
     --ds-bg-layer-3:      #353638;
-    --ds-bg-multi-select: #232325;
     --ds-bg-input:        #2c2c2e;
     --ds-bg-bubble:       #2c2c2e;
     --ds-bg-code:         #1b1b1c;
     --ds-bg-code-banner:  #2c2c2e;
-    --ds-bg-skeleton:     rgba(255, 255, 255, .08);
 
-    /* --- Interactive --- */
     --ds-hover:           rgba(255, 255, 255, .08);
     --ds-active:          rgba(255, 255, 255, .14);
 
-    /* --- Brand (overridable via Settings) --- */
     --ds-accent:          #5686fe;
     --ds-accent-hover:    #3964fe;
     --ds-accent-text:     #679efe;
 
-    /* --- Text colors — previous values --- */
     --ds-text:            #ececec;
     --ds-text-secondary:  #8a8a8a;
     --ds-text-muted:      #8a8a8a;
     --ds-text-dim:        #6b6b6b;
     --ds-text-foreground: #ffffff;
 
-    /* --- Borders --- */
     --ds-border-l1:       rgba(255, 255, 255, .06);
     --ds-border-l2:       rgba(255, 255, 255, .12);
     --ds-border-l3:       rgba(255, 255, 255, .16);
-    --ds-border-l4:       rgba(255, 255, 255, .2);
 
-    /* --- States --- */
     --ds-error:           #ff6b6b;
     --ds-error-bg:        rgba(255, 107, 107, .08);
 
-    /* --- Shadows --- */
     --ds-shadow-lv1:      0 2px 4px 0 rgba(0, 0, 0, .05);
     --ds-shadow-lv3:      0 0 1px 0 rgba(0, 0, 0, .2),
                           0 0 4px 0 rgba(0, 0, 0, .02),
                           0 12px 32px 0 rgba(0, 0, 0, .08);
 
-    /* --- Fonts — previous values --- */
     --ds-font: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui,
                "PingFang SC", "Microsoft YaHei", sans-serif;
     --ds-font-code: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
-    /* --- Motion --- */
     --ds-ease-in-out: cubic-bezier(.4, 0, .2, 1);
-    --ds-ease-in:     cubic-bezier(.4, 0, 1, 1);
     --ds-ease-out:    cubic-bezier(0, 0, .2, 1);
     --ds-dur:         .2s;
     --ds-dur-fast:    .1s;
     --ds-dur-slow:    .3s;
 
-    /* --- Radii --- */
-    --ds-radius-bubble: 22px;
-    --ds-radius-input:  24px;
-    --ds-radius-code:   12px;
-    --ds-radius-button: 10px;
-
-    /* ---- Legacy aliases ---- */
     --bg:           var(--ds-bg-base);
     --sidebar-bg:   var(--ds-bg-base);
     --hover:        var(--ds-hover);
     --active:       var(--ds-bg-layer-3);
     --border:       var(--ds-border-l1);
     --user-bubble:  var(--ds-bg-bubble);
-    --accent:       var(--ds-accent-text);
-    --accent-hover: var(--ds-accent-hover);
     --send-btn-bg:  var(--ds-accent);
     --text:         var(--ds-text);
     --text-muted:   var(--ds-text-muted);
     --text-dim:     var(--ds-text-dim);
     --code-bg:      var(--ds-bg-code);
     --input-bg:     var(--ds-bg-input);
-    --shadow:       var(--ds-shadow-lv3);
   }
 
-  /* ---- Light theme ---- */
   [data-theme="light"] {
     --ds-bg-base:         #ffffff;
     --ds-bg-layer-1:      #f9fafb;
     --ds-bg-layer-2:      #f5f6f7;
     --ds-bg-layer-3:      #ebeef2;
-    --ds-bg-multi-select: #f5f6f7;
     --ds-bg-input:        #ffffff;
     --ds-bg-bubble:       #edf3fe;
     --ds-bg-code:         #f5f5f5;
     --ds-bg-code-banner:  #f9fafb;
-    --ds-bg-skeleton:     rgba(0, 0, 0, .04);
 
     --ds-hover:           rgba(38, 49, 72, .06);
     --ds-active:          rgba(38, 49, 72, .1);
@@ -121,15 +93,9 @@
     --ds-border-l1:       rgba(0, 0, 0, .04);
     --ds-border-l2:       rgba(0, 0, 0, .1);
     --ds-border-l3:       rgba(0, 0, 0, .12);
-    --ds-border-l4:       rgba(0, 0, 0, .16);
 
     --ds-error:           #ff6b6b;
     --ds-error-bg:        rgba(255, 107, 107, .08);
-
-    --ds-shadow-lv1:      0 2px 4px 0 rgba(0, 0, 0, .05);
-    --ds-shadow-lv3:      0 0 1px 0 rgba(0, 0, 0, .2),
-                          0 0 4px 0 rgba(0, 0, 0, .02),
-                          0 12px 32px 0 rgba(0, 0, 0, .08);
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -157,9 +123,7 @@
 
   .app { display: flex; height: 100%; overflow: hidden; }
 
-  /* =========================================================================
-     Sidebar
-     ========================================================================= */
+  /* ===== Sidebar ===== */
   .sidebar {
     width: 260px; flex-shrink: 0;
     background: var(--sidebar-bg);
@@ -257,9 +221,7 @@
   .sidebar-footer .icon-btn { width: 28px; height: 28px; }
   .sidebar-footer .icon-btn svg { width: 16px; height: 16px; }
 
-  /* =========================================================================
-     Main
-     ========================================================================= */
+  /* ===== Main ===== */
   .main { flex: 1; display: flex; flex-direction: column; min-width: 0; background: var(--bg); }
   .topbar {
     height: 56px; flex-shrink: 0;
@@ -307,9 +269,7 @@
   .model-menu .m-desc { color: var(--text-muted); font-size: 11.5px; margin-left: auto; }
   .model-menu .m-empty { padding: 10px 12px; font-size: 13px; color: var(--text-muted); }
 
-  /* =========================================================================
-     Messages
-     ========================================================================= */
+  /* ===== Messages ===== */
   .messages { flex: 1; overflow-y: auto; padding: 0 24px; scroll-behavior: smooth; }
   .messages-inner { max-width: 768px; margin: 0 auto; padding-bottom: 24px; }
 
@@ -497,9 +457,7 @@
   .msg-action.success { color: #6ee7a0; }
   .msg-action.failure { color: var(--ds-error); }
 
-  /* =========================================================================
-     Reasoning block
-     ========================================================================= */
+  /* ===== Reasoning block ===== */
   .reasoning-block {
     margin: 0 0 14px;
     border-left: 2px solid var(--ds-accent-text);
@@ -590,15 +548,28 @@
   }
   @keyframes blink { 50% { opacity: 0; } }
 
-  /* =========================================================================
-     Retry / error
-     ========================================================================= */
+  /* ===== Retry / spinner ===== */
   .retry-notice {
     display: flex; align-items: center; gap: 9px;
     color: var(--text-muted);
     font-size: 13.5px;
     padding: 6px 0;
+    transition: opacity var(--ds-dur) var(--ds-ease-in-out);
   }
+
+  /* When collapsed, the notice is invisible and takes no layout space,
+     but the spinner element stays in the DOM so its rotation animation
+     keeps running continuously (no restart across retries). */
+  .retry-notice.collapsed {
+    opacity: 0;
+    max-height: 0;
+    padding: 0;
+    margin: 0;
+    overflow: hidden;
+    pointer-events: none;
+    visibility: hidden;
+  }
+
   .retry-spinner {
     width: 21px; height: 21px; flex-shrink: 0;
     border: 2px solid var(--border);
@@ -629,9 +600,7 @@
   }
   .retry-btn:hover { background: var(--active); }
 
-  /* =========================================================================
-     Input area
-     ========================================================================= */
+  /* ===== Input area ===== */
   .input-area { padding: 12px 24px 20px; background: var(--bg); }
   .input-box {
     max-width: 768px; margin: 0 auto;
@@ -686,7 +655,6 @@
     color: #fff;
     display: grid; place-items: center;
     font-size: 12px; line-height: 1; font-weight: 700;
-    transition: background var(--ds-dur) var(--ds-ease-in-out);
   }
   .attach-remove:hover { background: rgba(0, 0, 0, .92); }
   .attach-preview.file .attach-remove { top: 50%; transform: translateY(-50%); }
@@ -739,9 +707,7 @@
   .send-btn.stopping { background: var(--ds-accent); }
   .send-btn.stopping:hover { background: var(--ds-accent-hover); }
 
-  /* =========================================================================
-     Modal
-     ========================================================================= */
+  /* ===== Modal ===== */
   .modal-backdrop {
     position: fixed; inset: 0;
     background: rgba(0, 0, 0, .55);
@@ -840,7 +806,6 @@
   }
   .divider { height: 1px; background: var(--border); margin: 22px 0 4px; }
 
-  /* Settings checkbox row */
   .checkrow {
     display: flex; align-items: center; gap: 10px;
     padding: 10px 12px;
@@ -857,17 +822,8 @@
   .checkrow .check-desc { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
   .checkrow .check-body { flex: 1; }
 
-  /* Theme color row (Settings) */
-  .color-row {
-    display: flex;
-    align-items: stretch;
-    gap: 8px;
-  }
-  .color-input-wrap {
-    position: relative;
-    flex: 1;
-    min-width: 0;
-  }
+  .color-row { display: flex; align-items: stretch; gap: 8px; }
+  .color-input-wrap { position: relative; flex: 1; min-width: 0; }
   .color-input-wrap .color-hash {
     position: absolute;
     left: 11px;
@@ -909,9 +865,7 @@
   .color-reset:hover { background: var(--hover); color: var(--text); }
   .color-reset svg { width: 16px; height: 16px; display: block; }
 
-  /* =========================================================================
-     Mobile
-     ========================================================================= */
+  /* ===== Mobile ===== */
   .backdrop {
     position: fixed; inset: 0;
     background: rgba(0, 0, 0, .5);
@@ -1163,15 +1117,11 @@ const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const MAX_TEXT_BYTES  = 512 * 1024;
 const MAX_IMAGE_DIM   = 1568;
 
-// Typewriter configuration.
-//   adaptive: true  → speeds up when the buffer runs ahead (catch-up mode)
-//   adaptive: false → always types one character per tick, no catch-up
-//   delay: 0        → no animation, text appears instantly
 const TYPING_SPEEDS = {
   default:  { delay: 12, adaptive: true  },
   slow:     { delay: 48, adaptive: false },
   normal:   { delay: 24, adaptive: false },
-  fast:     { delay: 12,  adaptive: false },
+  fast:     { delay: 12, adaptive: false },
   veryfast: { delay: 6,  adaptive: false },
   instant:  { delay: 0,  adaptive: false },
 };
@@ -1269,9 +1219,6 @@ function flashButton(btn, ok, originalHtml) {
 // =============================================================================
 // Accent color derivation
 // =============================================================================
-// Given a base hex, produce the accent trio (base, hover, text) that
-// preserves the same lightness relationships as the built-in palette:
-//   hover is 6% darker, accent-text is 3% lighter (same hue and saturation).
 function normalizeHexInput(raw) {
   if (raw == null) return "";
   const cleaned = String(raw).trim().replace(/^#/, "").toLowerCase();
@@ -1607,10 +1554,6 @@ function balanceCodeFences(text) {
 // =============================================================================
 // Typewriter
 // =============================================================================
-// Buffers incoming text and reveals it into `render`.
-//   adaptive: false → always one character per tick (fixed, perfectly smooth)
-//   adaptive: true  → step grows with the buffer so it never falls behind
-//   speed: 0        → instant, no animation at all
 function createTypewriter({ render, speed = 12, adaptive = false }) {
   const instant = speed <= 0;
   let buffer = "";
@@ -2357,9 +2300,20 @@ async function runCompletion(conv) {
 
   const assistantRow = el("div", { className: "msg msg-assistant" });
   const reasoningSlot = el("div");
+  const statusSlot = el("div");
   const contentEl = el("div", { className: "content" });
-  contentEl.innerHTML = '<span class="cursor"></span>';
-  assistantRow.append(reasoningSlot, contentEl);
+
+  // Persistent spinner — created once per completion. Never removed from the
+  // DOM during retries, so its rotation animation runs continuously.
+  // Hidden via the `.collapsed` class (opacity + max-height) which does not
+  // restart the animation.
+  const spinnerNotice = el("div", { className: "retry-notice" });
+  const spinner = el("span", { className: "retry-spinner" });
+  const spinnerText = el("span", { textContent: "Waiting for response…" });
+  spinnerNotice.append(spinner, spinnerText);
+  statusSlot.append(spinnerNotice);
+
+  assistantRow.append(reasoningSlot, statusSlot, contentEl);
   inner.append(assistantRow);
   scrollToBottom();
 
@@ -2385,8 +2339,17 @@ async function runCompletion(conv) {
     reasoningSlot.append(reasoningBlockEl);
   }
 
+  function hideSpinner() {
+    if (spinnerNotice.classList.contains("collapsed")) return;
+    spinnerNotice.classList.add("collapsed");
+  }
+
+  function showSpinner(text) {
+    spinnerText.textContent = text;
+    spinnerNotice.classList.remove("collapsed");
+  }
+
   const speedCfg = TYPING_SPEEDS[settings.typingSpeed] ?? TYPING_SPEEDS.default;
-  // Reasoning gets a slightly faster tick because it's usually much longer.
   const reasoningDelay = speedCfg.delay === 0
     ? 0
     : Math.max(1, Math.round(speedCfg.delay / 2));
@@ -2422,6 +2385,9 @@ async function runCompletion(conv) {
     onDelta: ({ content, reasoning }) => {
       assistantMsg.content = content;
       assistantMsg.reasoning = reasoning;
+
+      // Any token means the response has started rendering — hide the spinner.
+      if (reasoning || content) hideSpinner();
 
       if (reasoning && reasoningStartedAt === null) {
         reasoningStartedAt = performance.now();
@@ -2460,12 +2426,9 @@ async function runCompletion(conv) {
       reasoningSlot.innerHTML = "";
       contentEl.innerHTML = "";
 
-      const notice = el("div", { className: "retry-notice" });
-      const spinner = el("span", { className: "retry-spinner" });
-      notice.append(spinner, el("span", {
-        textContent: `Connection failed. Retrying (attempt ${attempt} of ${max})…`,
-      }));
-      contentEl.append(notice);
+      // Reuse the same spinner element — the rotation animation is continuous
+      // across attempts because the element is never removed from the DOM.
+      showSpinner(`Connection failed. Retrying (attempt ${attempt} of ${max})…`);
       scrollToBottom();
     },
 
@@ -2674,7 +2637,6 @@ function syncSwatch() {
   } else if (norm === "") {
     accentSwatch.style.background = "";
   }
-  // invalid (null) → leave swatch as-is
 }
 
 accentInput.addEventListener("input", syncSwatch);
