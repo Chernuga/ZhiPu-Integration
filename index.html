@@ -37,6 +37,10 @@
 
     --ds-error:           #ff6b6b;
     --ds-error-bg:        rgba(255, 107, 107, .08);
+    --ds-success:         #3fb950;
+    --ds-success-bg:      rgba(63, 185, 80, .12);
+    --ds-warn:            #d29922;
+    --ds-warn-bg:         rgba(210, 153, 34, .14);
 
     --ds-shadow-lv1:      0 2px 4px 0 rgba(0, 0, 0, .05);
     --ds-shadow-lv3:      0 0 1px 0 rgba(0, 0, 0, .2),
@@ -96,6 +100,10 @@
 
     --ds-error:           #ff6b6b;
     --ds-error-bg:        rgba(255, 107, 107, .08);
+    --ds-success:         #2ea043;
+    --ds-success-bg:      rgba(46, 160, 67, .12);
+    --ds-warn:            #b8841a;
+    --ds-warn-bg:         rgba(184, 132, 26, .12);
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -155,11 +163,22 @@
     color: var(--text-muted);
     transition: background var(--ds-dur) var(--ds-ease-in-out),
                 color var(--ds-dur) var(--ds-ease-in-out);
+    position: relative;
   }
   .icon-btn:hover { background: var(--hover); color: var(--text); }
   .icon-btn:disabled { opacity: .35; cursor: not-allowed; }
   .icon-btn:disabled:hover { background: none; color: var(--text-muted); }
   .icon-btn svg { width: 18px; height: 18px; }
+
+  .icon-btn .badge-dot {
+    position: absolute;
+    top: 5px; right: 5px;
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--ds-accent);
+    border: 1.5px solid var(--bg);
+    pointer-events: none;
+  }
 
   .new-chat-btn {
     margin: 4px 12px 10px;
@@ -241,7 +260,13 @@
   }
   .model-selector:hover { background: var(--hover); }
   .model-selector svg { width: 14px; height: 14px; color: var(--text-muted); }
-  .topbar-right { margin-left: auto; display: flex; gap: 4px; }
+
+  .topbar-right {
+    margin-left: auto;
+    display: flex;
+    gap: 4px;
+    align-items: center;
+  }
 
   .model-menu {
     position: absolute;
@@ -557,9 +582,6 @@
     transition: opacity var(--ds-dur) var(--ds-ease-in-out);
   }
 
-  /* When collapsed, the notice is invisible and takes no layout space,
-     but the spinner element stays in the DOM so its rotation animation
-     keeps running continuously (no restart across retries). */
   .retry-notice.collapsed {
     opacity: 0;
     max-height: 0;
@@ -599,6 +621,131 @@
     transition: background var(--ds-dur) var(--ds-ease-in-out);
   }
   .retry-btn:hover { background: var(--active); }
+
+  /* ===== File changes card ===== */
+  .file-changes {
+    margin-top: 16px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--ds-bg-layer-1);
+    overflow: hidden;
+  }
+  .file-changes-header {
+    display: flex; align-items: center; gap: 9px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13.5px;
+    color: var(--text);
+    font-weight: 500;
+  }
+  .fc-icon {
+    width: 16px; height: 16px;
+    color: var(--text-muted);
+    display: inline-flex;
+    flex-shrink: 0;
+  }
+  .fc-icon svg { width: 100%; height: 100%; display: block; }
+  .fc-title { flex: 1; }
+  .fc-copy-all {
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    background: transparent;
+    transition: background var(--ds-dur) var(--ds-ease-in-out),
+                color var(--ds-dur) var(--ds-ease-in-out);
+  }
+  .fc-copy-all:hover { background: var(--hover); color: var(--text); }
+  .fc-copy-all.success { color: var(--ds-success); border-color: var(--ds-success); }
+
+  .fc-list { display: flex; flex-direction: column; }
+  .fc-item { border-bottom: 1px solid var(--border); }
+  .fc-item:last-child { border-bottom: none; }
+  .fc-item > summary {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 14px;
+    cursor: pointer;
+    list-style: none;
+    font-size: 13px;
+    color: var(--text);
+    transition: background var(--ds-dur) var(--ds-ease-in-out);
+  }
+  .fc-item > summary::-webkit-details-marker { display: none; }
+  .fc-item > summary:hover { background: var(--hover); }
+
+  .fc-chev {
+    width: 12px; height: 12px;
+    color: var(--text-dim);
+    transition: transform var(--ds-dur) var(--ds-ease-in-out);
+    flex-shrink: 0;
+  }
+  .fc-item[open] .fc-chev { transform: rotate(90deg); }
+
+  .fc-status {
+    display: inline-grid; place-items: center;
+    width: 18px; height: 18px; border-radius: 4px;
+    font-size: 10px; font-weight: 700;
+    font-family: var(--ds-font-code);
+    flex-shrink: 0;
+  }
+  .fc-edit .fc-status,
+  .fc-overwrite .fc-status { background: var(--ds-warn-bg); color: var(--ds-warn); }
+  .fc-create .fc-status { background: var(--ds-success-bg); color: var(--ds-success); }
+  .fc-nomatch .fc-status,
+  .fc-missing .fc-status { background: var(--ds-error-bg); color: var(--ds-error); }
+
+  .fc-name-btn {
+    flex: 1;
+    text-align: left;
+    font-family: var(--ds-font-code);
+    font-size: 12.5px;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 0;
+    background: none;
+    transition: color var(--ds-dur) var(--ds-ease-in-out);
+  }
+  .fc-name-btn:hover { color: var(--ds-accent-text); }
+
+  .fc-note { font-size: 11.5px; color: var(--text-dim); flex-shrink: 0; }
+
+  .fc-copy-one {
+    padding: 3px 9px;
+    border-radius: 5px;
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    background: transparent;
+    flex-shrink: 0;
+    transition: background var(--ds-dur) var(--ds-ease-in-out),
+                color var(--ds-dur) var(--ds-ease-in-out);
+  }
+  .fc-copy-one:hover { background: var(--hover); color: var(--text); }
+  .fc-copy-one.success { color: var(--ds-success); border-color: var(--ds-success); }
+
+  .fc-body {
+    padding: 0 14px 12px;
+  }
+  .fc-body pre {
+    margin: 0;
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    overflow-x: auto;
+    font-size: 12.5px;
+    line-height: 1.55;
+    max-height: 400px;
+  }
+  .fc-body pre code {
+    font-family: var(--ds-font-code);
+    font-size: inherit;
+  }
 
   /* ===== Input area ===== */
   .input-area { padding: 12px 24px 20px; background: var(--bg); }
@@ -707,37 +854,150 @@
   .send-btn.stopping { background: var(--ds-accent); }
   .send-btn.stopping:hover { background: var(--ds-accent-hover); }
 
-  /* ===== Modal ===== */
-  .modal-backdrop {
+  /* ===== Settings fullscreen shell ===== */
+  .settings-shell {
     position: fixed; inset: 0;
-    background: rgba(0, 0, 0, .55);
-    backdrop-filter: blur(2px);
-    display: none; align-items: center; justify-content: center;
     z-index: 100;
-    padding: 20px;
+    background: var(--ds-bg-base);
+    display: none;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
   }
-  .modal-backdrop.open { display: flex; }
-  .modal {
-    background: var(--ds-bg-layer-2);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    width: 100%; max-width: 560px;
-    padding: 24px;
-    box-shadow: var(--ds-shadow-lv3);
-    max-height: 90vh; overflow-y: auto;
+  .settings-shell.open { display: flex; }
+
+  .settings-layout {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    max-width: 1120px;
+    margin: 0 auto;
+    width: 100%;
   }
-  .modal h2 { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
-  .modal .modal-sub { color: var(--text-muted); font-size: 13px; margin-bottom: 20px; }
-  .modal label {
+
+  .settings-nav {
+    width: 250px;
+    flex-shrink: 0;
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    padding: 18px 12px;
+    gap: 2px;
+    overflow-y: auto;
+  }
+
+  .settings-nav-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 8px 16px;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: -.01em;
+  }
+
+  .settings-nav-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .settings-nav-item {
+    display: flex; align-items: center; gap: 11px;
+    padding: 9px 12px;
+    border-radius: 8px;
+    font-size: 14px;
+    color: var(--text-muted);
+    text-align: left;
+    width: 100%;
+    transition: background var(--ds-dur) var(--ds-ease-in-out),
+                color var(--ds-dur) var(--ds-ease-in-out);
+  }
+  .settings-nav-item:hover { background: var(--hover); color: var(--text); }
+  .settings-nav-item.active {
+    background: var(--active);
+    color: var(--text);
+    font-weight: 500;
+  }
+  .settings-nav-item svg {
+    width: 16px; height: 16px;
+    flex-shrink: 0;
+    opacity: .85;
+  }
+
+  .settings-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+  }
+
+  .settings-main-header {
+    display: flex; align-items: center; gap: 8px;
+    padding: 14px 24px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    min-height: 62px;
+  }
+  .settings-main-header h2 {
+    font-size: 17px;
+    font-weight: 600;
+    margin: 0;
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .settings-back {
+    display: none;
+    width: 32px; height: 32px; border-radius: 8px;
+    place-items: center;
+    color: var(--text-muted);
+    flex-shrink: 0;
+    transition: background var(--ds-dur) var(--ds-ease-in-out),
+                color var(--ds-dur) var(--ds-ease-in-out);
+  }
+  .settings-back:hover { background: var(--hover); color: var(--text); }
+  .settings-back svg { width: 18px; height: 18px; }
+
+  .settings-main-close { flex-shrink: 0; }
+
+  .settings-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px 28px 32px;
+  }
+
+  .settings-panel { display: none; }
+  .settings-panel.active { display: block; }
+
+  .settings-footer {
+    padding: 14px 24px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    flex-shrink: 0;
+    background: var(--ds-bg-base);
+  }
+
+  .settings-panel label {
     display: block;
     font-size: 12.5px;
     font-weight: 600;
     color: var(--text-muted);
-    margin: 14px 0 6px;
+    margin: 20px 0 6px;
   }
-  .modal input,
-  .modal select,
-  .modal textarea {
+  .settings-panel > label:first-child { margin-top: 0; }
+
+  .settings-panel input[type="text"],
+  .settings-panel input[type="password"],
+  .settings-panel input[type="number"],
+  .settings-panel select,
+  .settings-panel textarea {
     width: 100%;
     padding: 9px 11px;
     font: inherit;
@@ -747,29 +1007,102 @@
     border-radius: 8px;
     color: var(--text);
     outline: none;
-    transition: border-color var(--ds-dur) var(--ds-ease-in-out);
+    transition: border-color var(--ds-dur) var(--ds-ease-in-out),
+                background var(--ds-dur) var(--ds-ease-in-out),
+                opacity var(--ds-dur) var(--ds-ease-in-out);
   }
-  .modal textarea {
+  .settings-panel textarea {
     font-family: inherit;
     font-size: 13.5px;
     line-height: 1.55;
     resize: vertical;
     min-height: 90px;
   }
-  .modal textarea.mono {
+  .settings-panel textarea.mono {
     font-family: var(--ds-font-code);
     font-size: 12.5px;
-    min-height: 140px;
+    min-height: 160px;
   }
-  .modal input:focus,
-  .modal select:focus,
-  .modal textarea:focus {
+  .settings-panel textarea:disabled,
+  .settings-panel input:disabled,
+  .settings-panel select:disabled {
+    opacity: .45;
+    cursor: not-allowed;
+  }
+  .settings-panel input:focus,
+  .settings-panel select:focus,
+  .settings-panel textarea:focus {
     border-color: var(--ds-accent);
   }
-  .modal-actions {
-    display: flex; gap: 8px; justify-content: flex-end;
-    margin-top: 22px;
+
+  /* Field group (label + toggle on one row, then input) */
+  .field-group { margin-top: 20px; }
+  .field-group:first-child { margin-top: 0; }
+  .field-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 6px;
   }
+  .field-header > label {
+    margin: 0;
+    display: block;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+
+  /* Toggle switch */
+  .toggle {
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    position: relative;
+  }
+  .toggle input {
+    position: absolute;
+    opacity: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    cursor: pointer;
+  }
+  .toggle-track {
+    width: 34px;
+    height: 20px;
+    border-radius: 10px;
+    background: var(--ds-bg-layer-3);
+    border: 1px solid var(--border);
+    position: relative;
+    transition: background var(--ds-dur) var(--ds-ease-in-out),
+                border-color var(--ds-dur) var(--ds-ease-in-out);
+  }
+  .toggle-thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    transition: transform var(--ds-dur) var(--ds-ease-in-out),
+                background var(--ds-dur) var(--ds-ease-in-out);
+  }
+  .toggle input:checked + .toggle-track {
+    background: var(--ds-accent);
+    border-color: var(--ds-accent);
+  }
+  .toggle input:checked + .toggle-track .toggle-thumb {
+    transform: translateX(14px);
+    background: var(--ds-text-foreground);
+  }
+  .toggle input:focus-visible + .toggle-track {
+    box-shadow: 0 0 0 2px var(--ds-accent-text);
+  }
+
   .btn-primary {
     padding: 8px 18px;
     border-radius: 8px;
@@ -793,7 +1126,7 @@
   .hint-inline {
     font-size: 12px;
     color: var(--text-dim);
-    margin-top: 5px;
+    margin-top: 6px;
     line-height: 1.5;
   }
   .hint-inline code {
@@ -804,12 +1137,38 @@
     font-family: var(--ds-font-code);
     font-size: .92em;
   }
-  .divider { height: 1px; background: var(--border); margin: 22px 0 4px; }
+
+  .segmented {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    padding: 4px;
+    background: var(--ds-bg-layer-1);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+  .seg-option {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 9px 10px;
+    border-radius: 7px;
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--text-muted);
+    transition: background var(--ds-dur) var(--ds-ease-in-out),
+                color var(--ds-dur) var(--ds-ease-in-out);
+  }
+  .seg-option:hover { color: var(--text); }
+  .seg-option.active {
+    background: var(--ds-bg-layer-3);
+    color: var(--text);
+    box-shadow: var(--ds-shadow-lv1);
+  }
+  .seg-option svg { width: 15px; height: 15px; flex-shrink: 0; }
 
   .checkrow {
-    display: flex; align-items: center; gap: 10px;
-    padding: 10px 12px;
-    margin-top: 6px;
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 11px 12px;
+    margin-top: 8px;
     border: 1px solid var(--border);
     border-radius: 8px;
     cursor: pointer;
@@ -818,8 +1177,8 @@
     transition: background var(--ds-dur) var(--ds-ease-in-out);
   }
   .checkrow:hover { background: var(--hover); }
-  .checkrow input { width: auto; margin: 0; padding: 0; flex-shrink: 0; }
-  .checkrow .check-desc { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
+  .checkrow input { width: auto; margin: 3px 0 0; padding: 0; flex-shrink: 0; }
+  .checkrow .check-desc { color: var(--text-muted); font-size: 12px; margin-top: 3px; line-height: 1.5; }
   .checkrow .check-body { flex: 1; }
 
   .color-row { display: flex; align-items: stretch; gap: 8px; }
@@ -837,7 +1196,7 @@
     user-select: none;
   }
   .color-input-wrap input {
-    padding-left: 24px;
+    padding-left: 24px !important;
     font-family: var(--ds-font-code);
     font-size: 13px;
     letter-spacing: .02em;
@@ -865,6 +1224,238 @@
   .color-reset:hover { background: var(--hover); color: var(--text); }
   .color-reset svg { width: 16px; height: 16px; display: block; }
 
+  /* =========================================================================
+     Workspace fullscreen shell
+     ========================================================================= */
+  .workspace-shell {
+    position: fixed; inset: 0;
+    z-index: 100;
+    background: var(--ds-bg-base);
+    display: none;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+  }
+  .workspace-shell.open { display: flex; }
+
+  .workspace-layout {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    max-width: 1280px;
+    margin: 0 auto;
+    width: 100%;
+  }
+
+  .workspace-sidebar {
+    width: 280px;
+    flex-shrink: 0;
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .workspace-sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 16px 14px;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: -.01em;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .workspace-file-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .workspace-empty {
+    padding: 20px 12px;
+    font-size: 13px;
+    color: var(--text-dim);
+    text-align: center;
+    line-height: 1.6;
+  }
+
+  .workspace-file-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 10px;
+    border-radius: 7px;
+    font-size: 13px;
+    color: var(--text-muted);
+    text-align: left;
+    font-family: var(--ds-font-code);
+    width: 100%;
+    transition: background var(--ds-dur) var(--ds-ease-in-out),
+                color var(--ds-dur) var(--ds-ease-in-out);
+  }
+  .workspace-file-item:hover { background: var(--hover); color: var(--text); }
+  .workspace-file-item.active {
+    background: var(--active);
+    color: var(--text);
+  }
+  .workspace-file-item .ws-file-name {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+  }
+
+  .workspace-sidebar-footer {
+    padding: 10px 12px 14px;
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .workspace-new-file {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    width: 100%;
+    padding: 9px 12px;
+    border-radius: 8px;
+    border: 1px dashed var(--border);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-muted);
+    transition: background var(--ds-dur) var(--ds-ease-in-out),
+                color var(--ds-dur) var(--ds-ease-in-out),
+                border-color var(--ds-dur) var(--ds-ease-in-out);
+  }
+  .workspace-new-file:hover {
+    background: var(--hover);
+    color: var(--text);
+    border-color: var(--text-muted);
+  }
+  .workspace-new-file svg { width: 14px; height: 14px; }
+
+  .workspace-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+  }
+
+  .workspace-main-header {
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    min-height: 60px;
+  }
+
+  .workspace-back {
+    display: none;
+    width: 32px; height: 32px; border-radius: 8px;
+    place-items: center;
+    color: var(--text-muted);
+    flex-shrink: 0;
+    transition: background var(--ds-dur) var(--ds-ease-in-out),
+                color var(--ds-dur) var(--ds-ease-in-out);
+  }
+  .workspace-back:hover { background: var(--hover); color: var(--text); }
+  .workspace-back svg { width: 18px; height: 18px; }
+
+  .workspace-filename {
+    flex: 1;
+    font-family: var(--ds-font-code);
+    font-size: 13.5px;
+    color: var(--text);
+    background: var(--ds-bg-layer-1);
+    border: 1px solid transparent;
+    border-radius: 7px;
+    padding: 7px 10px;
+    outline: none;
+    transition: border-color var(--ds-dur) var(--ds-ease-in-out),
+                background var(--ds-dur) var(--ds-ease-in-out);
+    min-width: 0;
+  }
+  .workspace-filename:focus {
+    border-color: var(--ds-accent);
+    background: var(--ds-bg-input);
+  }
+  .workspace-filename:disabled { opacity: .5; }
+
+  .ws-action-btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 6px 11px;
+    border-radius: 7px;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    background: transparent;
+    flex-shrink: 0;
+    transition: background var(--ds-dur) var(--ds-ease-in-out),
+                color var(--ds-dur) var(--ds-ease-in-out);
+  }
+  .ws-action-btn:hover { background: var(--hover); color: var(--text); }
+  .ws-action-btn:disabled { opacity: .4; cursor: not-allowed; }
+  .ws-action-btn:disabled:hover { background: transparent; color: var(--text-muted); }
+  .ws-action-btn.success { color: var(--ds-success); border-color: var(--ds-success); }
+  .ws-action-btn.danger:hover { color: var(--ds-error); }
+  .ws-action-btn svg { width: 13px; height: 13px; }
+
+  .workspace-content {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    min-height: 0;
+  }
+
+  .workspace-editor {
+    flex: 1;
+    width: 100%;
+    background: transparent;
+    border: none;
+    outline: none;
+    resize: none;
+    color: var(--text);
+    font-family: var(--ds-font-code);
+    font-size: 13px;
+    line-height: 1.6;
+    padding: 20px 24px;
+    tab-size: 2;
+    min-height: 0;
+  }
+  .workspace-editor:disabled { opacity: .5; }
+
+  .workspace-empty-pane {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    color: var(--text-dim);
+    padding: 40px;
+    text-align: center;
+  }
+  .workspace-empty-pane svg {
+    width: 42px; height: 42px;
+    opacity: .4;
+  }
+  .workspace-empty-pane .ws-empty-title {
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text-muted);
+  }
+  .workspace-empty-pane .ws-empty-sub {
+    font-size: 13px;
+    color: var(--text-dim);
+    max-width: 320px;
+    line-height: 1.6;
+  }
+
   /* ===== Mobile ===== */
   .backdrop {
     position: fixed; inset: 0;
@@ -873,6 +1464,8 @@
     display: none;
   }
   .backdrop.open { display: block; }
+
+  .settings-nav-close { display: grid; }
 
   @media (max-width: 720px) {
     .sidebar {
@@ -888,6 +1481,29 @@
     .input-area { padding: 10px 16px 16px; }
     .msg-user .bubble { max-width: 88%; }
     .msg-user-wrap { max-width: 88%; }
+
+    .settings-nav {
+      width: 100%;
+      border-right: none;
+      padding: 18px 16px 24px;
+    }
+    .settings-main-header { padding: 14px 16px; min-height: 60px; }
+    .settings-body { padding: 20px 16px 28px; }
+    .settings-footer { padding: 14px 16px; }
+
+    .settings-shell:not(.show-panel) .settings-main { display: none; }
+    .settings-shell.show-panel .settings-nav { display: none; }
+    .settings-back { display: grid; }
+
+    /* Workspace mobile */
+    .workspace-sidebar {
+      width: 100%;
+      border-right: none;
+    }
+    .workspace-shell:not(.show-panel) .workspace-main { display: none; }
+    .workspace-shell.show-panel .workspace-sidebar { display: none; }
+    .workspace-back { display: grid; }
+    .workspace-editor { padding: 16px; font-size: 12.5px; }
   }
 </style>
 </head>
@@ -938,10 +1554,11 @@
         <div class="model-menu" id="modelMenu"></div>
       </div>
       <div class="topbar-right">
-        <button class="icon-btn" id="themeBtn" title="Toggle theme">
+        <button class="icon-btn" id="workspaceBtn" title="Workspace">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
           </svg>
+          <span class="badge-dot" id="workspaceBadge" style="display:none"></span>
         </button>
       </div>
     </header>
@@ -995,113 +1612,288 @@
   </main>
 </div>
 
-<div class="modal-backdrop" id="settingsModal">
-  <div class="modal">
-    <h2>Settings</h2>
-    <div class="modal-sub">Connection details, model list, and custom instructions.</div>
+<!-- ============================================================================
+     Settings fullscreen shell
+     ============================================================================ -->
+<div class="settings-shell" id="settingsModal">
+  <div class="settings-layout">
 
-    <label for="sApiKey">API key</label>
-    <input type="password" id="sApiKey" placeholder="Paste your API key">
-
-    <label for="sWorkerUrl">Cloudflare Worker URL</label>
-    <input type="text" id="sWorkerUrl" placeholder="https://…workers.dev">
-    <div class="hint-inline">Required — api.z.ai and bigmodel.cn block direct browser calls via CORS preflight.</div>
-
-    <label for="sPlan">Endpoint</label>
-    <select id="sPlan">
-      <option value="coding">Coding Plan — api.z.ai/api/coding/paas/v4</option>
-      <option value="general">General — api.z.ai/api/paas/v4</option>
-    </select>
-
-    <label for="sBaseOverride">Override upstream base URL (optional)</label>
-    <input type="text" id="sBaseOverride" placeholder="e.g. https://open.bigmodel.cn/api/paas/v4">
-    <div class="hint-inline">Point the Worker's <code>/general</code> route at BigModel or another compatible endpoint.</div>
-
-    <div class="divider"></div>
-
-    <label for="sCustomInstructions">Custom instructions</label>
-    <textarea id="sCustomInstructions"
-      placeholder="e.g. You are a senior front-end engineer. Always produce complete, runnable code. Respond in Bulgarian unless asked otherwise."></textarea>
-    <div class="hint-inline">
-      Sent as a <code>system</code> message before every conversation. Applies to all chats.
-    </div>
-
-    <div class="divider"></div>
-
-    <label for="sAccentHex">Theme color</label>
-    <div class="color-row">
-      <div class="color-input-wrap">
-        <span class="color-hash">#</span>
-        <input type="text" id="sAccentHex" maxlength="7" placeholder="5686fe"
-               spellcheck="false" autocomplete="off" />
+    <aside class="settings-nav">
+      <div class="settings-nav-header">
+        <span>Settings</span>
+        <button class="icon-btn settings-nav-close" id="settingsNavCloseBtn" title="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 6L6 18M6 6l12 12"/>
+          </svg>
+        </button>
       </div>
-      <div class="color-swatch" id="accentSwatch" aria-hidden="true"></div>
-      <button class="color-reset" id="accentResetBtn" title="Reset to default" type="button">
-        <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M7.921.35a7.64 7.64 0 0 1 6.035 2.949l1.172-1.171a.322.322 0 0 1 .549.227V5.54c0 .177-.144.32-.321.321H12.17a.32.32 0 0 1-.227-.548l1.02-1.021A6.259 6.259 0 1 0 14.18 8h1.392A7.651 7.651 0 1 1 7.922.348" fill="currentColor"/>
-        </svg>
-      </button>
-    </div>
-    <div class="hint-inline">
-      3 or 6 hex digits, e.g. <code>0f0</code> or <code>5686fe</code>. Leave blank for the default blue.
-    </div>
+      <nav class="settings-nav-list">
+        <button type="button" class="settings-nav-item" data-section="appearance">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="4"/>
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
+          </svg>
+          <span>Appearance</span>
+        </button>
+        <button type="button" class="settings-nav-item" data-section="connection">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 17H7A5 5 0 0 1 7 7h2M15 7h2a5 5 0 1 1 0 10h-2M8 12h8"/>
+          </svg>
+          <span>Connection</span>
+        </button>
+        <button type="button" class="settings-nav-item" data-section="chat">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+          <span>Chat behavior</span>
+        </button>
+        <button type="button" class="settings-nav-item" data-section="reliability">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M23 4v6h-6M1 20v-6h6"/>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+          </svg>
+          <span>Reliability</span>
+        </button>
+        <button type="button" class="settings-nav-item" data-section="models">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="7" height="7" rx="1"/>
+            <rect x="14" y="3" width="7" height="7" rx="1"/>
+            <rect x="3" y="14" width="7" height="7" rx="1"/>
+            <rect x="14" y="14" width="7" height="7" rx="1"/>
+          </svg>
+          <span>Models</span>
+        </button>
+      </nav>
+    </aside>
 
-    <div class="divider"></div>
+    <main class="settings-main">
+      <div class="settings-main-header">
+        <button type="button" class="settings-back" id="settingsBack" title="Back to categories">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M15 18l-6-6 6-6"/>
+          </svg>
+        </button>
+        <h2 id="settingsSectionTitle">Appearance</h2>
+        <button type="button" class="icon-btn settings-main-close" id="settingsCloseBtn" title="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 6L6 18M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
 
-    <label>Reasoning display</label>
-    <label class="checkrow" for="sReasoningExpanded">
-      <input type="checkbox" id="sReasoningExpanded">
-      <span class="check-body">
-        Show reasoning expanded by default
-        <div class="check-desc">When unchecked, reasoning blocks start collapsed. You can always expand them by clicking.</div>
-      </span>
-    </label>
+      <div class="settings-body">
 
-    <div class="divider"></div>
+        <section class="settings-panel" data-section="appearance">
+          <label>Theme</label>
+          <div class="segmented" id="themeSegmented">
+            <button type="button" class="seg-option" data-theme-value="light">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="4"/>
+                <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
+              </svg>
+              <span>Light</span>
+            </button>
+            <button type="button" class="seg-option" data-theme-value="dark">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+              </svg>
+              <span>Dark</span>
+            </button>
+          </div>
 
-    <label>Typing animation</label>
-    <label for="sTypingSpeed" style="margin-top:0">Speed</label>
-    <select id="sTypingSpeed">
-      <option value="default" selected>Default (adaptive)</option>
-      <option value="slow">Slow</option>
-      <option value="normal">Normal</option>
-      <option value="fast">Fast</option>
-      <option value="veryfast">Very fast</option>
-      <option value="instant">Instant (no animation)</option>
-    </select>
-    <div class="hint-inline">
-      <b>Default</b> speeds up temporarily when text is buffered, so it never falls behind the stream.
-      The named speeds type at a fixed rate — one character per tick, always, for a perfectly smooth animation.
-      Reasoning always finishes typing before the answer starts.
-      Click the stop button mid-animation to skip ahead.
-    </div>
+          <label for="sAccentHex">Theme color</label>
+          <div class="color-row">
+            <div class="color-input-wrap">
+              <span class="color-hash">#</span>
+              <input type="text" id="sAccentHex" maxlength="7" placeholder="5686fe"
+                     spellcheck="false" autocomplete="off" />
+            </div>
+            <div class="color-swatch" id="accentSwatch" aria-hidden="true"></div>
+            <button class="color-reset" id="accentResetBtn" title="Reset to default" type="button">
+              <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M7.921.35a7.64 7.64 0 0 1 6.035 2.949l1.172-1.171a.322.322 0 0 1 .549.227V5.54c0 .177-.144.32-.321.32H12.17a.32.32 0 0 1-.227-.548l1.02-1.021A6.259 6.259 0 1 0 14.18 8h1.392A7.651 7.651 0 1 1 7.922.348" fill="currentColor"/>
+              </svg>
+            </button>
+          </div>
+          <div class="hint-inline">
+            3 or 6 hex digits, e.g. <code>0f0</code> or <code>5686fe</code>. Leave blank for the default blue.
+          </div>
+        </section>
 
-    <div class="divider"></div>
+        <section class="settings-panel" data-section="connection">
+          <label for="sApiKey">API key</label>
+          <input type="password" id="sApiKey" placeholder="Paste your API key">
 
-    <label>Automatic retry</label>
-    <label class="checkrow" for="sRetryEnabled">
-      <input type="checkbox" id="sRetryEnabled">
-      <span class="check-body">
-        Retry failed requests automatically
-        <div class="check-desc">Network errors and server errors (5xx, 429) are retried with a growing delay. Client errors (4xx) and aborts are not.</div>
-      </span>
-    </label>
-    <label for="sRetryMax" style="margin-top:12px">Max retry attempts</label>
-    <input type="number" id="sRetryMax" min="1" max="10" step="1" value="2">
-    <div class="hint-inline">Each attempt starts fresh — partial output from a failed attempt is discarded.</div>
+          <label for="sWorkerUrl">Cloudflare Worker URL</label>
+          <input type="text" id="sWorkerUrl" placeholder="https://…workers.dev">
+          <div class="hint-inline">Required — api.z.ai and bigmodel.cn block direct browser calls via CORS preflight.</div>
 
-    <div class="divider"></div>
+          <label for="sPlan">Endpoint</label>
+          <select id="sPlan">
+            <option value="coding">Coding Plan — api.z.ai/api/coding/paas/v4</option>
+            <option value="general">General — api.z.ai/api/paas/v4</option>
+          </select>
 
-    <label for="sModels">Models</label>
-    <textarea id="sModels" class="mono" spellcheck="false" placeholder="glm-5.3 | GLM-5.3 | Flagship&#10;glm-4.7-flash"></textarea>
-    <div class="hint-inline">
-      One model per line, format <code>id</code>, <code>id | Label</code>, or <code>id | Label | Description</code>.
-    </div>
+          <label for="sBaseOverride">Override upstream base URL (optional)</label>
+          <input type="text" id="sBaseOverride" placeholder="e.g. https://open.bigmodel.cn/api/paas/v4">
+          <div class="hint-inline">Point the Worker's <code>/general</code> route at BigModel or another compatible endpoint.</div>
+        </section>
 
-    <div class="modal-actions">
-      <button class="btn-secondary" id="settingsCancel">Cancel</button>
-      <button class="btn-primary" id="settingsSave">Save</button>
-    </div>
+        <section class="settings-panel" data-section="chat">
+          <div class="field-group">
+            <div class="field-header">
+              <label for="sCustomInstructions">Custom instructions</label>
+              <label class="toggle" title="Enable custom instructions">
+                <input type="checkbox" id="sCustomInstructionsEnabled">
+                <span class="toggle-track"><span class="toggle-thumb"></span></span>
+              </label>
+            </div>
+            <textarea id="sCustomInstructions"
+              placeholder="e.g. You are a senior front-end engineer. Always produce complete, runnable code."></textarea>
+            <div class="hint-inline">
+              Prepended as a <code>system</code> message before the conversation. Some models respond better to a short prompt finish instead (below).
+            </div>
+          </div>
+
+          <div class="field-group">
+            <div class="field-header">
+              <label for="sPromptFinish">Prompt finish</label>
+              <label class="toggle" title="Enable prompt finish">
+                <input type="checkbox" id="sPromptFinishEnabled">
+                <span class="toggle-track"><span class="toggle-thumb"></span></span>
+              </label>
+            </div>
+            <textarea id="sPromptFinish"
+              placeholder="e.g. Remember: respond in Bulgarian. Use TypeScript for all code."></textarea>
+            <div class="hint-inline">
+              Appended as a <code>system</code> message <b>after</b> every turn. Sent silently — never appears in the chat.
+            </div>
+          </div>
+
+          <label>Reasoning display</label>
+          <label class="checkrow" for="sReasoningExpanded">
+            <input type="checkbox" id="sReasoningExpanded">
+            <span class="check-body">
+              Show reasoning expanded by default
+              <div class="check-desc">When unchecked, reasoning blocks start collapsed. You can always expand them by clicking.</div>
+            </span>
+          </label>
+
+          <label for="sTypingSpeed">Typing animation speed</label>
+          <select id="sTypingSpeed">
+            <option value="default" selected>Default (adaptive)</option>
+            <option value="slow">Slow</option>
+            <option value="normal">Normal</option>
+            <option value="fast">Fast</option>
+            <option value="veryfast">Very fast</option>
+            <option value="instant">Instant (no animation)</option>
+          </select>
+          <div class="hint-inline">
+            <b>Default</b> speeds up temporarily when text is buffered, so it never falls behind the stream.
+            The named speeds type at a fixed rate — one character per tick, always, for a perfectly smooth animation.
+          </div>
+        </section>
+
+        <section class="settings-panel" data-section="reliability">
+          <label>Automatic retry</label>
+          <label class="checkrow" for="sRetryEnabled">
+            <input type="checkbox" id="sRetryEnabled">
+            <span class="check-body">
+              Retry failed requests automatically
+              <div class="check-desc">Network errors and server errors (5xx, 429) are retried with a growing delay. Client errors (4xx) and aborts are not.</div>
+            </span>
+          </label>
+
+          <label for="sRetryMax">Max retry attempts</label>
+          <input type="number" id="sRetryMax" min="1" max="10" step="1" value="2">
+          <div class="hint-inline">Each attempt starts fresh — partial output from a failed attempt is discarded.</div>
+        </section>
+
+        <section class="settings-panel" data-section="models">
+          <label for="sModels">Model list</label>
+          <textarea id="sModels" class="mono" spellcheck="false" placeholder="glm-5.3 | GLM-5.3 | Flagship&#10;glm-4.7-flash"></textarea>
+          <div class="hint-inline">
+            One model per line, format <code>id</code>, <code>id | Label</code>, or <code>id | Label | Description</code>.
+          </div>
+        </section>
+
+      </div>
+
+      <div class="settings-footer">
+        <button class="btn-secondary" id="settingsCancel">Cancel</button>
+        <button class="btn-primary" id="settingsSave">Save</button>
+      </div>
+    </main>
+
+  </div>
+</div>
+
+<!-- ============================================================================
+     Workspace fullscreen shell
+     ============================================================================ -->
+<div class="workspace-shell" id="workspaceModal">
+  <div class="workspace-layout">
+
+    <aside class="workspace-sidebar">
+      <div class="workspace-sidebar-header">
+        <span>Workspace</span>
+        <button class="icon-btn" id="workspaceNavCloseBtn" title="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 6L6 18M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+      <div class="workspace-file-list" id="workspaceFileList"></div>
+      <div class="workspace-sidebar-footer">
+        <button class="workspace-new-file" id="workspaceNewFile" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 5v14M5 12h14"/>
+          </svg>
+          New file
+        </button>
+      </div>
+    </aside>
+
+    <main class="workspace-main">
+      <div class="workspace-main-header">
+        <button type="button" class="workspace-back" id="workspaceBack" title="Back to files">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M15 18l-6-6 6-6"/>
+          </svg>
+        </button>
+        <input type="text" class="workspace-filename" id="workspaceFileName" placeholder="No file selected" spellcheck="false" disabled />
+        <button type="button" class="ws-action-btn" id="workspaceCopyBtn" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="9" y="9" width="13" height="13" rx="2"/>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+          </svg>
+          Copy
+        </button>
+        <button type="button" class="ws-action-btn danger" id="workspaceDeleteBtn" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+          </svg>
+          Delete
+        </button>
+        <button type="button" class="icon-btn" id="workspaceCloseBtn" title="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 6L6 18M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="workspace-content" id="workspaceContent">
+        <div class="workspace-empty-pane" id="workspaceEmptyPane">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+          </svg>
+          <div class="ws-empty-title" id="workspaceEmptyTitle">No file selected</div>
+          <div class="ws-empty-sub" id="workspaceEmptySub">Ask the AI to edit or create files — they'll show up here automatically.</div>
+        </div>
+        <textarea class="workspace-editor" id="workspaceFileContent" spellcheck="false" style="display:none"></textarea>
+      </div>
+    </main>
+
   </div>
 </div>
 
@@ -1137,7 +1929,8 @@ const DEFAULT_MODELS = [
 
 const DEFAULT_SETTINGS = {
   apiKey: "", workerUrl: "", plan: "coding", baseOverride: "",
-  customInstructions: "",
+  customInstructions: "", customInstructionsEnabled: true,
+  promptFinish: "",       promptFinishEnabled: true,
   accentHex: "",
   reasoningExpanded: true,
   retryEnabled: true,
@@ -1145,6 +1938,40 @@ const DEFAULT_SETTINGS = {
   typingSpeed: "default",
   model: "glm-5.3", models: DEFAULT_MODELS, theme: "dark", deepthink: false,
 };
+
+const SECTION_TITLES = {
+  appearance:  "Appearance",
+  connection:  "Connection",
+  chat:        "Chat behavior",
+  reliability: "Reliability",
+  models:      "Models",
+};
+
+const FILE_COMMANDS_INSTRUCTIONS = [
+  "When creating code you should do it in the conversation's workspace. To initialise it there are a few simple commands:",
+  "1. File creation:",
+  "path/to/file/filename.extension create:",
+  "```",
+  "contents of the file go in this code block",
+  "```",
+  "2. File editing:",
+  "path/to/file/filename.extension find:",
+  "```",
+  "part to be found goes in this code block",
+  "```",
+  "path/to/file/filename.extension replace:",
+  "```",
+  "part to replace the found content goes in this code block",
+  "```",
+].join("\n");
+
+// Detect touch devices once. We keep this as a live MediaQueryList so it
+// responds to input-method changes (e.g. detaching a keyboard).
+const coarsePointerQuery = window.matchMedia("(pointer: coarse)");
+
+function isTouchDevice() {
+  return coarsePointerQuery.matches || window.innerWidth <= 720;
+}
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, props = {}, children = []) => {
@@ -1169,7 +1996,14 @@ const CHEVRON_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
   <path d="M9 6l6 6-6 6"/>
 </svg>`;
 
+const FC_CHEVRON_ICON = `<svg class="fc-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+  stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M9 18l6-6-6-6"/>
+</svg>`;
+
 const FILE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>`;
+
+const FOLDER_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>`;
 
 const EDIT_ICON = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9.94 1.35a2.45 2.45 0 0 1 2.474 0c.292.17.555.441.896.783.342.341.613.604.784.896a2.45 2.45 0 0 1 0 2.474c-.17.291-.442.554-.784.896l-6.65 6.65c-.38.38-.653.662-.995.86-.341.2-.722.298-1.238.44l-1.183.327c-.469.13-.899.25-1.243.292-.349.043-.821.033-1.19-.335-.37-.37-.379-.842-.336-1.191.042-.344.163-.774.292-1.243l.327-1.183c.142-.516.24-.897.44-1.238.198-.342.48-.615.86-.994l6.65-6.651c.342-.342.605-.613.897-.784m5.603 13.49h-7.99l1.414-1.415h6.576zM3.393 9.784c-.428.429-.55.56-.636.706-.085.147-.138.318-.3.902l-.326 1.184c-.13.468-.21.766-.242.978.211-.034.51-.112.979-.242l1.183-.326c.584-.161.756-.215.902-.3s.277-.208.706-.637l5.062-5.063-2.265-2.265zM11.7 2.571a1.03 1.03 0 0 0-1.045 0c-.095.055-.206.158-.61.562l-.589.588 2.265 2.265.59-.588c.403-.403.506-.515.562-.61a1.03 1.03 0 0 0 0-1.045c-.056-.095-.158-.205-.563-.61-.404-.404-.515-.507-.61-.562" fill="currentColor"/></svg>`;
 
@@ -1214,6 +2048,118 @@ function flashButton(btn, ok, originalHtml) {
     btn.innerHTML = prev;
     btn.classList.remove("success", "failure");
   }, 1400);
+}
+
+// =============================================================================
+// File command parsing / applying
+// =============================================================================
+const FILE_CMD_LINE_RE = /^[ \t]*([^\s`]+)[ \t]+(find|replace|create)[ \t]*:[ \t]*$/i;
+
+function parseFileCommands(text) {
+  const lines = text.split('\n');
+  const ops = [];
+  let i = 0;
+  while (i < lines.length) {
+    const m = lines[i].match(FILE_CMD_LINE_RE);
+    if (!m) { i++; continue; }
+    const file = m[1];
+    const kind = m[2].toLowerCase();
+    i++;
+    while (i < lines.length && lines[i].trim() === '') i++;
+    let content;
+    const openMatch = i < lines.length ? lines[i].match(/^\s*(`{3,})/) : null;
+    if (openMatch) {
+      const openLen = openMatch[1].length;
+      const closeRe = new RegExp('^\\s*`{' + openLen + ',}\\s*$');
+      i++;
+      const buf = [];
+      while (i < lines.length && !closeRe.test(lines[i])) {
+        buf.push(lines[i]);
+        i++;
+      }
+      if (i < lines.length) i++;
+      content = buf.join('\n');
+    } else {
+      const buf = [];
+      while (i < lines.length && !FILE_CMD_LINE_RE.test(lines[i])) {
+        buf.push(lines[i]);
+        i++;
+      }
+      while (buf.length && buf[buf.length - 1].trim() === '') buf.pop();
+      content = buf.join('\n');
+    }
+    ops.push({ file, kind, content });
+  }
+  return ops;
+}
+
+function applyFileOps(files, ops) {
+  const changes = [];
+  let i = 0;
+  while (i < ops.length) {
+    const op = ops[i];
+    if (op.kind === 'create') {
+      const existed = Object.prototype.hasOwnProperty.call(files, op.file);
+      files[op.file] = op.content;
+      changes.push({
+        file: op.file,
+        kind: existed ? 'overwrite' : 'create',
+        after: op.content,
+      });
+      i++;
+      continue;
+    }
+    if (op.kind === 'find') {
+      const next = ops[i + 1];
+      if (next && next.kind === 'replace' && next.file === op.file) {
+        const before = files[op.file];
+        if (before == null) {
+          changes.push({ file: op.file, kind: 'missing' });
+        } else {
+          const idx = before.indexOf(op.content);
+          if (idx < 0) {
+            changes.push({ file: op.file, kind: 'nomatch', find: op.content });
+          } else {
+            const after = before.slice(0, idx) + next.content + before.slice(idx + op.content.length);
+            files[op.file] = after;
+            changes.push({ file: op.file, kind: 'edit', before, after });
+          }
+        }
+        i += 2;
+        continue;
+      }
+      i++;
+      continue;
+    }
+    i++;
+  }
+  return changes;
+}
+
+function stripFileCommands(text) {
+  const lines = text.split('\n');
+  const out = [];
+  let i = 0;
+  while (i < lines.length) {
+    if (FILE_CMD_LINE_RE.test(lines[i])) {
+      i++;
+      while (i < lines.length && lines[i].trim() === '') i++;
+      const openMatch = i < lines.length ? lines[i].match(/^\s*(`{3,})/) : null;
+      if (openMatch) {
+        const openLen = openMatch[1].length;
+        const closeRe = new RegExp('^\\s*`{' + openLen + ',}\\s*$');
+        i++;
+        while (i < lines.length && !closeRe.test(lines[i])) i++;
+        if (i < lines.length) i++;
+      } else {
+        while (i < lines.length && lines[i].trim() !== '' && !FILE_CMD_LINE_RE.test(lines[i])) i++;
+      }
+      continue;
+    }
+    out.push(lines[i]);
+    i++;
+  }
+  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 // =============================================================================
@@ -1347,13 +2293,28 @@ function loadSettings() {
   if (TYPING_SPEEDS[merged.typingSpeed] === undefined) merged.typingSpeed = "default";
   const norm = normalizeHexInput(merged.accentHex);
   merged.accentHex = norm || "";
+  if (merged.theme !== "light" && merged.theme !== "dark") merged.theme = "dark";
+  // Backfill boolean flags for old saved data.
+  if (typeof merged.customInstructionsEnabled !== "boolean") {
+    merged.customInstructionsEnabled = true;
+  }
+  if (typeof merged.promptFinishEnabled !== "boolean") {
+    merged.promptFinishEnabled = true;
+  }
+  if (typeof merged.promptFinish !== "string") merged.promptFinish = "";
   return merged;
 }
 function saveSettings() { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }
 
 function loadConversations() {
-  try { return JSON.parse(localStorage.getItem(CONV_KEY) ?? "[]"); }
-  catch { return []; }
+  try {
+    const raw = JSON.parse(localStorage.getItem(CONV_KEY) ?? "[]");
+    if (!Array.isArray(raw)) return [];
+    for (const c of raw) {
+      if (!c.files || typeof c.files !== "object") c.files = {};
+    }
+    return raw;
+  } catch { return []; }
 }
 
 let quotaWarned = false;
@@ -1415,6 +2376,7 @@ function newConversation() {
     updatedAt: Date.now(),
     messages: [],
     model: settings.model,
+    files: {},
   };
 }
 function getActive() { return conversations.find((c) => c.id === activeId) || null; }
@@ -1427,6 +2389,7 @@ function ensureActive() {
     saveConversations();
     saveActiveId(activeId);
   }
+  if (!conv.files || typeof conv.files !== "object") conv.files = {};
   return conv;
 }
 function titleFrom(text, attachments) {
@@ -1490,6 +2453,7 @@ function renderSidebar() {
       saveConversations();
       renderSidebar();
       renderMessages();
+      updateWorkspaceBadge();
     });
     item.append(del);
     item.addEventListener("click", () => {
@@ -1497,6 +2461,7 @@ function renderSidebar() {
       saveActiveId(activeId);
       renderSidebar();
       renderMessages();
+      updateWorkspaceBadge();
       $("input").focus();
       closeSidebarOnMobile();
     });
@@ -1727,6 +2692,108 @@ function buildReasoningBlock(reasoning, opts = {}) {
 }
 
 // =============================================================================
+// File changes card
+// =============================================================================
+function renderFileChangesCard(changes) {
+  const wrap = el("div", { className: "file-changes" });
+
+  const changedFiles = changes.filter(c =>
+    c.kind === "edit" || c.kind === "create" || c.kind === "overwrite");
+  const failed = changes.filter(c =>
+    c.kind === "nomatch" || c.kind === "missing");
+
+  const header = el("div", { className: "file-changes-header" });
+
+  const icon = el("span", { className: "fc-icon" });
+  icon.innerHTML = FOLDER_ICON;
+  header.append(icon);
+
+  let title;
+  if (changedFiles.length === 0) {
+    title = failed.length ? "No changes applied" : "No changes";
+  } else {
+    title = changedFiles.length === 1 ? "1 file changed" : `${changedFiles.length} files changed`;
+    if (failed.length) title += ` · ${failed.length} failed`;
+  }
+  header.append(el("span", { className: "fc-title", textContent: title }));
+
+  if (changedFiles.length) {
+    const copyAll = el("button", { className: "fc-copy-all", type: "button", textContent: "Copy all" });
+    copyAll.addEventListener("click", async () => {
+      const parts = [];
+      for (const c of changedFiles) {
+        if (c.after == null) continue;
+        parts.push(`=== ${c.file} ===\n${c.after}`);
+      }
+      const ok = await copyText(parts.join("\n\n"));
+      flashButton(copyAll, ok, "Copy all");
+    });
+    header.append(copyAll);
+  }
+
+  wrap.append(header);
+
+  const list = el("div", { className: "fc-list" });
+  for (const c of changes) {
+    list.append(renderFileChangeItem(c));
+  }
+  wrap.append(list);
+
+  return wrap;
+}
+
+function renderFileChangeItem(c) {
+  const details = el("details", { className: `fc-item fc-${c.kind}` });
+  const summary = el("summary");
+
+  const status = el("span", { className: "fc-status" });
+  if (c.kind === "edit" || c.kind === "overwrite") status.textContent = "M";
+  else if (c.kind === "create") status.textContent = "A";
+  else if (c.kind === "nomatch") status.textContent = "!";
+  else if (c.kind === "missing") status.textContent = "?";
+  summary.append(status);
+
+  const nameBtn = el("button", { className: "fc-name-btn", type: "button", textContent: c.file, title: c.file });
+  nameBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    openWorkspaceToFile(c.file);
+  });
+  summary.append(nameBtn);
+
+  if (c.kind === "nomatch") {
+    summary.append(el("span", { className: "fc-note", textContent: "find text not found" }));
+  } else if (c.kind === "missing") {
+    summary.append(el("span", { className: "fc-note", textContent: "file not in workspace" }));
+  }
+
+  if (c.after != null) {
+    const copyBtn = el("button", { className: "fc-copy-one", type: "button", textContent: "Copy" });
+    copyBtn.addEventListener("click", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const ok = await copyText(c.after);
+      flashButton(copyBtn, ok, "Copy");
+    });
+    summary.append(copyBtn);
+  }
+
+  summary.insertAdjacentHTML("beforeend", FC_CHEVRON_ICON);
+  details.append(summary);
+
+  if (c.after != null) {
+    const body = el("div", { className: "fc-body" });
+    const pre = el("pre");
+    const code = el("code", { textContent: c.after });
+    pre.append(code);
+    body.append(pre);
+    details.append(body);
+  }
+
+  return details;
+}
+
+// =============================================================================
 // Message rendering
 // =============================================================================
 function renderMessages() {
@@ -1809,9 +2876,15 @@ function renderMessage(msg, index) {
   }
 
   const content = el("div", { className: "content" });
-  content.innerHTML = renderMarkdown(msg.content || "");
+  const displayText = stripFileCommands(msg.content || "");
+  content.innerHTML = renderMarkdown(displayText);
   decorateCodeBlocks(content);
   row.append(content);
+
+  if (msg.fileChanges && msg.fileChanges.length) {
+    row.append(renderFileChangesCard(msg.fileChanges));
+  }
+
   row.append(messageActions(index, msg));
   return row;
 }
@@ -1828,7 +2901,7 @@ function messageActions(index, msg) {
   bar.append(copy);
 
   const regen = el("button", { className: "msg-action", title: "Regenerate" });
-  regen.innerHTML = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7.921.35a7.64 7.64 0 0 1 6.035 2.949l1.172-1.171a.322.322 0 0 1 .549.227V5.54c0 .177-.144.32-.321.321H12.17a.32.32 0 0 1-.227-.548l1.02-1.021A6.259 6.259 0 1 0 14.18 8h1.392A7.651 7.651 0 1 1 7.922.348" fill="currentColor"/></svg>`;
+  regen.innerHTML = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7.921.35a7.64 7.64 0 0 1 6.035 2.949l1.172-1.171a.322.322 0 0 1 .549.227V5.54c0 .177-.144.32-.321.32H12.17a.32.32 0 0 1-.227-.548l1.02-1.021A6.259 6.259 0 1 0 14.18 8h1.392A7.651 7.651 0 1 1 7.922.348" fill="currentColor"/></svg>`;
   regen.addEventListener("click", () => regenerateFrom(index));
   bar.append(regen);
 
@@ -1836,7 +2909,6 @@ function messageActions(index, msg) {
 }
 
 // ---- Inline edit ------------------------------------------------------------
-
 function enterEditMode(index, wrapperEl, bubbleEl, actionsEl) {
   const conv = getActive();
   if (!conv) return;
@@ -1871,9 +2943,7 @@ function enterEditMode(index, wrapperEl, bubbleEl, actionsEl) {
   ta.addEventListener("input", updateSaveState);
   updateSaveState();
 
-  cancel.addEventListener("click", () => {
-    renderMessages();
-  });
+  cancel.addEventListener("click", () => { renderMessages(); });
 
   save.addEventListener("click", () => {
     const newText = ta.value.trim();
@@ -1902,15 +2972,9 @@ function enterEditMode(index, wrapperEl, bubbleEl, actionsEl) {
 async function commitEdit(index, newText, attachments) {
   const conv = getActive();
   if (!conv) return;
-
   conv.messages = conv.messages.slice(0, index);
-
-  if (index === 0) {
-    conv.title = titleFrom(newText, attachments);
-  }
-
+  if (index === 0) conv.title = titleFrom(newText, attachments);
   renderMessages();
-
   await sendUserMessage(conv, newText, attachments, false);
 }
 
@@ -1959,11 +3023,8 @@ async function compressImage(file) {
       ctx.drawImage(img, 0, 0, w, h);
 
       const outType = /png|webp|gif/i.test(file.type) ? "image/png" : "image/jpeg";
-      try {
-        resolve(canvas.toDataURL(outType, 0.85));
-      } catch {
-        resolve(dataUrl);
-      }
+      try { resolve(canvas.toDataURL(outType, 0.85)); }
+      catch { resolve(dataUrl); }
     };
     img.onerror = () => resolve(dataUrl);
     img.src = dataUrl;
@@ -2303,10 +3364,6 @@ async function runCompletion(conv) {
   const statusSlot = el("div");
   const contentEl = el("div", { className: "content" });
 
-  // Persistent spinner — created once per completion. Never removed from the
-  // DOM during retries, so its rotation animation runs continuously.
-  // Hidden via the `.collapsed` class (opacity + max-height) which does not
-  // restart the animation.
   const spinnerNotice = el("div", { className: "retry-notice" });
   const spinner = el("span", { className: "retry-spinner" });
   const spinnerText = el("span", { textContent: "Waiting for response…" });
@@ -2319,10 +3376,27 @@ async function runCompletion(conv) {
 
   setSending(true);
 
+  // ---------------------------------------------------------------------------
+  // Build the outgoing request:
+  //   [optional] custom instructions (system, start)
+  //   workspace protocol (system, start)
+  //   ...conversation turns...
+  //   [optional] prompt finish (system, end)
+  // ---------------------------------------------------------------------------
   const outgoing = [];
-  const sys = settings.customInstructions.trim();
-  if (sys) outgoing.push({ role: "system", content: sys });
+
+  const sysParts = [];
+  if (settings.customInstructionsEnabled && settings.customInstructions.trim()) {
+    sysParts.push(settings.customInstructions.trim());
+  }
+  sysParts.push(FILE_COMMANDS_INSTRUCTIONS);
+  outgoing.push({ role: "system", content: sysParts.join("\n\n") });
+
   for (const m of conv.messages) outgoing.push(messageToApi(m));
+
+  if (settings.promptFinishEnabled && settings.promptFinish.trim()) {
+    outgoing.push({ role: "system", content: settings.promptFinish.trim() });
+  }
 
   const assistantMsg = { role: "assistant", content: "", reasoning: "" };
   conv.messages.push(assistantMsg);
@@ -2366,7 +3440,8 @@ async function runCompletion(conv) {
 
   const contentTypewriter = createTypewriter({
     render: (shown) => {
-      const html = shown ? renderMarkdown(balanceCodeFences(shown)) : "";
+      const display = stripFileCommands(shown);
+      const html = display ? renderMarkdown(balanceCodeFences(display)) : "";
       contentEl.innerHTML = html + '<span class="cursor"></span>';
     },
     speed: speedCfg.delay,
@@ -2386,7 +3461,6 @@ async function runCompletion(conv) {
       assistantMsg.content = content;
       assistantMsg.reasoning = reasoning;
 
-      // Any token means the response has started rendering — hide the spinner.
       if (reasoning || content) hideSpinner();
 
       if (reasoning && reasoningStartedAt === null) {
@@ -2426,8 +3500,6 @@ async function runCompletion(conv) {
       reasoningSlot.innerHTML = "";
       contentEl.innerHTML = "";
 
-      // Reuse the same spinner element — the rotation animation is continuous
-      // across attempts because the element is never removed from the DOM.
       showSpinner(`Connection failed. Retrying (attempt ${attempt} of ${max})…`);
       scrollToBottom();
     },
@@ -2451,19 +3523,44 @@ async function runCompletion(conv) {
           ? performance.now() - reasoningStartedAt : null;
         assistantMsg.reasoningMs = reasoningMs;
 
+        let fileChanges = [];
+        try {
+          const ops = parseFileCommands(assistantMsg.content || "");
+          if (ops.length) {
+            if (!conv.files) conv.files = {};
+            fileChanges = applyFileOps(conv.files, ops);
+            assistantMsg.fileChanges = fileChanges;
+            updateWorkspaceBadge();
+          }
+        } catch (err) {
+          console.warn("File command apply failed:", err);
+        }
+
         assistantRow.innerHTML = "";
         if (assistantMsg.reasoning) {
           assistantRow.append(buildReasoningBlock(assistantMsg.reasoning, { durationMs: reasoningMs }));
         }
         const c = el("div", { className: "content" });
-        c.innerHTML = renderMarkdown(assistantMsg.content || "");
+        const displayText = stripFileCommands(assistantMsg.content || "");
+        c.innerHTML = renderMarkdown(displayText);
         decorateCodeBlocks(c);
         assistantRow.append(c);
+        if (assistantMsg.fileChanges && assistantMsg.fileChanges.length) {
+          assistantRow.append(renderFileChangesCard(assistantMsg.fileChanges));
+        }
         assistantRow.append(messageActions(conv.messages.length - 1, assistantMsg));
 
         conv.updatedAt = Date.now();
         saveConversations();
         renderSidebar();
+
+        if ($("workspaceModal").classList.contains("open")) {
+          renderWorkspaceFileList();
+          if (workspaceActiveFile && conv.files[workspaceActiveFile] != null) {
+            $("workspaceFileContent").value = conv.files[workspaceActiveFile];
+          }
+        }
+
         setSending(false);
         $("input").focus();
       })();
@@ -2524,12 +3621,19 @@ inputEl.addEventListener("input", () => {
   inputEl.style.height = Math.min(inputEl.scrollHeight, 220) + "px";
   updateSendButton();
 });
+
+// Send on Enter for keyboard/mouse users; on touch devices, Enter/Return on the
+// on-screen keyboard inserts a newline and the user taps the send button.
 inputEl.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && !e.shiftKey) {
+  if (e.key !== "Enter") return;
+  if (e.isComposing || e.keyCode === 229) return;
+  if (isTouchDevice()) return;
+  if (!e.shiftKey) {
     e.preventDefault();
     send();
   }
 });
+
 $("sendBtn").addEventListener("click", () => {
   const btn = $("sendBtn");
   if (btn.classList.contains("stopping")) {
@@ -2558,7 +3662,7 @@ $("fileInput").addEventListener("change", async (e) => {
 });
 
 // =============================================================================
-// Sidebar / theme / settings
+// Sidebar / theme
 // =============================================================================
 $("newChatBtn").addEventListener("click", () => {
   const conv = newConversation();
@@ -2568,6 +3672,7 @@ $("newChatBtn").addEventListener("click", () => {
   saveActiveId(activeId);
   renderSidebar();
   renderMessages();
+  updateWorkspaceBadge();
   closeSidebarOnMobile();
   $("input").focus();
 });
@@ -2589,12 +3694,25 @@ function closeSidebarOnMobile() {
 if (window.innerWidth <= 720) $("sidebar").classList.add("collapsed");
 
 function applyTheme() { document.documentElement.setAttribute("data-theme", settings.theme); }
-$("themeBtn").addEventListener("click", () => {
-  settings.theme = settings.theme === "dark" ? "light" : "dark";
-  saveSettings();
-  applyTheme();
-});
 
+const themeButtons = [...document.querySelectorAll("#themeSegmented .seg-option")];
+function syncThemeSegmented() {
+  for (const btn of themeButtons) {
+    btn.classList.toggle("active", btn.dataset.themeValue === settings.theme);
+  }
+}
+for (const btn of themeButtons) {
+  btn.addEventListener("click", () => {
+    settings.theme = btn.dataset.themeValue;
+    applyTheme();
+    syncThemeSegmented();
+  });
+}
+
+// ---- Model dropdown ---------------------------------------------------------
+// Bugfix: previously the label update was the only visual feedback and the
+// active highlight was only set at render time. Now both are updated directly
+// on click, so the change is visible immediately without a reload.
 function renderModelMenu() {
   const menu = $("modelMenu");
   menu.innerHTML = "";
@@ -2604,13 +3722,26 @@ function renderModelMenu() {
     return;
   }
   for (const m of settings.models) {
-    const b = el("button", { className: settings.model === m.id ? "active" : "" });
+    const b = el("button", {
+      type: "button",
+      className: settings.model === m.id ? "active" : "",
+    });
     b.append(el("span", { textContent: m.label || m.id }));
     if (m.desc) b.append(el("span", { className: "m-desc", textContent: m.desc }));
-    b.addEventListener("click", () => {
+    b.addEventListener("click", (e) => {
+      e.stopPropagation();
       settings.model = m.id;
       saveSettings();
+
+      // Update the topbar label immediately.
       $("modelLabel").textContent = m.label || m.id;
+
+      // Move the .active class without a full re-render.
+      for (const other of menu.querySelectorAll("button")) {
+        other.classList.remove("active");
+      }
+      b.classList.add("active");
+
       menu.classList.remove("open");
     });
     menu.append(b);
@@ -2618,6 +3749,7 @@ function renderModelMenu() {
   const current = settings.models.find((m) => m.id === settings.model);
   $("modelLabel").textContent = current ? (current.label || current.id) : settings.model;
 }
+
 $("modelSelector").addEventListener("click", (e) => {
   if (e.target.closest(".model-menu")) return;
   $("modelMenu").classList.toggle("open");
@@ -2632,26 +3764,44 @@ const accentSwatch = $("accentSwatch");
 
 function syncSwatch() {
   const norm = normalizeHexInput(accentInput.value);
-  if (norm) {
-    accentSwatch.style.background = "#" + norm;
-  } else if (norm === "") {
-    accentSwatch.style.background = "";
-  }
+  if (norm) accentSwatch.style.background = "#" + norm;
+  else if (norm === "") accentSwatch.style.background = "";
 }
-
 accentInput.addEventListener("input", syncSwatch);
-
 $("accentResetBtn").addEventListener("click", () => {
   accentInput.value = "";
   accentSwatch.style.background = "";
 });
 
-function openSettings() {
+// =============================================================================
+// Settings shell
+// =============================================================================
+let themeAtOpen = null;
+let currentSection = "appearance";
+
+function syncCustomInstructionsDisabledState() {
+  const enabled = $("sCustomInstructionsEnabled").checked;
+  $("sCustomInstructions").disabled = !enabled;
+}
+function syncPromptFinishDisabledState() {
+  const enabled = $("sPromptFinishEnabled").checked;
+  $("sPromptFinish").disabled = !enabled;
+}
+
+function populateSettingsFields() {
   $("sApiKey").value = settings.apiKey;
   $("sWorkerUrl").value = settings.workerUrl;
   $("sPlan").value = settings.plan;
   $("sBaseOverride").value = settings.baseOverride;
+
   $("sCustomInstructions").value = settings.customInstructions;
+  $("sCustomInstructionsEnabled").checked = !!settings.customInstructionsEnabled;
+  syncCustomInstructionsDisabledState();
+
+  $("sPromptFinish").value = settings.promptFinish;
+  $("sPromptFinishEnabled").checked = !!settings.promptFinishEnabled;
+  syncPromptFinishDisabledState();
+
   $("sAccentHex").value = settings.accentHex || "";
   $("accentSwatch").style.background = settings.accentHex ? "#" + settings.accentHex : "";
   $("sReasoningExpanded").checked = !!settings.reasoningExpanded;
@@ -2659,20 +3809,86 @@ function openSettings() {
   $("sRetryEnabled").checked = !!settings.retryEnabled;
   $("sRetryMax").value = settings.retryMax;
   $("sModels").value = serializeModels(settings.models);
+}
+
+function selectSection(section) {
+  if (!SECTION_TITLES[section]) section = "appearance";
+  currentSection = section;
+
+  for (const btn of document.querySelectorAll(".settings-nav-item")) {
+    btn.classList.toggle("active", btn.dataset.section === section);
+  }
+  for (const panel of document.querySelectorAll(".settings-panel")) {
+    panel.classList.toggle("active", panel.dataset.section === section);
+  }
+  $("settingsSectionTitle").textContent = SECTION_TITLES[section];
+  $("settingsModal").classList.add("show-panel");
+
+  const body = document.querySelector(".settings-body");
+  if (body) body.scrollTop = 0;
+}
+
+function showCategoryList() {
+  $("settingsModal").classList.remove("show-panel");
+}
+
+function openSettings() {
+  populateSettingsFields();
+  themeAtOpen = settings.theme;
+  syncThemeSegmented();
+  selectSection(currentSection || "appearance");
+  if (window.innerWidth <= 720) {
+    $("settingsModal").classList.remove("show-panel");
+  }
   $("settingsModal").classList.add("open");
 }
-function closeSettings() { $("settingsModal").classList.remove("open"); }
+
+function closeSettings() {
+  $("settingsModal").classList.remove("open");
+  $("settingsModal").classList.remove("show-panel");
+}
+
+function cancelSettings() {
+  if (themeAtOpen !== null && settings.theme !== themeAtOpen) {
+    settings.theme = themeAtOpen;
+    applyTheme();
+    syncThemeSegmented();
+  }
+  themeAtOpen = null;
+  closeSettings();
+}
+
+for (const btn of document.querySelectorAll(".settings-nav-item")) {
+  btn.addEventListener("click", () => selectSection(btn.dataset.section));
+}
+
+$("settingsBack").addEventListener("click", showCategoryList);
 $("settingsBtn").addEventListener("click", openSettings);
-$("settingsCancel").addEventListener("click", closeSettings);
-$("settingsModal").addEventListener("click", (e) => {
-  if (e.target === $("settingsModal")) closeSettings();
+$("settingsNavCloseBtn").addEventListener("click", cancelSettings);
+$("settingsCloseBtn").addEventListener("click", cancelSettings);
+$("settingsCancel").addEventListener("click", cancelSettings);
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && $("settingsModal").classList.contains("open")) {
+    cancelSettings();
+  }
 });
+
+// Toggle handlers — live sync of the disabled state of the textareas.
+$("sCustomInstructionsEnabled").addEventListener("change", syncCustomInstructionsDisabledState);
+$("sPromptFinishEnabled").addEventListener("change", syncPromptFinishDisabledState);
+
 $("settingsSave").addEventListener("click", () => {
   settings.apiKey = $("sApiKey").value.trim();
   settings.workerUrl = $("sWorkerUrl").value.trim();
   settings.plan = $("sPlan").value;
   settings.baseOverride = $("sBaseOverride").value.trim();
+
   settings.customInstructions = $("sCustomInstructions").value;
+  settings.customInstructionsEnabled = $("sCustomInstructionsEnabled").checked;
+
+  settings.promptFinish = $("sPromptFinish").value;
+  settings.promptFinishEnabled = $("sPromptFinishEnabled").checked;
 
   const norm = normalizeHexInput($("sAccentHex").value);
   settings.accentHex = norm || "";
@@ -2690,10 +3906,228 @@ $("settingsSave").addEventListener("click", () => {
     settings.model = settings.models[0]?.id ?? "";
   }
 
+  applyTheme();
+  syncThemeSegmented();
+
   saveSettings();
   renderModelMenu();
   renderMessages();
+  themeAtOpen = null;
   closeSettings();
+});
+
+// =============================================================================
+// Workspace shell
+// =============================================================================
+let workspaceActiveFile = null;
+
+function updateWorkspaceBadge() {
+  const badge = $("workspaceBadge");
+  if (!badge) return;
+  const conv = getActive();
+  const files = conv?.files || {};
+  badge.style.display = Object.keys(files).length > 0 ? "block" : "none";
+}
+
+function renderWorkspaceFileList() {
+  const list = $("workspaceFileList");
+  list.innerHTML = "";
+  const conv = getActive();
+  const files = conv?.files || {};
+  const names = Object.keys(files).sort();
+  if (!names.length) {
+    list.append(el("div", {
+      className: "workspace-empty",
+      textContent: "No files yet. Ask the AI to create or edit files and they'll appear here.",
+    }));
+    return;
+  }
+  for (const name of names) {
+    const item = el("button", {
+      type: "button",
+      className: "workspace-file-item" + (name === workspaceActiveFile ? " active" : ""),
+      title: name,
+    });
+    item.append(el("span", { className: "ws-file-name", textContent: name }));
+    item.addEventListener("click", () => selectWorkspaceFile(name));
+    list.append(item);
+  }
+}
+
+function selectWorkspaceFile(name) {
+  workspaceActiveFile = name;
+  const conv = getActive();
+  const files = conv?.files || {};
+
+  const hasFile = !!name && files[name] != null;
+
+  $("workspaceFileName").value = hasFile ? name : "";
+  $("workspaceFileName").disabled = !hasFile;
+  $("workspaceFileContent").value = hasFile ? files[name] : "";
+  $("workspaceFileContent").disabled = !hasFile;
+  $("workspaceCopyBtn").disabled = !hasFile;
+  $("workspaceDeleteBtn").disabled = !hasFile;
+
+  $("workspaceEmptyPane").style.display = hasFile ? "none" : "flex";
+  $("workspaceFileContent").style.display = hasFile ? "block" : "none";
+
+  if (hasFile) {
+    $("workspaceFileName").value = name;
+  } else if (!name) {
+    $("workspaceEmptyTitle").textContent = Object.keys(files).length
+      ? "No file selected"
+      : "No files yet";
+    $("workspaceEmptySub").textContent = Object.keys(files).length
+      ? "Pick a file from the list to view or edit."
+      : "Ask the AI to edit or create files — they'll show up here automatically.";
+  }
+
+  renderWorkspaceFileList();
+  $("workspaceModal").classList.add("show-panel");
+}
+
+function openWorkspace() {
+  const conv = ensureActive();
+  const names = Object.keys(conv.files || {}).sort();
+
+  if (!workspaceActiveFile || !conv.files[workspaceActiveFile]) {
+    workspaceActiveFile = names[0] || null;
+  }
+
+  renderWorkspaceFileList();
+  selectWorkspaceFile(workspaceActiveFile);
+
+  if (window.innerWidth <= 720 && !workspaceActiveFile) {
+    $("workspaceModal").classList.remove("show-panel");
+  }
+
+  $("workspaceModal").classList.add("open");
+}
+
+function openWorkspaceToFile(name) {
+  const conv = ensureActive();
+  workspaceActiveFile = name;
+  renderWorkspaceFileList();
+  selectWorkspaceFile(name);
+  $("workspaceModal").classList.add("open");
+}
+
+function closeWorkspace() {
+  $("workspaceModal").classList.remove("open");
+  $("workspaceModal").classList.remove("show-panel");
+}
+
+$("workspaceBtn").addEventListener("click", openWorkspace);
+$("workspaceNavCloseBtn").addEventListener("click", closeWorkspace);
+$("workspaceCloseBtn").addEventListener("click", closeWorkspace);
+$("workspaceBack").addEventListener("click", () => {
+  $("workspaceModal").classList.remove("show-panel");
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && $("workspaceModal").classList.contains("open")) {
+    closeWorkspace();
+  }
+});
+
+$("workspaceNewFile").addEventListener("click", () => {
+  const conv = ensureActive();
+  let n = 1;
+  let name = "untitled.txt";
+  while (conv.files[name] != null) {
+    n++;
+    name = `untitled-${n}.txt`;
+  }
+  conv.files[name] = "";
+  conv.updatedAt = Date.now();
+  saveConversations();
+  workspaceActiveFile = name;
+  renderWorkspaceFileList();
+  selectWorkspaceFile(name);
+  updateWorkspaceBadge();
+
+  requestAnimationFrame(() => {
+    const input = $("workspaceFileName");
+    input.disabled = false;
+    input.focus();
+    input.select();
+  });
+});
+
+$("workspaceFileContent").addEventListener("input", () => {
+  const conv = getActive();
+  if (!conv || !workspaceActiveFile) return;
+  if (!conv.files) conv.files = {};
+  conv.files[workspaceActiveFile] = $("workspaceFileContent").value;
+  conv.updatedAt = Date.now();
+  saveConversations();
+});
+
+$("workspaceFileName").addEventListener("blur", renameWorkspaceFile);
+$("workspaceFileName").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    $("workspaceFileName").blur();
+  }
+});
+
+function renameWorkspaceFile() {
+  const conv = getActive();
+  if (!conv || !workspaceActiveFile) return;
+  const input = $("workspaceFileName");
+  const newName = input.value.trim();
+
+  if (!newName || newName === workspaceActiveFile) {
+    input.value = workspaceActiveFile;
+    return;
+  }
+
+  if (conv.files[newName] != null) {
+    alert(`"${newName}" already exists.`);
+    input.value = workspaceActiveFile;
+    return;
+  }
+
+  conv.files[newName] = conv.files[workspaceActiveFile];
+  delete conv.files[workspaceActiveFile];
+  workspaceActiveFile = newName;
+  conv.updatedAt = Date.now();
+  saveConversations();
+  renderWorkspaceFileList();
+}
+
+$("workspaceCopyBtn").addEventListener("click", async () => {
+  const conv = getActive();
+  if (!conv || !workspaceActiveFile) return;
+  const content = conv.files[workspaceActiveFile] ?? "";
+  const btn = $("workspaceCopyBtn");
+  const prev = btn.innerHTML;
+  const ok = await copyText(content);
+  btn.classList.toggle("success", ok);
+  btn.innerHTML = ok
+    ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg> Copied`
+    : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg> Failed`;
+  setTimeout(() => {
+    btn.innerHTML = prev;
+    btn.classList.remove("success");
+  }, 1400);
+});
+
+$("workspaceDeleteBtn").addEventListener("click", () => {
+  const conv = getActive();
+  if (!conv || !workspaceActiveFile) return;
+  if (!confirm(`Delete "${workspaceActiveFile}"?`)) return;
+  delete conv.files[workspaceActiveFile];
+  workspaceActiveFile = null;
+  conv.updatedAt = Date.now();
+  saveConversations();
+  const names = Object.keys(conv.files).sort();
+  if (names.length) {
+    workspaceActiveFile = names[0];
+  }
+  renderWorkspaceFileList();
+  selectWorkspaceFile(workspaceActiveFile);
+  updateWorkspaceBadge();
 });
 
 // =============================================================================
@@ -2701,6 +4135,7 @@ $("settingsSave").addEventListener("click", () => {
 // =============================================================================
 applyTheme();
 applyAccent(settings.accentHex);
+syncThemeSegmented();
 renderModelMenu();
 
 $("deepthinkIcon").innerHTML = THINKING_ICON;
@@ -2716,6 +4151,7 @@ if (activeId && !conversations.find((c) => c.id === activeId)) {
 renderSidebar();
 renderMessages();
 updateSendButton();
+updateWorkspaceBadge();
 inputEl.focus();
 
 window.addEventListener("beforeunload", (e) => {
