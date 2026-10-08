@@ -1138,6 +1138,79 @@
     font-size: .92em;
   }
 
+  /* ---- Provider manager ---------------------------------------------------- */
+  .row-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .btn-ghost {
+    font: inherit;
+    font-size: 13px;
+    color: var(--text);
+    background: var(--ds-bg-layer-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 12px;
+    cursor: pointer;
+    transition: background var(--ds-dur) var(--ds-ease-in-out),
+                border-color var(--ds-dur) var(--ds-ease-in-out);
+  }
+  .btn-ghost:hover:not(:disabled) {
+    background: var(--ds-bg-layer-3);
+    border-color: var(--ds-border-l3);
+  }
+  .btn-ghost:disabled {
+    opacity: .45;
+    cursor: not-allowed;
+  }
+  .provider-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .provider-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 9px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--ds-bg-layer-1);
+    cursor: pointer;
+    text-align: left;
+    font: inherit;
+    color: var(--text);
+    width: 100%;
+  }
+  .provider-row:hover { background: var(--ds-bg-layer-2); }
+  .provider-row.active {
+    border-color: var(--ds-accent);
+    box-shadow: inset 0 0 0 1px var(--ds-accent);
+  }
+  .provider-row .p-name { font-size: 13px; font-weight: 600; }
+  .provider-row .p-meta {
+    font-size: 11px;
+    color: var(--text-dim);
+    font-family: var(--ds-font-code);
+    max-width: 46%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .provider-row .p-badge {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--ds-accent-text);
+    border: 1px solid var(--ds-border-l2);
+    border-radius: 4px;
+    padding: 1px 5px;
+  }
+
   .segmented {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -1721,22 +1794,48 @@
         </section>
 
         <section class="settings-panel" data-section="connection">
-          <label for="sApiKey">API key</label>
-          <input type="password" id="sApiKey" placeholder="Paste your API key">
+          <label for="sProviderSelect">Active provider</label>
+          <select id="sProviderSelect"></select>
+          <div class="hint-inline" id="sProviderNote"></div>
 
-          <label for="sWorkerUrl">Cloudflare Worker URL</label>
-          <input type="text" id="sWorkerUrl" placeholder="https://…workers.dev">
-          <div class="hint-inline">Required — api.z.ai and bigmodel.cn block direct browser calls via CORS preflight.</div>
+          <div class="field-group">
+            <label for="sProviderLabel">Display name</label>
+            <input type="text" id="sProviderLabel" placeholder="e.g. DeepSeek Web (bridge)">
 
-          <label for="sPlan">Endpoint</label>
-          <select id="sPlan">
-            <option value="coding">Coding Plan — api.z.ai/api/coding/paas/v4</option>
-            <option value="general">General — api.z.ai/api/paas/v4</option>
-          </select>
+            <label for="sProviderBaseUrl">Base URL</label>
+            <input type="text" id="sProviderBaseUrl" placeholder="https://…workers.dev">
+            <div class="hint-inline">
+              Endpoint root. <code>/chat/completions</code> is appended (the route below is inserted first).
+            </div>
 
-          <label for="sBaseOverride">Override upstream base URL (optional)</label>
-          <input type="text" id="sBaseOverride" placeholder="e.g. https://open.bigmodel.cn/api/paas/v4">
-          <div class="hint-inline">Point the Worker's <code>/general</code> route at BigModel or another compatible endpoint.</div>
+            <label for="sProviderKey">API key</label>
+            <input type="password" id="sProviderKey" placeholder="Paste this provider's key">
+            <div class="hint-inline">
+              Stored in this browser's <code>localStorage</code> only. Never sent anywhere except this provider.
+            </div>
+
+            <label for="sProviderRoute">Route</label>
+            <select id="sProviderRoute">
+              <option value="coding">coding — /coding/chat/completions</option>
+              <option value="general">general — /general/chat/completions</option>
+              <option value="root">root — /chat/completions</option>
+            </select>
+            <div class="hint-inline">
+              z.ai and the bridge use <code>coding</code>/<code>general</code>; OpenAI-compatible hosts use <code>root</code>.
+            </div>
+          </div>
+
+          <div class="field-group">
+            <div class="field-header">
+              <label>Providers</label>
+            </div>
+            <div id="sProviderList" class="provider-list"></div>
+            <div class="row-actions">
+              <button type="button" class="btn-ghost" id="sProviderAdd">Add provider</button>
+              <button type="button" class="btn-ghost" id="sProviderDelete">Delete selected</button>
+              <button type="button" class="btn-ghost" id="sProviderReset">Reset to defaults</button>
+            </div>
+          </div>
         </section>
 
         <section class="settings-panel" data-section="chat">
@@ -1810,11 +1909,17 @@
         </section>
 
         <section class="settings-panel" data-section="models">
-          <label for="sModels">Model list</label>
+          <label for="sModels">Model list — <span id="sModelsProvider"></span></label>
           <textarea id="sModels" class="mono" spellcheck="false" placeholder="glm-5.3 | GLM-5.3 | Flagship&#10;glm-4.7-flash"></textarea>
           <div class="hint-inline">
             One model per line, format <code>id</code>, <code>id | Label</code>, or <code>id | Label | Description</code>.
+            The list is saved per provider.
           </div>
+          <div class="row-actions">
+            <button type="button" class="btn-ghost" id="sModelsFetch">Refresh from provider</button>
+            <button type="button" class="btn-ghost" id="sModelsDefaults">Load provider defaults</button>
+          </div>
+          <div class="hint-inline" id="sModelsStatus"></div>
         </section>
 
       </div>
@@ -1927,8 +2032,96 @@ const DEFAULT_MODELS = [
   { id: "glm-4.5-flash",  label: "GLM-4.5 Flash",  desc: "Free" },
 ];
 
+// =============================================================================
+// Providers
+// =============================================================================
+// A provider is one endpoint + one credential + its own model list. The active
+// provider supplies the request URL, the Authorization header and the models
+// offered in the picker, so switching providers switches everything at once.
+//
+// `route` replaces the old two-value `plan` field. It is appended to the base
+// URL before /chat/completions:
+//   "coding"  -> /coding/chat/completions   (z.ai coding plan, our bridge)
+//   "general" -> /general/chat/completions  (z.ai general)
+//   "root"    -> /chat/completions          (api.deepseek.com, OpenAI-compatible)
+// `modelsPath` is the relative path used by "Refresh models" (GET).
+const DEFAULT_PROVIDERS = [
+  {
+    id: "deepseek-web",
+    label: "DeepSeek Web (bridge)",
+    // Point these at your own bridge deployment. See the README for how the
+    // bridge works; the URL and key are intentionally left blank so no personal
+    // endpoint or credential is published.
+    baseUrl: "",
+    apiKey: "",
+    route: "coding",
+    modelsPath: "/models",
+    note: "Personal phone bridge. Set your own Worker URL and API key below. Keep the phone awake and the app in the foreground. One request at a time.",
+    models: [
+      { id: "deepseek-web",       label: "DeepSeek (Web)",       desc: "Current web model" },
+      { id: "deepseek-web-think", label: "DeepSeek (DeepThink)", desc: "Reasoning" },
+    ],
+  },
+  {
+    id: "zai",
+    label: "Z.ai / GLM",
+    baseUrl: "https://api.z.ai/api/coding/paas/v4",
+    apiKey: "",
+    route: "coding",
+    modelsPath: "/models",
+    note: "Direct calls from a browser are blocked by CORS preflight — point the Cloudflare Worker URL at this instead, or use the bridge.",
+    models: DEFAULT_MODELS.slice(),
+  },
+  {
+    id: "deepseek-api",
+    label: "DeepSeek Platform (paid)",
+    baseUrl: "https://api.deepseek.com",
+    apiKey: "",
+    route: "root",
+    modelsPath: "/models",
+    note: "Official paid API. Browser calls usually work directly, but a Worker avoids CORS and keeps the key server-side.",
+    models: [
+      { id: "deepseek-chat",     label: "DeepSeek Chat",     desc: "V3" },
+      { id: "deepseek-reasoner", label: "DeepSeek Reasoner", desc: "R1" },
+    ],
+  },
+];
+
+const DEFAULT_PROVIDER_ID = "deepseek-web";
+
+/** Normalize one provider record, tolerating partial/hand-edited data. */
+function normalizeProvider(p, fallbackId) {
+  const id = String(p?.id || fallbackId || "provider").trim();
+  const route = ["coding", "general", "root"].includes(p?.route) ? p.route : "coding";
+  return {
+    id,
+    label: String(p?.label || id).trim(),
+    baseUrl: String(p?.baseUrl || "").trim().replace(/\/+$/, ""),
+    apiKey: String(p?.apiKey || "").trim(),
+    route,
+    modelsPath: String(p?.modelsPath || "/models"),
+    note: String(p?.note || ""),
+    models: Array.isArray(p?.models) && p.models.length
+      ? p.models.map((m) => ({
+          id: String(m.id || "").trim(),
+          label: String(m.label || m.id || "").trim(),
+          desc: String(m.desc || ""),
+        })).filter((m) => m.id)
+      : [],
+  };
+}
+
+/** The provider currently in use, or the first one, or a safe empty stub. */
+function activeProvider() {
+  const list = settings.providers || [];
+  return list.find((p) => p.id === settings.activeProviderId) || list[0] || normalizeProvider({}, "none");
+}
+
 const DEFAULT_SETTINGS = {
   apiKey: "", workerUrl: "", plan: "coding", baseOverride: "",
+  providers: DEFAULT_PROVIDERS, activeProviderId: DEFAULT_PROVIDER_ID,
+  providerModels: {}, // providerId -> models, persisted per provider
+  providerModelChoice: {}, // providerId -> last model selected for it
   customInstructions: "", customInstructionsEnabled: true,
   promptFinish: "",       promptFinishEnabled: true,
   accentHex: "",
@@ -2282,12 +2475,78 @@ function loadSettings() {
   let stored = {};
   try { stored = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? "{}"); }
   catch { /* ignore */ }
+
   if (!Array.isArray(stored.models) || stored.models.length === 0) {
     stored.models = DEFAULT_MODELS;
   }
+
+  // ---- Providers ----------------------------------------------------------
+  // Three cases:
+  //   1. already multi-provider  -> normalize in place
+  //   2. legacy single-provider  -> fold apiKey/workerUrl/plan/models into one
+  //      "custom" provider so nothing the user entered is lost
+  //   3. fresh install           -> ship the built-in defaults
+  let providers;
+  if (Array.isArray(stored.providers) && stored.providers.length) {
+    providers = stored.providers.map((p, i) => normalizeProvider(p, `provider-${i + 1}`));
+  } else {
+    const hadLegacy = Boolean(
+      (stored.apiKey && stored.apiKey.trim()) ||
+      (stored.workerUrl && stored.workerUrl.trim()) ||
+      (stored.baseOverride && stored.baseOverride.trim())
+    );
+    if (hadLegacy) {
+      providers = DEFAULT_PROVIDERS.map((p) => normalizeProvider(p, p.id));
+      providers.push(normalizeProvider({
+        id: "custom",
+        label: "Previous setup",
+        baseUrl: stored.workerUrl || stored.baseOverride || "",
+        apiKey: stored.apiKey || "",
+        route: stored.plan === "general" ? "general" : "coding",
+        models: stored.models,
+      }, "custom"));
+      stored.activeProviderId = "custom";
+    } else {
+      providers = DEFAULT_PROVIDERS.map((p) => normalizeProvider(p, p.id));
+    }
+  }
+  // Guarantee the DeepSeek Web bridge is always offered, even for users whose
+  // saved state predates it.
+  if (!providers.some((p) => p.id === "deepseek-web")) {
+    const bridge = DEFAULT_PROVIDERS.find((p) => p.id === "deepseek-web");
+    if (bridge) providers.unshift(normalizeProvider(bridge, "deepseek-web"));
+  }
+  stored.providers = providers;
+  if (!providers.some((p) => p.id === stored.activeProviderId)) {
+    stored.activeProviderId = providers[0].id;
+  }
+
   const merged = { ...DEFAULT_SETTINGS, ...stored };
+  merged.providers = providers;
+  if (!merged.providerModels || typeof merged.providerModels !== "object") {
+    merged.providerModels = {};
+  }
+  if (!merged.providerModelChoice || typeof merged.providerModelChoice !== "object") {
+    merged.providerModelChoice = {};
+  }
+
+  // Per-provider model memory: the last model chosen for each provider.
+  for (const p of providers) {
+    if (!Array.isArray(merged.providerModels[p.id]) && p.models.length) {
+      merged.providerModels[p.id] = p.models;
+    }
+  }
+
+  // The flat settings.models/settings.model pair stays as the *active* view so
+  // the rest of the app keeps working unchanged.
+  const active = providers.find((p) => p.id === merged.activeProviderId) || providers[0];
+  const activeModels = merged.providerModels[active.id]?.length
+    ? merged.providerModels[active.id]
+    : active.models;
+  if (activeModels.length) merged.models = activeModels;
+
   if (!merged.models.some((m) => m.id === merged.model)) {
-    merged.model = merged.models[0].id;
+    merged.model = merged.models[0]?.id;
   }
   merged.retryMax = Math.min(10, Math.max(1, Number(merged.retryMax) || 2));
   if (TYPING_SPEEDS[merged.typingSpeed] === undefined) merged.typingSpeed = "default";
@@ -2303,6 +2562,47 @@ function loadSettings() {
   }
   if (typeof merged.promptFinish !== "string") merged.promptFinish = "";
   return merged;
+}
+
+/**
+ * Copy the active provider's endpoint/key/models into the flat settings fields
+ * the rest of the app reads. Called after every provider change.
+ */
+function syncActiveProvider() {
+  const p = activeProvider();
+  settings.apiKey = p.apiKey;
+  settings.workerUrl = "";
+  settings.plan = p.route === "general" ? "general" : "coding";
+  settings.baseOverride = "";
+  settings.activeProviderId = p.id;
+  const models = settings.providerModels[p.id]?.length ? settings.providerModels[p.id] : p.models;
+  settings.models = models;
+
+  // Restore the model this provider was last left on. Without remembering it
+  // per provider, switching away and back silently reset the selection.
+  const remembered = settings.providerModelChoice?.[p.id];
+  if (remembered && settings.models.some((m) => m.id === remembered)) {
+    settings.model = remembered;
+  } else if (!settings.models.some((m) => m.id === settings.model)) {
+    settings.model = settings.models[0]?.id ?? "";
+  }
+  rememberModelChoice();
+}
+
+/** Record the active model against the active provider. */
+function rememberModelChoice() {
+  if (!settings.providerModelChoice || typeof settings.providerModelChoice !== "object") {
+    settings.providerModelChoice = {};
+  }
+  const p = activeProvider();
+  if (p && settings.model) settings.providerModelChoice[p.id] = settings.model;
+}
+
+/** Persist the currently edited model list back onto its provider. */
+function commitModelsToProvider() {
+  const p = activeProvider();
+  p.models = settings.models.slice();
+  settings.providerModels[p.id] = settings.models.slice();
 }
 function saveSettings() { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }
 
@@ -3123,7 +3423,19 @@ function messageToApi(m) {
 // API call
 // =============================================================================
 function buildRequestUrl() {
-  const worker = settings.workerUrl.replace(/\/+$/, "");
+  const p = activeProvider();
+
+  // Explicit per-provider base URL wins. `route` selects which of the bridge's
+  // three stream paths to hit.
+  if (p.baseUrl) {
+    const base = p.baseUrl.replace(/\/+$/, "");
+    const seg = p.route === "root" ? "" : `/${p.route}`;
+    return `${base}${seg}/chat/completions`;
+  }
+
+  // Legacy fields, kept for hand-edited settings and the workerUrl/baseOverride
+  // escape hatches.
+  const worker = (settings.workerUrl || "").replace(/\/+$/, "");
   const plan = settings.plan;
   if (worker) return `${worker}/${plan}/chat/completions`;
   const base = settings.baseOverride || (plan === "coding"
@@ -3731,6 +4043,7 @@ function renderModelMenu() {
     b.addEventListener("click", (e) => {
       e.stopPropagation();
       settings.model = m.id;
+      rememberModelChoice();
       saveSettings();
 
       // Update the topbar label immediately.
@@ -3789,10 +4102,7 @@ function syncPromptFinishDisabledState() {
 }
 
 function populateSettingsFields() {
-  $("sApiKey").value = settings.apiKey;
-  $("sWorkerUrl").value = settings.workerUrl;
-  $("sPlan").value = settings.plan;
-  $("sBaseOverride").value = settings.baseOverride;
+  populateProviderFields();
 
   $("sCustomInstructions").value = settings.customInstructions;
   $("sCustomInstructionsEnabled").checked = !!settings.customInstructionsEnabled;
@@ -3810,6 +4120,212 @@ function populateSettingsFields() {
   $("sRetryMax").value = settings.retryMax;
   $("sModels").value = serializeModels(settings.models);
 }
+
+// =============================================================================
+// Provider UI
+// =============================================================================
+/** Fill the provider dropdown and the editor fields from the active provider. */
+function populateProviderFields() {
+  const sel = $("sProviderSelect");
+  const list = settings.providers || [];
+  sel.innerHTML = "";
+  for (const p of list) {
+    const o = document.createElement("option");
+    o.value = p.id;
+    o.textContent = p.label || p.id;
+    sel.append(o);
+  }
+  sel.value = settings.activeProviderId;
+
+  const p = activeProvider();
+  $("sProviderLabel").value = p.label || "";
+  $("sProviderBaseUrl").value = p.baseUrl || "";
+  $("sProviderKey").value = p.apiKey || "";
+  $("sProviderRoute").value = p.route || "coding";
+  $("sProviderNote").textContent = p.note || "";
+  $("sModelsProvider").textContent = p.label || p.id;
+  $("sProviderDelete").disabled = list.length <= 1;
+
+  renderProviderRows();
+}
+
+/** The clickable list of configured providers. */
+function renderProviderRows() {
+  const box = $("sProviderList");
+  box.innerHTML = "";
+  for (const p of settings.providers || []) {
+    const row = el("button", {
+      type: "button",
+      className: "provider-row" + (p.id === settings.activeProviderId ? " active" : ""),
+    });
+    const left = el("span");
+    left.append(el("span", { className: "p-name", textContent: p.label || p.id }));
+    const nModels = (settings.providerModels?.[p.id] ?? p.models ?? []).length;
+    left.append(el("span", {
+      className: "p-meta",
+      textContent: `  ${nModels} model${nModels === 1 ? "" : "s"}`,
+      style: "margin-left:8px",
+    }));
+    row.append(left);
+
+    const right = el("span", { style: "display:flex;align-items:center;gap:8px" });
+    right.append(el("span", {
+      className: "p-meta",
+      textContent: p.baseUrl || "(no URL)",
+    }));
+    if (p.id === settings.activeProviderId) {
+      right.append(el("span", { className: "p-badge", textContent: "active" }));
+    }
+    row.append(right);
+
+    row.addEventListener("click", () => {
+      if (p.id === settings.activeProviderId) return;
+      switchProvider(p.id);
+    });
+    box.append(row);
+  }
+}
+
+/** Push the editor fields back onto the active provider object. */
+function collectProviderFields() {
+  const p = activeProvider();
+  if (!p) return;
+  p.label = $("sProviderLabel").value.trim() || p.id;
+  p.baseUrl = $("sProviderBaseUrl").value.trim().replace(/\/+$/, "");
+  p.apiKey = $("sProviderKey").value.trim();
+  p.route = $("sProviderRoute").value;
+}
+
+/** Switch providers, carrying the per-provider model list with it. */
+function switchProvider(id) {
+  collectProviderFields();          // don't lose edits on the way out
+  commitModelsToProvider();
+  settings.activeProviderId = id;
+  syncActiveProvider();
+  saveSettings();
+  populateProviderFields();
+  $("sModels").value = serializeModels(settings.models);
+  renderModelMenu();
+}
+
+$("sProviderSelect").addEventListener("change", (e) => {
+  switchProvider(e.target.value);
+});
+$("sProviderLabel").addEventListener("input", () => {
+  collectProviderFields();
+  // Keep the dropdown and models heading in sync while typing.
+  const sel = $("sProviderSelect");
+  const opt = Array.from(sel.options).find((o) => o.value === settings.activeProviderId);
+  if (opt) opt.textContent = $("sProviderLabel").value.trim() || settings.activeProviderId;
+  $("sModelsProvider").textContent = $("sProviderLabel").value.trim() || settings.activeProviderId;
+});
+for (const id of ["sProviderBaseUrl", "sProviderKey", "sProviderRoute"]) {
+  $(id).addEventListener("change", () => { collectProviderFields(); });
+}
+
+$("sProviderAdd").addEventListener("click", () => {
+  collectProviderFields();
+  commitModelsToProvider();
+  const n = (settings.providers?.length ?? 0) + 1;
+  const p = normalizeProvider({
+    id: `provider-${Date.now().toString(36)}`,
+    label: `Provider ${n}`,
+    baseUrl: "",
+    apiKey: "",
+    route: "root",
+    models: [],
+  }, `provider-${n}`);
+  settings.providers.push(p);
+  settings.providerModels[p.id] = [];
+  settings.activeProviderId = p.id;
+  syncActiveProvider();
+  saveSettings();
+  populateProviderFields();
+  $("sModels").value = "";
+  renderModelMenu();
+});
+
+$("sProviderDelete").addEventListener("click", () => {
+  const list = settings.providers || [];
+  if (list.length <= 1) return;
+  const id = settings.activeProviderId;
+  const idx = list.findIndex((p) => p.id === id);
+  if (idx < 0) return;
+  list.splice(idx, 1);
+  delete settings.providerModels[id];
+  settings.activeProviderId = list[Math.max(0, idx - 1)].id;
+  syncActiveProvider();
+  saveSettings();
+  populateProviderFields();
+  $("sModels").value = serializeModels(settings.models);
+  renderModelMenu();
+});
+
+$("sProviderReset").addEventListener("click", () => {
+  settings.providers = DEFAULT_PROVIDERS.map((p) => normalizeProvider(p, p.id));
+  settings.providerModels = {};
+  for (const p of settings.providers) settings.providerModels[p.id] = p.models.slice();
+  settings.activeProviderId = DEFAULT_PROVIDER_ID;
+  syncActiveProvider();
+  saveSettings();
+  populateProviderFields();
+  $("sModels").value = serializeModels(settings.models);
+  renderModelMenu();
+});
+
+/**
+ * GET <base><modelsPath> to discover models. Only works when the provider
+ * exposes an OpenAI-style /models and permits the call (the bridge and
+ * api.deepseek.com do; z.ai from a browser does not).
+ */
+$("sModelsFetch").addEventListener("click", async () => {
+  collectProviderFields();
+  const p = activeProvider();
+  const status = $("sModelsStatus");
+  if (!p.baseUrl) { status.textContent = "Set a Base URL first."; return; }
+  const url = `${p.baseUrl.replace(/\/+$/, "")}${p.modelsPath || "/models"}`;
+  status.textContent = `Fetching ${url} …`;
+  $("sModelsFetch").disabled = true;
+  try {
+    const res = await fetch(url, {
+      headers: p.apiKey ? { "Authorization": `Bearer ${p.apiKey}` } : {},
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const arr = Array.isArray(data?.data) ? data.data : (Array.isArray(data) ? data : []);
+    const models = arr.map((m) => {
+      const id = m.id ?? m.model ?? m.name;
+      return id ? { id: String(id), label: String(id), desc: m.owned_by ? String(m.owned_by) : "" } : null;
+    }).filter(Boolean);
+    if (!models.length) throw new Error("no models in response");
+    settings.models = models;
+    commitModelsToProvider();
+    $("sModels").value = serializeModels(models);
+    if (!models.some((m) => m.id === settings.model)) settings.model = models[0].id;
+    saveSettings();
+    renderModelMenu();
+    status.textContent = `Loaded ${models.length} models.`;
+  } catch (err) {
+    status.textContent =
+      `Could not fetch (${err.message}). Many providers block browser calls via CORS — ` +
+      `paste the list manually instead.`;
+  } finally {
+    $("sModelsFetch").disabled = false;
+  }
+});
+
+$("sModelsDefaults").addEventListener("click", () => {
+  const p = activeProvider();
+  const builtin = DEFAULT_PROVIDERS.find((d) => d.id === p.id);
+  if (!builtin) { $("sModelsStatus").textContent = "No built-in list for this provider."; return; }
+  settings.models = builtin.models.map((m) => ({ ...m }));
+  commitModelsToProvider();
+  $("sModels").value = serializeModels(settings.models);
+  if (!settings.models.some((m) => m.id === settings.model)) settings.model = settings.models[0]?.id ?? "";
+  saveSettings();
+  renderModelMenu();
+  $("sModelsStatus").textContent = "Restored the built-in list.";
+});
 
 function selectSection(section) {
   if (!SECTION_TITLES[section]) section = "appearance";
@@ -3879,10 +4395,7 @@ $("sCustomInstructionsEnabled").addEventListener("change", syncCustomInstruction
 $("sPromptFinishEnabled").addEventListener("change", syncPromptFinishDisabledState);
 
 $("settingsSave").addEventListener("click", () => {
-  settings.apiKey = $("sApiKey").value.trim();
-  settings.workerUrl = $("sWorkerUrl").value.trim();
-  settings.plan = $("sPlan").value;
-  settings.baseOverride = $("sBaseOverride").value.trim();
+  collectProviderFields();
 
   settings.customInstructions = $("sCustomInstructions").value;
   settings.customInstructionsEnabled = $("sCustomInstructionsEnabled").checked;
@@ -3905,6 +4418,11 @@ $("settingsSave").addEventListener("click", () => {
   if (!settings.models.some((m) => m.id === settings.model)) {
     settings.model = settings.models[0]?.id ?? "";
   }
+  // Persist the edited list onto the provider it belongs to, and re-derive the
+  // flat fields the request path reads.
+  commitModelsToProvider();
+  rememberModelChoice();
+  syncActiveProvider();
 
   applyTheme();
   syncThemeSegmented();

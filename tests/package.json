@@ -1,0 +1,14 @@
+{
+  "name": "zhipu-integration-tests",
+  "private": true,
+  "description": "Tests for the multi-provider web chat UI",
+  "scripts": {
+    "test": "node test_providers.js ../index.html && node test_browser.js ../index.html",
+    "test:logic": "node test_providers.js ../index.html",
+    "test:browser": "node test_browser.js ../index.html",
+    "test:live": "node test_live.js ../index.html"
+  },
+  "devDependencies": {
+    "puppeteer-core": "^23.0.0"
+  }
+}
