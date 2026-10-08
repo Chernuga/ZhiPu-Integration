@@ -3464,9 +3464,16 @@ async function streamCompletion({ messages, model, thinking, signal, onDelta, on
     });
   } catch (err) {
     if (err.name === "AbortError") { onDone?.({ content: "", reasoning: "", aborted: true }); return; }
-    onError?.(new Error(settings.workerUrl
-      ? `Network error: ${err.message}`
-      : "Direct call blocked (CORS). Set a Worker URL in Settings."));
+    // Report the real cause. This used to key off settings.workerUrl, which is
+    // always empty now that providers own the base URL - so every network
+    // failure was misreported as a CORS problem.
+    const p = activeProvider();
+    const isNetwork = err instanceof TypeError || /fetch|network/i.test(err.message || "");
+    onError?.(new Error(
+      isNetwork && !p.baseUrl
+        ? "No endpoint configured. Set a Base URL for this provider in Settings."
+        : `Network error: ${err.message}`
+    ));
     return;
   }
 
@@ -3623,12 +3630,6 @@ async function send() {
     alert("Set your API key in Settings first.");
     openSettings();
     return;
-  }
-  if (!settings.workerUrl) {
-    if (!confirm("No Worker URL set. Direct API calls usually fail with a CORS error. Continue anyway?")) {
-      openSettings();
-      return;
-    }
   }
 
   const conv = ensureActive();
