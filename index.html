@@ -3686,6 +3686,14 @@ async function fullCompletion({ messages, model, thinking, signal, onDone, onErr
     return;
   }
 
+  // Emit the finished text through onDelta exactly once.
+  //
+  // The caller renders from onDelta (that is where assistantMsg.content is
+  // assigned), so a non-streaming reply that only called onDone arrived with
+  // nothing to display. One delta carrying the whole answer keeps the existing
+  // rendering path unchanged - there is no separate "full" branch to maintain.
+  onDelta?.({ content, reasoning });
+
   onDone?.({ content, reasoning, usage: data?.usage ?? null, aborted: false });
 }
 
