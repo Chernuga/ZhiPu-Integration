@@ -195,10 +195,26 @@
   .new-chat-btn svg { width: 16px; height: 16px; }
 
   .conv-list { flex: 1; overflow-y: auto; padding: 6px 8px 12px; }
+  /* Day-group labels (Today / Yesterday / Previous 7 days / …). Each label
+     carries a top border, so the line sits exactly between two day groups.
+     The first label is the exception: nothing precedes it to divide from.
+     The colour is a literal rather than --ds-border-l3 because the design
+     tokens top out at ~16% white in dark mode, which is too faint to read
+     as a separator against #151517. */
   .conv-group-label {
     font-size: 11px; color: var(--text-dim); font-weight: 600;
     text-transform: uppercase; letter-spacing: .04em;
-    padding: 12px 8px 4px;
+    padding: 16px 8px 6px;
+    margin-top: 12px;
+    border-top: 1px solid rgba(255, 255, 255, .2);
+  }
+  [data-theme="light"] .conv-group-label {
+    border-top-color: rgba(0, 0, 0, .15);
+  }
+  .conv-list > .conv-group-label:first-child {
+    border-top: none;
+    margin-top: 0;
+    padding-top: 8px;
   }
   .conv-item {
     display: flex; align-items: center; gap: 8px;
@@ -912,11 +928,9 @@
 
   .settings-window {
     position: relative;
-    width: 800px;
-    max-width: calc(100vw - 48px);
-    height: min(800px, calc(100vh - 48px));
-    height: min(800px, calc(100dvh - 48px));
-    border-radius: 28px;
+    width: 100%;
+    height: 100%;
+    border-radius: 0;
     background: var(--ds-bg-layer-1);
     box-shadow: var(--ds-shadow-lv3);
     display: flex;
@@ -1630,7 +1644,6 @@
 
     .settings-window {
       width: 100%;
-      max-width: 100vw;
       height: 100dvh;
       border-radius: 0;
     }
@@ -4310,6 +4323,9 @@ for (const btn of themeButtons) {
     settings.theme = btn.dataset.themeValue;
     applyTheme();
     syncThemeSegmented();
+    // Persist at once. This only reached storage via Save, so closing the panel
+    // any other way dropped the choice.
+    saveSettings();
   });
 }
 
@@ -4530,12 +4546,24 @@ $("sProviderLabel").addEventListener("input", () => {
   const opt = Array.from(sel.options).find((o) => o.value === settings.activeProviderId);
   if (opt) opt.textContent = $("sProviderLabel").value.trim() || settings.activeProviderId;
   $("sModelsProvider").textContent = $("sProviderLabel").value.trim() || settings.activeProviderId;
+  // Persist as you type. These fields only used to reach storage on Save or on
+  // switching providers, so an edit followed by a reload was silently lost.
+  saveSettings();
 });
 for (const id of ["sProviderBaseUrl", "sProviderKey", "sProviderRoute",
                   "sProviderPathSuffix", "sProviderResponseMode"]) {
-  $(id).addEventListener("change", () => { collectProviderFields(); updateResolvedUrlPreview(); });
-  // Also react while typing so the preview tracks the fields live.
-  $(id).addEventListener("input", () => { collectProviderFields(); updateResolvedUrlPreview(); });
+  // Both events save: "input" fires while typing, "change" when a select closes
+  // or a text field loses focus, so nothing depends on pressing Save.
+  $(id).addEventListener("input", () => {
+    collectProviderFields();
+    updateResolvedUrlPreview();
+    saveSettings();
+  });
+  $(id).addEventListener("change", () => {
+    collectProviderFields();
+    updateResolvedUrlPreview();
+    saveSettings();
+  });
 }
 
 $("sProviderAdd").addEventListener("click", () => {
@@ -4709,7 +4737,15 @@ document.addEventListener("keydown", (e) => {
 $("sCustomInstructionsEnabled").addEventListener("change", syncCustomInstructionsDisabledState);
 $("sPromptFinishEnabled").addEventListener("change", syncPromptFinishDisabledState);
 
-$("settingsSave").addEventListener("click", () => {
+/**
+ * Read every settings control into `settings` and persist immediately.
+ *
+ * This is the single write path. It used to live inside the Save button, so an
+ * edit only reached localStorage if Save was pressed - a reload in between lost
+ * it. Every control now calls this on change, so the stored state always matches
+ * what is on screen.
+ */
+function collectAllSettings() {
   collectProviderFields();
 
   settings.customInstructions = $("sCustomInstructions").value;
@@ -4720,7 +4756,6 @@ $("settingsSave").addEventListener("click", () => {
 
   const norm = normalizeHexInput($("sAccentHex").value);
   settings.accentHex = norm || "";
-  applyAccent(settings.accentHex);
 
   settings.reasoningExpanded = $("sReasoningExpanded").checked;
   const speedVal = $("sTypingSpeed").value;
@@ -4739,14 +4774,43 @@ $("settingsSave").addEventListener("click", () => {
   rememberModelChoice();
   syncActiveProvider();
 
+  saveSettings();
+}
+
+$("settingsSave").addEventListener("click", () => {
+  collectAllSettings();
+
+  applyAccent(settings.accentHex);
   applyTheme();
   syncThemeSegmented();
 
-  saveSettings();
   renderModelMenu();
   renderMessages();
   themeAtOpen = null;
   closeSettings();
+});
+
+// Save on every edit, not just on Save.
+//
+// "input" covers typing (text areas, the hex field, the retry count) and
+// "change" covers selects, checkboxes and radio groups. Registering both means
+// no control depends on the user remembering to press Save.
+for (const id of ["sCustomInstructions", "sPromptFinish", "sAccentHex",
+                  "sRetryMax", "sModels"]) {
+  $(id).addEventListener("input", collectAllSettings);
+  $(id).addEventListener("change", collectAllSettings);
+  // Losing focus is the last chance to capture a value, so it also writes.
+  $(id).addEventListener("blur", collectAllSettings);
+}
+for (const id of ["sCustomInstructionsEnabled", "sPromptFinishEnabled",
+                  "sReasoningExpanded", "sRetryEnabled", "sTypingSpeed"]) {
+  $(id).addEventListener("change", collectAllSettings);
+}
+
+// A theme/accent change is applied live as well as stored, so the page and the
+// saved state cannot drift apart while the panel is open.
+$("sAccentHex").addEventListener("input", () => {
+  applyAccent(normalizeHexInput($("sAccentHex").value) || "");
 });
 
 // =============================================================================
