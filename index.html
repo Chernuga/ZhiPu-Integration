@@ -4017,10 +4017,20 @@ async function runCompletion(conv) {
 
   const assistantMsg = { role: "assistant", content: "", reasoning: "" };
   conv.messages.push(assistantMsg);
+  conv.updatedAt = Date.now();
+  // Persist the assistant placeholder immediately.
+  //
+  // It used to be written only in onDone, so reloading (or closing the tab)
+  // while a reply was generating left the conversation holding the user's
+  // prompt with no reply at all - the session appeared to have been lost.
+  // Saving here means an interrupted turn keeps whatever had been revealed.
+  saveConversations();
 
   let reasoningStartedAt = null;
   let reasoningBlockEl = null;
   let reasoningTextEl = null;
+  /** Timestamp of the last throttled mid-stream save. */
+  let lastStreamSaveAt = 0;
 
   function ensureReasoningBlock() {
     if (reasoningBlockEl) return;
@@ -4102,6 +4112,19 @@ async function runCompletion(conv) {
 
       contentTypewriter.set(content);
       scrollToBottom();
+
+      // Persist the partial reply as it grows, throttled.
+      //
+      // Without this the text existed only in memory until onDone, so an
+      // interrupted turn (reload, tab close, crash) stored an empty assistant
+      // message. Throttling keeps the write rate sane while still bounding how
+      // much can be lost to a few hundred milliseconds of typing.
+      const now = Date.now();
+      if (now - lastStreamSaveAt > 700) {
+        lastStreamSaveAt = now;
+        conv.updatedAt = now;
+        saveConversations();
+      }
     },
 
     onRetry: (attempt, max) => {
