@@ -1652,19 +1652,92 @@
     .settings-layout {
       padding: 0 16px 16px;
       gap: 0;
+      /* Stack the tab strip above the panel instead of side by side. */
+      flex-direction: column;
     }
+
+    /* The tab strip stays visible above the panel.
+       Previously mobile swapped between the list and the panel, so choosing a
+       tab hid the tabs and you had to go "back" to change section. The strip is
+       now a permanent row of icons on top, matching the desktop behaviour where
+       the panel renders alongside - just collapsed to one axis. */
     .settings-nav {
       width: 100%;
       border-right: none;
-      padding: 12px 0 0;
+      border-bottom: 1px solid var(--border);
+      padding: 10px 0 0;
+      flex-direction: row;
+      gap: 0;
+      overflow-x: auto;
+      overflow-y: hidden;
+      scrollbar-width: none;
+      -webkit-overflow-scrolling: touch;
     }
-    .settings-main-header { padding: 16px 0 12px; }
-    .settings-body { padding: 14px 0 20px; }
+    .settings-nav::-webkit-scrollbar { display: none; }
+
+    .settings-nav-list {
+      flex-direction: row;
+      gap: 2px;
+      width: 100%;
+      justify-content: space-between;
+    }
+
+    /* Icon over label, centred and evenly spread. */
+    .settings-nav-item {
+      flex-direction: column;
+      gap: 4px;
+      padding: 8px 4px 10px;
+      width: auto;
+      flex: 1 1 0;
+      min-width: 0;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      border-radius: 10px;
+      position: relative;
+      background: transparent;
+    }
+    .settings-nav-item svg { width: 20px; height: 20px; }
+    .settings-nav-item span {
+      font-size: 10.5px;
+      line-height: 1.15;
+      /* Long labels must not widen the row and force a scroll. */
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 100%;
+    }
+    /* Active tab: tinted label plus an underline, since the icon alone is a
+       weaker signal at this size. */
+    .settings-nav-item.active { background: transparent; font-weight: 600; }
+    .settings-nav-item.active::after {
+      content: "";
+      position: absolute;
+      left: 18%;
+      right: 18%;
+      bottom: 2px;
+      height: 2px;
+      border-radius: 2px;
+      background: var(--accent, #4f46e5);
+    }
+
+    .settings-main {
+      width: 100%;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      flex: 1;
+    }
+    .settings-main-header { padding: 14px 0 10px; }
+    .settings-body { padding: 4px 0 20px; }
     .settings-footer { padding: 12px 0 0; }
 
-    .settings-shell:not(.show-panel) .settings-main { display: none; }
-    .settings-shell.show-panel .settings-nav { display: none; }
-    .settings-back { display: grid; }
+    /* Both the strip and the panel are always present now, so the old
+       swap-one-or-the-other rules are gone. The back button had no purpose once
+       the tabs stayed visible; it is hidden rather than removed from the markup
+       so the desktop layout is untouched. */
+    .settings-back { display: none; }
 
     /* Workspace mobile */
     .workspace-sidebar {
@@ -3995,11 +4068,18 @@ async function runCompletion(conv) {
 
   // ---------------------------------------------------------------------------
   // Build the outgoing request:
-  //   [optional] custom instructions (system, start)
-  //   workspace protocol (system, start)
-  //   ...conversation turns...
-  //   [optional] prompt finish (system, end)
+  //   [system] custom instructions, workspace protocol, prompt finish
+  //   ...conversation turns, ending with the user's message...
   // ---------------------------------------------------------------------------
+  //
+  // The prompt finish is folded into the LEADING system message rather than
+  // appended as a trailing one.
+  //
+  // Appending it made it the last entry in the array, and a backend that takes
+  // the final message as the turn to answer then replied to the finish
+  // instruction instead of the user's prompt - the prompt was never sent at all.
+  // Keeping the user's turn last avoids that, and the instruction still arrives
+  // as a system message, which is what it is.
   const outgoing = [];
 
   const sysParts = [];
@@ -4007,13 +4087,12 @@ async function runCompletion(conv) {
     sysParts.push(settings.customInstructions.trim());
   }
   sysParts.push(FILE_COMMANDS_INSTRUCTIONS);
+  if (settings.promptFinishEnabled && settings.promptFinish.trim()) {
+    sysParts.push(settings.promptFinish.trim());
+  }
   outgoing.push({ role: "system", content: sysParts.join("\n\n") });
 
   for (const m of conv.messages) outgoing.push(messageToApi(m));
-
-  if (settings.promptFinishEnabled && settings.promptFinish.trim()) {
-    outgoing.push({ role: "system", content: settings.promptFinish.trim() });
-  }
 
   const assistantMsg = { role: "assistant", content: "", reasoning: "" };
   conv.messages.push(assistantMsg);
@@ -4704,6 +4783,8 @@ function selectSection(section) {
     panel.classList.toggle("active", panel.dataset.section === section);
   }
   $("settingsSectionTitle").textContent = SECTION_TITLES[section];
+  // The icon strip is always visible on every screen size, so the panel is
+  // always shown too. "show-panel" is still set for the desktop class hooks.
   $("settingsModal").classList.add("show-panel");
 
   const body = document.querySelector(".settings-body");
@@ -4711,6 +4792,9 @@ function selectSection(section) {
 }
 
 function showCategoryList() {
+  // Retained for the desktop back affordance; on mobile the tabs never hide, so
+  // there is no list to return to.
+  if (window.innerWidth <= 720) return;
   $("settingsModal").classList.remove("show-panel");
 }
 
@@ -4718,16 +4802,16 @@ function openSettings() {
   populateSettingsFields();
   themeAtOpen = settings.theme;
   syncThemeSegmented();
+  // Always open on a section with its panel visible: the tabs sit above it, so
+  // there is nothing to drill into first.
   selectSection(currentSection || "appearance");
-  if (window.innerWidth <= 720) {
-    $("settingsModal").classList.remove("show-panel");
-  }
   $("settingsModal").classList.add("open");
 }
 
 function closeSettings() {
   $("settingsModal").classList.remove("open");
-  $("settingsModal").classList.remove("show-panel");
+  // "show-panel" is intentionally left set: the next open should land straight
+  // on a section, and clearing it here made mobile reopen on an empty list.
 }
 
 function cancelSettings() {
