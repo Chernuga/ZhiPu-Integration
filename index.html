@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -422,6 +423,44 @@
   .msg-assistant .content ol { padding-left: 22px; margin: 8px 0 12px; }
   .msg-assistant .content li { margin: 3px 0; }
   .msg-assistant .content strong { font-weight: 600; }
+
+  /* ===== Inline file-command tool calls ===== */
+  .tool-call {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 16px 0 6px;
+    font-family: var(--ds-font-code);
+    font-size: 12.5px;
+    color: var(--ds-accent-text);
+    line-height: 1.4;
+  }
+  .tool-call .tc-icon {
+    width: 15px; height: 15px;
+    flex-shrink: 0;
+    display: inline-flex;
+    color: var(--ds-accent-text);
+  }
+  .tool-call .tc-icon svg { width: 100%; height: 100%; display: block; }
+  .tool-call .tc-file {
+    color: var(--ds-accent-text);
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+  }
+  .tool-call .tc-kind {
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--ds-accent-text);
+    border: 1px solid var(--ds-accent);
+    flex-shrink: 0;
+  }
 
   .code-wrap { position: relative; margin: 12px 0; }
   .code-wrap pre {
@@ -854,60 +893,95 @@
   .send-btn.stopping { background: var(--ds-accent); }
   .send-btn.stopping:hover { background: var(--ds-accent-hover); }
 
-  /* ===== Settings fullscreen shell ===== */
+  /* ===== Settings modal (DeepSeek official style) ===== */
   .settings-shell {
     position: fixed; inset: 0;
     z-index: 100;
-    background: var(--ds-bg-base);
     display: none;
-    flex-direction: column;
-    height: 100vh;
-    height: 100dvh;
+    align-items: center;
+    justify-content: center;
   }
   .settings-shell.open { display: flex; }
+
+  .settings-mask {
+    position: absolute; inset: 0;
+    background: rgba(0, 0, 0, .5);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
+
+  .settings-window {
+    position: relative;
+    width: 800px;
+    max-width: calc(100vw - 48px);
+    height: min(800px, calc(100vh - 48px));
+    height: min(800px, calc(100dvh - 48px));
+    border-radius: 28px;
+    background: var(--ds-bg-layer-1);
+    box-shadow: var(--ds-shadow-lv3);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .settings-title-row {
+    flex: 0 0 46px;
+    padding: 22px 54px 0 24px;
+    display: flex;
+    align-items: center;
+  }
+  .settings-title-row h2 {
+    font-size: 16px;
+    line-height: 24px;
+    font-weight: 500;
+    color: var(--text);
+    margin: 0;
+  }
+
+  .settings-close {
+    position: absolute;
+    top: 20px; right: 14px;
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    display: grid; place-items: center;
+    color: var(--text-muted);
+    transition: background var(--ds-dur) var(--ds-ease-in-out),
+                color var(--ds-dur) var(--ds-ease-in-out);
+  }
+  .settings-close:hover { background: var(--hover); color: var(--text); }
+  .settings-close svg { width: 16px; height: 16px; }
 
   .settings-layout {
     display: flex;
     flex: 1;
     min-height: 0;
-    max-width: 1120px;
-    margin: 0 auto;
+    padding: 0 24px 24px;
+    gap: 24px;
     width: 100%;
   }
 
   .settings-nav {
-    width: 250px;
+    width: 188px;
     flex-shrink: 0;
-    border-right: 1px solid var(--border);
+    border-right: none;
     display: flex;
     flex-direction: column;
-    padding: 18px 12px;
-    gap: 2px;
+    padding: 22px 12px 0;
+    gap: 4px;
     overflow-y: auto;
-  }
-
-  .settings-nav-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 4px 8px 16px;
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--text);
-    letter-spacing: -.01em;
   }
 
   .settings-nav-list {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 4px;
   }
 
   .settings-nav-item {
-    display: flex; align-items: center; gap: 11px;
-    padding: 9px 12px;
-    border-radius: 8px;
-    font-size: 14px;
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px;
+    border-radius: 10px;
+    font-size: 13px;
     color: var(--text-muted);
     text-align: left;
     width: 100%;
@@ -936,16 +1010,16 @@
 
   .settings-main-header {
     display: flex; align-items: center; gap: 8px;
-    padding: 14px 24px;
+    padding: 22px 0 16px;
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
-    min-height: 62px;
   }
   .settings-main-header h2 {
-    font-size: 17px;
+    font-size: 15px;
     font-weight: 600;
     margin: 0;
     flex: 1;
+    color: var(--text);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -953,7 +1027,7 @@
 
   .settings-back {
     display: none;
-    width: 32px; height: 32px; border-radius: 8px;
+    width: 28px; height: 28px; border-radius: 8px;
     place-items: center;
     color: var(--text-muted);
     flex-shrink: 0;
@@ -963,25 +1037,24 @@
   .settings-back:hover { background: var(--hover); color: var(--text); }
   .settings-back svg { width: 18px; height: 18px; }
 
-  .settings-main-close { flex-shrink: 0; }
-
   .settings-body {
     flex: 1;
     overflow-y: auto;
-    padding: 24px 28px 32px;
+    padding: 18px 2px 24px;
+    margin-right: -2px;
   }
 
   .settings-panel { display: none; }
   .settings-panel.active { display: block; }
 
   .settings-footer {
-    padding: 14px 24px;
+    padding: 14px 0 0;
     border-top: 1px solid var(--border);
     display: flex;
     justify-content: flex-end;
     gap: 8px;
     flex-shrink: 0;
-    background: var(--ds-bg-base);
+    background: transparent;
   }
 
   .settings-panel label {
@@ -1555,14 +1628,26 @@
     .msg-user .bubble { max-width: 88%; }
     .msg-user-wrap { max-width: 88%; }
 
+    .settings-window {
+      width: 100%;
+      max-width: 100vw;
+      height: 100dvh;
+      border-radius: 0;
+    }
+    .settings-title-row { padding: 18px 54px 0 16px; }
+    .settings-close { top: 16px; right: 12px; }
+    .settings-layout {
+      padding: 0 16px 16px;
+      gap: 0;
+    }
     .settings-nav {
       width: 100%;
       border-right: none;
-      padding: 18px 16px 24px;
+      padding: 12px 0 0;
     }
-    .settings-main-header { padding: 14px 16px; min-height: 60px; }
-    .settings-body { padding: 20px 16px 28px; }
-    .settings-footer { padding: 14px 16px; }
+    .settings-main-header { padding: 16px 0 12px; }
+    .settings-body { padding: 14px 0 20px; }
+    .settings-footer { padding: 12px 0 0; }
 
     .settings-shell:not(.show-panel) .settings-main { display: none; }
     .settings-shell.show-panel .settings-nav { display: none; }
@@ -1686,20 +1771,24 @@
 </div>
 
 <!-- ============================================================================
-     Settings fullscreen shell
+     Settings modal (DeepSeek official style)
      ============================================================================ -->
 <div class="settings-shell" id="settingsModal">
-  <div class="settings-layout">
+  <div class="settings-mask"></div>
+  <div class="settings-window">
+
+    <div class="settings-title-row">
+      <h2>Settings</h2>
+    </div>
+    <button class="settings-close" id="settingsCloseBtn" title="Close">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M18 6L6 18M6 6l12 12"/>
+      </svg>
+    </button>
+
+    <div class="settings-layout">
 
     <aside class="settings-nav">
-      <div class="settings-nav-header">
-        <span>Settings</span>
-        <button class="icon-btn settings-nav-close" id="settingsNavCloseBtn" title="Close">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M18 6L6 18M6 6l12 12"/>
-          </svg>
-        </button>
-      </div>
       <nav class="settings-nav-list">
         <button type="button" class="settings-nav-item" data-section="appearance">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1747,11 +1836,6 @@
           </svg>
         </button>
         <h2 id="settingsSectionTitle">Appearance</h2>
-        <button type="button" class="icon-btn settings-main-close" id="settingsCloseBtn" title="Close">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M18 6L6 18M6 6l12 12"/>
-          </svg>
-        </button>
       </div>
 
       <div class="settings-body">
@@ -1822,6 +1906,25 @@
             </select>
             <div class="hint-inline">
               z.ai and the bridge use <code>coding</code>/<code>general</code>; OpenAI-compatible hosts use <code>root</code>.
+            </div>
+
+            <label for="sProviderPathSuffix">Path suffix</label>
+            <input type="text" id="sProviderPathSuffix" placeholder="/chat/completions">
+            <div class="hint-inline">
+              Appended after the route. Leave blank for the default
+              <code>/chat/completions</code>. Use this to hit a custom route, e.g.
+              <code>/chat/completions/full</code>.
+            </div>
+
+            <label for="sProviderResponseMode">Response mode</label>
+            <select id="sProviderResponseMode">
+              <option value="stream">stream — SSE deltas (default)</option>
+              <option value="full">full — one JSON response</option>
+            </select>
+            <div class="hint-inline">
+              <code>full</code> waits for the whole answer and reads it from a single
+              JSON body. Use it when a provider emits one frame per token and the page
+              struggles to keep up. Pair it with a <code>/full</code> path suffix.
             </div>
           </div>
 
@@ -1930,6 +2033,7 @@
       </div>
     </main>
 
+    </div>
   </div>
 </div>
 
@@ -2099,6 +2203,12 @@ function normalizeProvider(p, fallbackId) {
     baseUrl: String(p?.baseUrl || "").trim().replace(/\/+$/, ""),
     apiKey: String(p?.apiKey || "").trim(),
     route,
+    // Custom path appended after the route. Blank means the conventional
+    // "/chat/completions"; anything else is used verbatim so a provider can
+    // expose a non-standard route without touching the code.
+    pathSuffix: String(p?.pathSuffix || "").trim(),
+    // "stream" reads SSE deltas; "full" waits for one JSON body.
+    responseMode: p?.responseMode === "full" ? "full" : "stream",
     modelsPath: String(p?.modelsPath || "/models"),
     note: String(p?.note || ""),
     models: Array.isArray(p?.models) && p.models.length
@@ -2205,6 +2315,12 @@ const COPY_ICON = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" x
 const STOP_ICON = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 4.88c0-1.2 0-1.8.306-2.22a1.6 1.6 0 0 1 .354-.354C3.08 2 3.68 2 4.88 2h6.24c1.2 0 1.8 0 2.22.306a1.6 1.6 0 0 1 .354.354C14 3.08 14 3.68 14 4.88v6.24c0 1.2 0 1.8-.306 2.22a1.6 1.6 0 0 1-.354.354c-.42.306-1.02.306-2.22.306H4.88c-1.2 0-1.8 0-2.22-.306a1.6 1.6 0 0 1-.354-.354C2 12.92 2 12.32 2 11.12z" fill="currentColor"/></svg>`;
 
 const SEND_ICON = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8.3125 0.980206C8.66767 1.05312 8.97902 1.2042 9.2627 1.43235C9.48724 1.613 9.73029 1.85795 9.97949 2.10716L14.707 6.8347L13.293 8.24876L9 3.95579V15.0417H7V3.95579L2.70703 8.24876L1.29297 6.8347L6.02051 2.10716C6.26971 1.85795 6.51277 1.613 6.7373 1.43235C6.97662 1.23988 7.28445 1.04404 7.6875 0.980206C7.8973 0.947029 8.1031 0.955183 8.3125 0.980206Z" fill="currentColor"></path></svg>`;
+
+const TOOL_CALL_ICONS = {
+  create: `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2h7l3 3v9a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z"/><path d="M10 2v3h3"/><path d="M7.5 8v3M6 9.5h3"/></svg>`,
+  find: `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="4.5"/><path d="M13.5 13.5l-4-4"/></svg>`,
+  replace: `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h7"/><path d="M8.5 2.5L11 5 8.5 7.5"/><path d="M12 11H5"/><path d="M7.5 8.5L5 11l2.5 2.5"/></svg>`,
+};
 
 // =============================================================================
 // Clipboard helper
@@ -2949,6 +3065,42 @@ function decorateCodeBlocks(container) {
 }
 
 // =============================================================================
+// Inline file-command decoration
+// =============================================================================
+// A standalone paragraph whose text is exactly a file command marker (e.g.
+// "index.html find:") becomes a styled tool-call row with an icon and an
+// accent-coloured file name. Everything else is left untouched.
+function decorateToolCalls(container) {
+  const paras = container.querySelectorAll("p");
+  for (const p of paras) {
+    const m = p.textContent.trim().match(FILE_CMD_LINE_RE);
+    if (!m) continue;
+    const file = m[1];
+    const kind = m[2].toLowerCase();
+
+    const div = document.createElement("div");
+    div.className = "tool-call";
+
+    const icon = document.createElement("span");
+    icon.className = "tc-icon";
+    icon.innerHTML = TOOL_CALL_ICONS[kind] || TOOL_CALL_ICONS.find;
+    div.appendChild(icon);
+
+    const fileSpan = document.createElement("span");
+    fileSpan.className = "tc-file";
+    fileSpan.textContent = file;
+    div.appendChild(fileSpan);
+
+    const kindSpan = document.createElement("span");
+    kindSpan.className = "tc-kind";
+    kindSpan.textContent = kind;
+    div.appendChild(kindSpan);
+
+    p.replaceWith(div);
+  }
+}
+
+// =============================================================================
 // Reasoning block builder
 // =============================================================================
 function buildReasoningBlock(reasoning, opts = {}) {
@@ -3176,9 +3328,9 @@ function renderMessage(msg, index) {
   }
 
   const content = el("div", { className: "content" });
-  const displayText = stripFileCommands(msg.content || "");
-  content.innerHTML = renderMarkdown(displayText);
+  content.innerHTML = renderMarkdown(msg.content || "");
   decorateCodeBlocks(content);
+  decorateToolCalls(content);
   row.append(content);
 
   if (msg.fileChanges && msg.fileChanges.length) {
@@ -3425,23 +3577,116 @@ function messageToApi(m) {
 function buildRequestUrl() {
   const p = activeProvider();
 
+  // The provider's own suffix when set, otherwise the conventional path.
+  // A suffix is used verbatim (leading slash added if missing) so a custom
+  // route can be expressed without code changes.
+  const rawSuffix = (p.pathSuffix || "").trim();
+  const suffix = rawSuffix
+    ? (rawSuffix.startsWith("/") ? rawSuffix : `/${rawSuffix}`)
+    : "/chat/completions";
+
   // Explicit per-provider base URL wins. `route` selects which of the bridge's
-  // three stream paths to hit.
+  // stream paths to hit.
   if (p.baseUrl) {
     const base = p.baseUrl.replace(/\/+$/, "");
+    // "root" means the base URL already points at the API root, so nothing is
+    // inserted between it and the suffix.
     const seg = p.route === "root" ? "" : `/${p.route}`;
-    return `${base}${seg}/chat/completions`;
+    return `${base}${seg}${suffix}`;
   }
 
   // Legacy fields, kept for hand-edited settings and the workerUrl/baseOverride
   // escape hatches.
   const worker = (settings.workerUrl || "").replace(/\/+$/, "");
   const plan = settings.plan;
-  if (worker) return `${worker}/${plan}/chat/completions`;
+  if (worker) return `${worker}/${plan}${suffix}`;
   const base = settings.baseOverride || (plan === "coding"
     ? "https://api.z.ai/api/coding/paas/v4"
     : "https://api.z.ai/api/paas/v4");
-  return `${base}/chat/completions`;
+  return `${base}${suffix}`;
+}
+
+/**
+ * Non-streaming call: wait for one JSON response and hand back the whole answer.
+ *
+ * Emits the same callback shape as streamCompletion, so callers do not care
+ * which mode ran. Nothing is rendered until the answer is complete, which is
+ * what keeps a fast provider from flooding the page with per-token updates.
+ *
+ * Understands both response shapes the bridge/the API may return:
+ *   OpenAI-style  { choices: [ { message: { content, reasoning_content } } ] }
+ *   simple        { content, reasoning_content }
+ */
+async function fullCompletion({ messages, model, thinking, signal, onDone, onError }) {
+  const p = activeProvider();
+
+  // `stream: false` keeps an OpenAI-compatible host from opening an SSE body.
+  const payload = {
+    model, messages, stream: false,
+    thinking: { type: thinking ? "enabled" : "disabled" },
+  };
+  // Ask the bridge for the reasoning too; harmless elsewhere, and it keeps the
+  // two modes showing the same thing.
+  payload.include_reasoning = true;
+
+  let response;
+  try {
+    response = await fetch(buildRequestUrl(), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${settings.apiKey}`,
+      },
+      body: JSON.stringify(payload),
+      signal,
+    });
+  } catch (err) {
+    if (err.name === "AbortError") { onDone?.({ content: "", reasoning: "", aborted: true }); return; }
+    const isNetwork = err instanceof TypeError || /fetch|network/i.test(err.message || "");
+    onError?.(new Error(
+      isNetwork && !p.baseUrl
+        ? "No endpoint configured. Set a Base URL for this provider in Settings."
+        : `Network error: ${err.message}`
+    ));
+    return;
+  }
+
+  if (!response.ok) {
+    let msg = `HTTP ${response.status}`;
+    try {
+      const j = await response.json();
+      msg += ` — ${j.error?.message ?? j.message ?? JSON.stringify(j)}`;
+    } catch {
+      try { msg += ` — ${await response.text()}`; } catch {}
+    }
+    onError?.(new Error(msg));
+    return;
+  }
+
+  let data;
+  try {
+    data = await response.json();
+  } catch (err) {
+    onError?.(new Error(
+      "Expected one JSON response but could not parse it. If this provider only " +
+      "streams, set Response mode back to \"stream\"."
+    ));
+    return;
+  }
+
+  const message = data?.choices?.[0]?.message ?? data;
+  const content = String(message?.content ?? data?.content ?? "");
+  const reasoning = String(message?.reasoning_content ?? data?.reasoning_content ?? "");
+
+  if (!content && !reasoning) {
+    onError?.(new Error(
+      data?.error?.message ?? data?.error ??
+      "The response contained no content. Check the provider's path suffix."
+    ));
+    return;
+  }
+
+  onDone?.({ content, reasoning, usage: data?.usage ?? null, aborted: false });
 }
 
 async function streamCompletion({ messages, model, thinking, signal, onDelta, onDone, onError }) {
@@ -3550,7 +3795,12 @@ async function streamWithRetry({ messages, model, thinking, onDelta, onRetry, on
       if (attempt > 1) onRetry?.(attempt, maxAttempts);
 
       const outcome = await new Promise((resolve) => {
-        streamCompletion({
+        // The provider chooses how the answer arrives. Both paths report the
+        // same result shape, so everything downstream is unaffected.
+        const call = activeProvider().responseMode === "full"
+          ? fullCompletion
+          : streamCompletion;
+        call({
           messages, model, thinking,
           signal: ctrl.signal,
           onDelta,
@@ -3753,9 +4003,9 @@ async function runCompletion(conv) {
 
   const contentTypewriter = createTypewriter({
     render: (shown) => {
-      const display = stripFileCommands(shown);
-      const html = display ? renderMarkdown(balanceCodeFences(display)) : "";
+      const html = shown ? renderMarkdown(balanceCodeFences(shown)) : "";
       contentEl.innerHTML = html + '<span class="cursor"></span>';
+      decorateToolCalls(contentEl);
     },
     speed: speedCfg.delay,
     adaptive: speedCfg.adaptive,
@@ -3854,9 +4104,9 @@ async function runCompletion(conv) {
           assistantRow.append(buildReasoningBlock(assistantMsg.reasoning, { durationMs: reasoningMs }));
         }
         const c = el("div", { className: "content" });
-        const displayText = stripFileCommands(assistantMsg.content || "");
-        c.innerHTML = renderMarkdown(displayText);
+        c.innerHTML = renderMarkdown(assistantMsg.content || "");
         decorateCodeBlocks(c);
+        decorateToolCalls(c);
         assistantRow.append(c);
         if (assistantMsg.fileChanges && assistantMsg.fileChanges.length) {
           assistantRow.append(renderFileChangesCard(assistantMsg.fileChanges));
@@ -4143,6 +4393,8 @@ function populateProviderFields() {
   $("sProviderBaseUrl").value = p.baseUrl || "";
   $("sProviderKey").value = p.apiKey || "";
   $("sProviderRoute").value = p.route || "coding";
+  $("sProviderPathSuffix").value = p.pathSuffix || "";
+  $("sProviderResponseMode").value = p.responseMode || "stream";
   $("sProviderNote").textContent = p.note || "";
   $("sModelsProvider").textContent = p.label || p.id;
   $("sProviderDelete").disabled = list.length <= 1;
@@ -4195,6 +4447,8 @@ function collectProviderFields() {
   p.baseUrl = $("sProviderBaseUrl").value.trim().replace(/\/+$/, "");
   p.apiKey = $("sProviderKey").value.trim();
   p.route = $("sProviderRoute").value;
+  p.pathSuffix = $("sProviderPathSuffix").value.trim();
+  p.responseMode = $("sProviderResponseMode").value === "full" ? "full" : "stream";
 }
 
 /** Switch providers, carrying the per-provider model list with it. */
@@ -4220,7 +4474,8 @@ $("sProviderLabel").addEventListener("input", () => {
   if (opt) opt.textContent = $("sProviderLabel").value.trim() || settings.activeProviderId;
   $("sModelsProvider").textContent = $("sProviderLabel").value.trim() || settings.activeProviderId;
 });
-for (const id of ["sProviderBaseUrl", "sProviderKey", "sProviderRoute"]) {
+for (const id of ["sProviderBaseUrl", "sProviderKey", "sProviderRoute",
+                  "sProviderPathSuffix", "sProviderResponseMode"]) {
   $(id).addEventListener("change", () => { collectProviderFields(); });
 }
 
@@ -4379,9 +4634,9 @@ for (const btn of document.querySelectorAll(".settings-nav-item")) {
   btn.addEventListener("click", () => selectSection(btn.dataset.section));
 }
 
+document.querySelector(".settings-mask").addEventListener("click", cancelSettings);
 $("settingsBack").addEventListener("click", showCategoryList);
 $("settingsBtn").addEventListener("click", openSettings);
-$("settingsNavCloseBtn").addEventListener("click", cancelSettings);
 $("settingsCloseBtn").addEventListener("click", cancelSettings);
 $("settingsCancel").addEventListener("click", cancelSettings);
 
