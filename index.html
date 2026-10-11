@@ -3586,13 +3586,21 @@ function buildRequestUrl() {
     : "/chat/completions";
 
   // Explicit per-provider base URL wins. `route` selects which of the bridge's
-  // stream paths to hit.
+  // paths to hit.
   if (p.baseUrl) {
     const base = p.baseUrl.replace(/\/+$/, "");
     // "root" means the base URL already points at the API root, so nothing is
     // inserted between it and the suffix.
-    const seg = p.route === "root" ? "" : `/${p.route}`;
-    return `${base}${seg}${suffix}`;
+    if (p.route === "root") return `${base}${suffix}`;
+
+    // Do not blindly prepend the route.
+    //
+    // A Base URL of "https://host/coding" already names the route, and adding
+    // it again produced "/coding/coding/chat/completions" - a 404 on every
+    // request. Insert the segment only when the base does not already end with
+    // it, so both "https://host" and "https://host/coding" work.
+    const already = new RegExp(`/${p.route}/?$`).test(base);
+    return already ? `${base}${suffix}` : `${base}/${p.route}${suffix}`;
   }
 
   // Legacy fields, kept for hand-edited settings and the workerUrl/baseOverride
@@ -3617,7 +3625,7 @@ function buildRequestUrl() {
  *   OpenAI-style  { choices: [ { message: { content, reasoning_content } } ] }
  *   simple        { content, reasoning_content }
  */
-async function fullCompletion({ messages, model, thinking, signal, onDone, onError }) {
+async function fullCompletion({ messages, model, thinking, signal, onDelta, onDone, onError }) {
   const p = activeProvider();
 
   // `stream: false` keeps an OpenAI-compatible host from opening an SSE body.
