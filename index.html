@@ -1912,7 +1912,7 @@
             <input type="text" id="sProviderPathSuffix" placeholder="/chat/completions">
             <div class="hint-inline">
               Appended after the route. Leave blank for the default
-              <code>/chat/completions</code>. Use this to hit a custom route, e.g.
+              <code>/chat/completions</code>. Used verbatim, e.g.
               <code>/chat/completions/full</code>.
             </div>
 
@@ -1923,9 +1923,12 @@
             </select>
             <div class="hint-inline">
               <code>full</code> waits for the whole answer and reads it from a single
-              JSON body. Use it when a provider emits one frame per token and the page
-              struggles to keep up. Pair it with a <code>/full</code> path suffix.
+              JSON body. The path is adjusted to match automatically, so
+              <code>/full</code> is added or removed for you.
             </div>
+
+            <div class="hint-inline" id="sProviderResolvedUrl"
+                 style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;opacity:.85;word-break:break-all"></div>
           </div>
 
           <div class="field-group">
@@ -3581,9 +3584,31 @@ function buildRequestUrl() {
   // A suffix is used verbatim (leading slash added if missing) so a custom
   // route can be expressed without code changes.
   const rawSuffix = (p.pathSuffix || "").trim();
-  const suffix = rawSuffix
+  let suffix = rawSuffix
     ? (rawSuffix.startsWith("/") ? rawSuffix : `/${rawSuffix}`)
     : "/chat/completions";
+
+  // Make the suffix agree with the response mode.
+  //
+  // These two settings describe the same thing - how the answer comes back -
+  // so they could disagree: mode "full" with the streaming "/chat/completions"
+  // path sent a request that expected one JSON body to an endpoint replying
+  // with text/event-stream. The call could not be parsed and surfaced as a
+  // connection failure, then retried in a loop.
+  //
+  // The mode now decides the shape, so the pair cannot contradict:
+  //   full   -> .../full  (one JSON response)
+  //   stream -> the plain path
+  // An empty suffix is left for the caller to fill with the default, and any
+  // suffix already naming /full is kept as-is.
+  if (p.responseMode === "full") {
+    if (!/\/full\/?$/.test(suffix)) {
+      suffix = suffix.replace(/\/+$/, "") + "/full";
+    }
+  } else if (/\/full\/?$/.test(suffix)) {
+    // Streaming was chosen but the path still asks for one JSON body.
+    suffix = suffix.replace(/\/full\/?$/, "") || "/chat/completions";
+  }
 
   // Explicit per-provider base URL wins. `route` selects which of the bridge's
   // paths to hit.
@@ -4415,7 +4440,23 @@ function populateProviderFields() {
   $("sModelsProvider").textContent = p.label || p.id;
   $("sProviderDelete").disabled = list.length <= 1;
 
+  updateResolvedUrlPreview();
   renderProviderRows();
+}
+
+/**
+ * Show the URL this provider will actually call.
+ *
+ * The suffix is adjusted to match the response mode, so the resolved URL can
+ * differ from what the two fields appear to say. Showing it removes the guesswork
+ * that made a mode/path mismatch look like a network failure.
+ */
+function updateResolvedUrlPreview() {
+  const box = $("sProviderResolvedUrl");
+  if (!box) return;
+  let url;
+  try { url = buildRequestUrl(); } catch { url = ""; }
+  box.textContent = url ? `Will POST to: ${url}` : "";
 }
 
 /** The clickable list of configured providers. */
@@ -4492,7 +4533,9 @@ $("sProviderLabel").addEventListener("input", () => {
 });
 for (const id of ["sProviderBaseUrl", "sProviderKey", "sProviderRoute",
                   "sProviderPathSuffix", "sProviderResponseMode"]) {
-  $(id).addEventListener("change", () => { collectProviderFields(); });
+  $(id).addEventListener("change", () => { collectProviderFields(); updateResolvedUrlPreview(); });
+  // Also react while typing so the preview tracks the fields live.
+  $(id).addEventListener("input", () => { collectProviderFields(); updateResolvedUrlPreview(); });
 }
 
 $("sProviderAdd").addEventListener("click", () => {
