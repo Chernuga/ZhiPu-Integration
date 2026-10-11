@@ -4068,18 +4068,27 @@ async function runCompletion(conv) {
 
   // ---------------------------------------------------------------------------
   // Build the outgoing request:
-  //   [system] custom instructions, workspace protocol, prompt finish
+  //   [system] custom instructions + workspace protocol   (capable backends)
   //   ...conversation turns, ending with the user's message...
+  //
+  // The prompt finish is merged INTO the user's message rather than sent as a
+  // separate turn, and the reason is worth recording.
+  //
+  // A bridge that drives a single web chat page only transmits ONE message: it
+  // takes the last entry of the array as the turn to answer. Two attempts failed
+  // against it:
+  //   * appending the finish as a trailing system message made IT the last
+  //     entry, so the user's prompt was never sent and the model replied to the
+  //     instruction instead;
+  //   * folding it into a leading system message worked for the prompt, but the
+  //     system message was discarded entirely, so the instruction was ignored.
+  //
+  // Verified against the live bridge: "system + user" delivers only the user
+  // turn, while a single message carrying both is delivered intact and both
+  // parts are honoured. Merging therefore works on a single-message backend and
+  // is harmless on a full OpenAI-compatible one, where the instructions simply
+  // arrive inline instead of in a system role.
   // ---------------------------------------------------------------------------
-  //
-  // The prompt finish is folded into the LEADING system message rather than
-  // appended as a trailing one.
-  //
-  // Appending it made it the last entry in the array, and a backend that takes
-  // the final message as the turn to answer then replied to the finish
-  // instruction instead of the user's prompt - the prompt was never sent at all.
-  // Keeping the user's turn last avoids that, and the instruction still arrives
-  // as a system message, which is what it is.
   const outgoing = [];
 
   const sysParts = [];
@@ -4087,12 +4096,32 @@ async function runCompletion(conv) {
     sysParts.push(settings.customInstructions.trim());
   }
   sysParts.push(FILE_COMMANDS_INSTRUCTIONS);
-  if (settings.promptFinishEnabled && settings.promptFinish.trim()) {
-    sysParts.push(settings.promptFinish.trim());
-  }
   outgoing.push({ role: "system", content: sysParts.join("\n\n") });
 
   for (const m of conv.messages) outgoing.push(messageToApi(m));
+
+  // Merge the prompt finish into the final user turn.
+  //
+  // Placed at the END of the message so the actual request stays at the top,
+  // which is how a person would write it, and separated by a rule so the
+  // instruction is not mistaken for part of the prompt.
+  const finishText = settings.promptFinishEnabled ? settings.promptFinish.trim() : "";
+  if (finishText) {
+    for (let i = outgoing.length - 1; i >= 0; i--) {
+      const m = outgoing[i];
+      if (m.role !== "user") continue;
+
+      if (typeof m.content === "string") {
+        m.content = `${m.content}\n\n---\n\n${finishText}`;
+      } else if (Array.isArray(m.content)) {
+        // Multimodal turn: append to the text part so any images stay intact.
+        const textPart = m.content.find((p) => p && p.type === "text");
+        if (textPart) textPart.text = `${textPart.text || ""}\n\n---\n\n${finishText}`;
+        else m.content.unshift({ type: "text", text: finishText });
+      }
+      break;
+    }
+  }
 
   const assistantMsg = { role: "assistant", content: "", reasoning: "" };
   conv.messages.push(assistantMsg);
