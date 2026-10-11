@@ -4103,8 +4103,9 @@ async function runCompletion(conv) {
   // Merge the prompt finish into the final user turn.
   //
   // Placed at the END of the message so the actual request stays at the top,
-  // which is how a person would write it, and separated by a rule so the
-  // instruction is not mistaken for part of the prompt.
+  // which is how a person would write it. A blank line separates the two, with
+  // no horizontal rule: the rule read as a markdown divider and invited the
+  // model to treat the instruction as a separate document section.
   const finishText = settings.promptFinishEnabled ? settings.promptFinish.trim() : "";
   if (finishText) {
     for (let i = outgoing.length - 1; i >= 0; i--) {
@@ -4112,11 +4113,11 @@ async function runCompletion(conv) {
       if (m.role !== "user") continue;
 
       if (typeof m.content === "string") {
-        m.content = `${m.content}\n\n---\n\n${finishText}`;
+        m.content = `${m.content}\n\n${finishText}`;
       } else if (Array.isArray(m.content)) {
         // Multimodal turn: append to the text part so any images stay intact.
         const textPart = m.content.find((p) => p && p.type === "text");
-        if (textPart) textPart.text = `${textPart.text || ""}\n\n---\n\n${finishText}`;
+        if (textPart) textPart.text = `${textPart.text || ""}\n\n${finishText}`;
         else m.content.unshift({ type: "text", text: finishText });
       }
       break;
