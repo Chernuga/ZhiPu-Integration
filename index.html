@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -107,7 +106,13 @@
     --ds-warn-bg:         rgba(184, 132, 26, .12);
   }
 
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+  * {
+    box-sizing: border-box; margin: 0; padding: 0;
+    /* Kill the grey/blue flash Android and iOS paint over tapped elements.
+       Buttons already carry their own :hover/:active feedback. */
+    -webkit-tap-highlight-color: transparent;
+    tap-highlight-color: transparent;
+  }
   html { height: 100%; }
   body {
     font-family: var(--ds-font);
@@ -141,6 +146,12 @@
     border-right: 1px solid var(--ds-border-l1);
   }
   .sidebar.collapsed { margin-left: -260px; }
+  /* Suppresses the margin transition for the very first paint only. On mobile
+     the sidebar is collapsed by the boot script, and with the transition live
+     that write animated the panel sliding shut every time the page loaded.
+     The class is removed on the next frame, so user-initiated toggles still
+     animate normally. */
+  .sidebar.preload { transition: none; }
 
   .sidebar-header {
     display: flex; align-items: center; justify-content: space-between;
@@ -312,7 +323,11 @@
   .model-menu .m-empty { padding: 10px 12px; font-size: 13px; color: var(--text-muted); }
 
   /* ===== Messages ===== */
-  .messages { flex: 1; overflow-y: auto; padding: 0 24px; scroll-behavior: smooth; }
+  /* scroll-behavior was "smooth", which turned every scrollTop assignment into
+     an animation. Opening a conversation therefore showed the top of the
+     history and glided downward. Scrolling is now instant; the JS jumps
+     straight to the bottom before the first paint. */
+  .messages { flex: 1; overflow-y: auto; padding: 0 24px; }
   .messages-inner { max-width: 768px; margin: 0 auto; padding-bottom: 24px; }
 
   .empty-state {
@@ -783,6 +798,21 @@
   .fc-copy-one:hover { background: var(--hover); color: var(--text); }
   .fc-copy-one.success { color: var(--ds-success); border-color: var(--ds-success); }
 
+  /* The two copy buttons in the changes card swap their text label for a bare
+     SVG on click (see flashButton), but no size rule existed for that icon, so
+     it collapsed to nothing and the button looked inert. Sizing it here gives
+     the tick/cross a visible footprint, and the matching .failure rules colour
+     the cross the same red used elsewhere. */
+  .fc-copy-all svg,
+  .fc-copy-one svg {
+    width: 12px;
+    height: 12px;
+    display: inline-block;
+    vertical-align: -2px;
+  }
+  .fc-copy-all.failure { color: var(--ds-error); border-color: var(--ds-error); }
+  .fc-copy-one.failure { color: var(--ds-error); border-color: var(--ds-error); }
+
   .fc-body {
     padding: 0 14px 12px;
   }
@@ -928,14 +958,22 @@
 
   .settings-window {
     position: relative;
-    width: 100%;
-    height: 100%;
-    border-radius: 0;
+    width: 860px;
+    max-width: calc(100vw - 48px);
+    height: 680px;
+    height: min(680px, calc(100dvh - 48px));
+    border-radius: 16px;
     background: var(--ds-bg-layer-1);
+    border: 1px solid var(--ds-border-l2);
     box-shadow: var(--ds-shadow-lv3);
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    animation: settings-pop var(--ds-dur-slow) var(--ds-ease-out);
+  }
+  @keyframes settings-pop {
+    from { opacity: 0; transform: scale(.96) translateY(4px); }
+    to   { opacity: 1; transform: scale(1)   translateY(0);   }
   }
 
   .settings-title-row {
@@ -1390,20 +1428,39 @@
   .workspace-shell {
     position: fixed; inset: 0;
     z-index: 100;
-    background: var(--ds-bg-base);
     display: none;
-    flex-direction: column;
-    height: 100vh;
-    height: 100dvh;
+    align-items: center;
+    justify-content: center;
   }
   .workspace-shell.open { display: flex; }
+
+  .workspace-mask {
+    position: absolute; inset: 0;
+    background: rgba(0, 0, 0, .5);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
+
+  .workspace-window {
+    position: relative;
+    width: 1100px;
+    max-width: calc(100vw - 48px);
+    height: 740px;
+    height: min(740px, calc(100dvh - 48px));
+    border-radius: 16px;
+    background: var(--ds-bg-base);
+    border: 1px solid var(--ds-border-l2);
+    box-shadow: var(--ds-shadow-lv3);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: settings-pop var(--ds-dur-slow) var(--ds-ease-out);
+  }
 
   .workspace-layout {
     display: flex;
     flex: 1;
     min-height: 0;
-    max-width: 1280px;
-    margin: 0 auto;
     width: 100%;
   }
 
@@ -1470,6 +1527,40 @@
     text-overflow: ellipsis;
     min-width: 0;
   }
+
+  /* Folder rows in the workspace tree. Indentation is applied inline (14px per
+     level) so the same markup also works for arbitrary nesting depth. */
+  .workspace-folder-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 10px;
+    border-radius: 7px;
+    font-size: 13px;
+    color: var(--text-muted);
+    text-align: left;
+    font-family: var(--ds-font-code);
+    width: 100%;
+    transition: background var(--ds-dur) var(--ds-ease-in-out),
+                color var(--ds-dur) var(--ds-ease-in-out);
+  }
+  .workspace-folder-item:hover { background: var(--hover); color: var(--text); }
+  .ws-folder-chev {
+    width: 12px; height: 12px;
+    display: inline-flex;
+    flex-shrink: 0;
+    color: var(--text-dim);
+    transition: transform var(--ds-dur) var(--ds-ease-in-out);
+  }
+  .ws-folder-chev svg { width: 100%; height: 100%; display: block; }
+  .ws-folder-chev.open { transform: rotate(90deg); }
+  .ws-folder-name {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+  }
+  /* Keeps file rows aligned with folder rows (folder rows have a 12px chevron). */
+  .ws-file-spacer { width: 12px; flex-shrink: 0; }
 
   .workspace-sidebar-footer {
     padding: 10px 12px 14px;
@@ -1643,9 +1734,12 @@
     .msg-user-wrap { max-width: 88%; }
 
     .settings-window {
-      width: 100%;
-      height: 100dvh;
-      border-radius: 0;
+      width: calc(100vw - 24px);
+      max-width: 100%;
+      height: min(680px, calc(100dvh - 24px));
+      border-radius: 14px;
+      border: 1px solid var(--ds-border-l2);
+      animation: settings-pop var(--ds-dur-slow) var(--ds-ease-out);
     }
     .settings-title-row { padding: 18px 54px 0 16px; }
     .settings-close { top: 16px; right: 12px; }
@@ -1698,27 +1792,13 @@
       background: transparent;
     }
     .settings-nav-item svg { width: 20px; height: 20px; }
-    .settings-nav-item span {
-      font-size: 10.5px;
-      line-height: 1.15;
-      /* Long labels must not widen the row and force a scroll. */
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      max-width: 100%;
-    }
-    /* Active tab: tinted label plus an underline, since the icon alone is a
-       weaker signal at this size. */
-    .settings-nav-item.active { background: transparent; font-weight: 600; }
-    .settings-nav-item.active::after {
-      content: "";
-      position: absolute;
-      left: 18%;
-      right: 18%;
-      bottom: 2px;
-      height: 2px;
-      border-radius: 2px;
-      background: var(--accent, #4f46e5);
+    /* Labels are hidden on mobile: the icon strip stays compact and the section
+       name is already shown in the panel header below. */
+    .settings-nav-item span { display: none; }
+    /* Active tab is marked only by a tinted pill behind its icon. */
+    .settings-nav-item.active {
+      background: var(--active);
+      color: var(--text);
     }
 
     .settings-main {
@@ -1739,7 +1819,13 @@
        so the desktop layout is untouched. */
     .settings-back { display: none; }
 
-    /* Workspace mobile */
+    /* Workspace mobile: keep it a popup with 12px gutters, matching Settings. */
+    .workspace-window {
+      width: calc(100vw - 24px);
+      max-width: 100%;
+      height: min(720px, calc(100dvh - 24px));
+      border-radius: 14px;
+    }
     .workspace-sidebar {
       width: 100%;
       border-right: none;
@@ -1753,7 +1839,10 @@
 </head>
 <body>
 <div class="app">
-  <aside class="sidebar" id="sidebar">
+  <!-- `collapsed` ships in the markup so the mobile layout never paints with
+       the panel open. Desktop removes it on boot; `preload` keeps that removal
+       from animating. -->
+  <aside class="sidebar collapsed preload" id="sidebar">
     <div class="sidebar-header">
       <div class="logo"><div class="logo-mark">D</div><span>DeepSeek</span></div>
       <button class="icon-btn" id="collapseBtn" title="Close sidebar">
@@ -2070,6 +2159,15 @@
             </span>
           </label>
 
+          <label>Workspace commands</label>
+          <label class="checkrow" for="sShowToolCalls">
+            <input type="checkbox" id="sShowToolCalls">
+            <span class="check-body">
+              Show file commands as tool calls
+              <div class="check-desc">When checked, lines like <code>path/to/file.js create:</code> render as styled tool-call rows. When unchecked, the raw command text is shown instead.</div>
+            </span>
+          </label>
+
           <label for="sTypingSpeed">Typing animation speed</label>
           <select id="sTypingSpeed">
             <option value="default" selected>Default (adaptive)</option>
@@ -2130,6 +2228,8 @@
      Workspace fullscreen shell
      ============================================================================ -->
 <div class="workspace-shell" id="workspaceModal">
+  <div class="workspace-mask" id="workspaceMask"></div>
+  <div class="workspace-window">
   <div class="workspace-layout">
 
     <aside class="workspace-sidebar">
@@ -2193,6 +2293,7 @@
     </main>
 
   </div>
+  </div>
 </div>
 
 <script>
@@ -2202,6 +2303,11 @@
 const SETTINGS_KEY = "deepseek-ui-settings";
 const CONV_KEY = "deepseek-ui-conversations";
 const ACTIVE_KEY = "deepseek-ui-active";
+// Drafts are stored one per conversation, so switching chats keeps whatever was
+// being written in each. The pre-conversation composer (before the first
+// message creates a conversation) has its own slot under "__new__".
+const DRAFT_PREFIX  = "deepseek-ui-draft:";
+const DRAFT_NEW_KEY = DRAFT_PREFIX + "__new__";
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const MAX_TEXT_BYTES  = 512 * 1024;
@@ -2329,6 +2435,7 @@ const DEFAULT_SETTINGS = {
   retryMax: 2,
   typingSpeed: "default",
   model: "glm-5.3", models: DEFAULT_MODELS, theme: "dark", deepthink: false,
+  showToolCalls: true,
 };
 
 const SECTION_TITLES = {
@@ -2453,6 +2560,21 @@ function flashButton(btn, ok, originalHtml) {
 // =============================================================================
 const FILE_CMD_LINE_RE = /^[ \t]*([^\s`]+)[ \t]+(find|replace|create)[ \t]*:[ \t]*$/i;
 
+/**
+ * Canonicalise a workspace path.
+ *
+ * "/" and "\" are treated as the same separator, duplicate separators collapse,
+ * and leading/trailing ones are stripped. So "src\\utils/helper.js", "src\utils
+ * \helper.js" and "/src/utils/helper.js/" all resolve to "src/utils/helper.js"
+ * and land on the same key in `conv.files`.
+ */
+function normalizePath(p) {
+  return String(p)
+    .replace(/\\+/g, "/")
+    .replace(/\/+/g, "/")
+    .replace(/^\/+|\/+$/g, "");
+}
+
 function parseFileCommands(text) {
   const lines = text.split('\n');
   const ops = [];
@@ -2496,11 +2618,16 @@ function applyFileOps(files, ops) {
   let i = 0;
   while (i < ops.length) {
     const op = ops[i];
+    // Both separators describe the same file, so the command's raw path is
+    // canonicalised before it touches the store.
+    const file = normalizePath(op.file);
+    if (!file) { i++; continue; }
+
     if (op.kind === 'create') {
-      const existed = Object.prototype.hasOwnProperty.call(files, op.file);
-      files[op.file] = op.content;
+      const existed = Object.prototype.hasOwnProperty.call(files, file);
+      files[file] = op.content;
       changes.push({
-        file: op.file,
+        file,
         kind: existed ? 'overwrite' : 'create',
         after: op.content,
       });
@@ -2509,18 +2636,21 @@ function applyFileOps(files, ops) {
     }
     if (op.kind === 'find') {
       const next = ops[i + 1];
-      if (next && next.kind === 'replace' && next.file === op.file) {
-        const before = files[op.file];
+      // A "find" and a "replace" pair only matches when they name the same file
+      // once both paths have been normalised.
+      const nextFile = next ? normalizePath(next.file) : null;
+      if (next && next.kind === 'replace' && nextFile === file) {
+        const before = files[file];
         if (before == null) {
-          changes.push({ file: op.file, kind: 'missing' });
+          changes.push({ file, kind: 'missing' });
         } else {
           const idx = before.indexOf(op.content);
           if (idx < 0) {
-            changes.push({ file: op.file, kind: 'nomatch', find: op.content });
+            changes.push({ file, kind: 'nomatch', find: op.content });
           } else {
             const after = before.slice(0, idx) + next.content + before.slice(idx + op.content.length);
-            files[op.file] = after;
-            changes.push({ file: op.file, kind: 'edit', before, after });
+            files[file] = after;
+            changes.push({ file, kind: 'edit', before, after });
           }
         }
         i += 2;
@@ -2558,6 +2688,24 @@ function stripFileCommands(text) {
     i++;
   }
   return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+/**
+ * Text to actually render for an assistant turn.
+ *
+ * With "Show file commands as tool calls" enabled the raw content is shown and
+ * `decorateToolCalls` styles the marker lines. With it disabled the markers and
+ * their payload blocks are removed outright - the change is still summarised by
+ * the file-changes card under the message, so nothing is lost and the body
+ * reads as plain prose.
+ *
+ * Works mid-stream too: `stripFileCommands` runs to the end of the text when the
+ * closing fence has not yet arrived, so a create/update block stays hidden for
+ * the whole duration it is being streamed in.
+ */
+function contentForDisplay(text) {
+  const src = text || "";
+  return settings.showToolCalls === false ? stripFileCommands(src) : src;
 }
 
 // =============================================================================
@@ -2766,6 +2914,7 @@ function loadSettings() {
     merged.promptFinishEnabled = true;
   }
   if (typeof merged.promptFinish !== "string") merged.promptFinish = "";
+  if (typeof merged.showToolCalls !== "boolean") merged.showToolCalls = true;
   return merged;
 }
 
@@ -2816,7 +2965,19 @@ function loadConversations() {
     const raw = JSON.parse(localStorage.getItem(CONV_KEY) ?? "[]");
     if (!Array.isArray(raw)) return [];
     for (const c of raw) {
-      if (!c.files || typeof c.files !== "object") c.files = {};
+      if (!c.files || typeof c.files !== "object") {
+        c.files = {};
+        continue;
+      }
+      // Old saves may hold mixed separators ("src\\a.js" alongside "src/a.js").
+      // Rewrite every key through the canonical form so the tree sees one file
+      // per path; later keys win on a collision.
+      const next = {};
+      for (const k of Object.keys(c.files)) {
+        const norm = normalizePath(k);
+        if (norm) next[norm] = c.files[k];
+      }
+      c.files = next;
     }
     return raw;
   } catch { return []; }
@@ -2861,6 +3022,39 @@ function loadActiveId() { return localStorage.getItem(ACTIVE_KEY) || null; }
 function saveActiveId(id) {
   if (id) localStorage.setItem(ACTIVE_KEY, id);
   else localStorage.removeItem(ACTIVE_KEY);
+}
+
+// ---- Composer drafts (one per conversation) --------------------------------
+// Every keystroke is mirrored to localStorage so a reload, an accidental tab
+// close, or a conversation switch never loses what was being written. Each
+// conversation has its own slot; the pre-conversation composer writes under
+// "__new__". An empty box removes the slot rather than storing "".
+function draftKeyFor(id) {
+  return id ? DRAFT_PREFIX + id : DRAFT_NEW_KEY;
+}
+function saveDraft(text, id = activeId) {
+  try {
+    const k = draftKeyFor(id);
+    if (text) localStorage.setItem(k, text);
+    else localStorage.removeItem(k);
+  } catch { /* storage may be unavailable or full - the draft is disposable */ }
+}
+function loadDraft(id = activeId) {
+  try { return localStorage.getItem(draftKeyFor(id)) ?? ""; } catch { return ""; }
+}
+function clearDraft(id = activeId) {
+  try { localStorage.removeItem(draftKeyFor(id)); } catch { /* ignore */ }
+}
+/**
+ * Pull the active conversation's draft into the composer and resize the box to
+ * fit. Called on boot, on conversation switch, and after "New chat".
+ */
+function applyActiveDraft() {
+  const ta = $("input");
+  ta.value = loadDraft(activeId);
+  ta.style.height = "auto";
+  ta.style.height = Math.min(ta.scrollHeight, 220) + "px";
+  updateSendButton();
 }
 
 let settings = loadSettings();
@@ -2955,6 +3149,10 @@ function renderSidebar() {
         activeId = conversations[0]?.id ?? null;
         saveActiveId(activeId);
       }
+      // The conversation is gone, so its orphaned draft has no way back into
+      // the UI. Drop it instead of leaking one localStorage entry per deleted
+      // chat.
+      clearDraft(conv.id);
       saveConversations();
       renderSidebar();
       renderMessages();
@@ -2967,7 +3165,7 @@ function renderSidebar() {
       renderSidebar();
       renderMessages();
       updateWorkspaceBadge();
-      $("input").focus();
+      applyActiveDraft();
       closeSidebarOnMobile();
     });
     list.append(item);
@@ -3160,6 +3358,9 @@ function decorateCodeBlocks(container) {
 // "index.html find:") becomes a styled tool-call row with an icon and an
 // accent-coloured file name. Everything else is left untouched.
 function decorateToolCalls(container) {
+  // Honor the "Show file commands as tool calls" preference: when disabled the
+  // raw marker lines are left in place as ordinary paragraphs.
+  if (settings.showToolCalls === false) return;
   const paras = container.querySelectorAll("p");
   for (const p of paras) {
     const m = p.textContent.trim().match(FILE_CMD_LINE_RE);
@@ -3348,7 +3549,12 @@ function renderMessages() {
   for (let i = 0; i < conv.messages.length; i++) {
     inner.append(renderMessage(conv.messages[i], i));
   }
-  requestAnimationFrame(scrollToBottom);
+  // Scroll before the browser paints, so opening a conversation lands straight
+  // at the newest message instead of starting at the top and gliding down.
+  // The rAF is a second pass for late layout shifts (fonts, images).
+  const m = $("messages");
+  m.scrollTop = m.scrollHeight;
+  requestAnimationFrame(() => { m.scrollTop = m.scrollHeight; });
 }
 
 function emptyState() {
@@ -3417,7 +3623,7 @@ function renderMessage(msg, index) {
   }
 
   const content = el("div", { className: "content" });
-  content.innerHTML = renderMarkdown(msg.content || "");
+  content.innerHTML = renderMarkdown(contentForDisplay(msg.content));
   decorateCodeBlocks(content);
   decorateToolCalls(content);
   row.append(content);
@@ -4009,6 +4215,10 @@ async function send() {
     return;
   }
 
+  // Capture the draft owner before ensureActive(), which may promote the
+  // "scratch" state (activeId === null) to a real conversation id. The draft
+  // was written under whichever id was live while the user typed.
+  const draftOwner = activeId;
   const conv = ensureActive();
   const attachmentsForMessage = pendingAttachments.map((a) => ({ ...a }));
 
@@ -4017,6 +4227,12 @@ async function send() {
   pendingAttachments = [];
   renderPendingAttachments();
   updateSendButton();
+  // The prompt is now part of the conversation. Clear both slots - the pre-
+  // creation scratch entry and the conversation's own - so a sent prompt never
+  // resurfaces. They cannot both be populated, but the pair is cheap and covers
+  // either path.
+  clearDraft(draftOwner);
+  clearDraft(conv.id);
 
   await sendUserMessage(conv, text, attachmentsForMessage, true);
 }
@@ -4176,7 +4392,11 @@ async function runCompletion(conv) {
 
   const contentTypewriter = createTypewriter({
     render: (shown) => {
-      const html = shown ? renderMarkdown(balanceCodeFences(shown)) : "";
+      // Strip first, then balance: if a command block is mid-stream and still
+      // open, strip removes everything from its marker onwards, so the balanced
+      // text never contains a half-finished fence.
+      const visible = contentForDisplay(shown);
+      const html = visible ? renderMarkdown(balanceCodeFences(visible)) : "";
       contentEl.innerHTML = html + '<span class="cursor"></span>';
       decorateToolCalls(contentEl);
     },
@@ -4290,7 +4510,7 @@ async function runCompletion(conv) {
           assistantRow.append(buildReasoningBlock(assistantMsg.reasoning, { durationMs: reasoningMs }));
         }
         const c = el("div", { className: "content" });
-        c.innerHTML = renderMarkdown(assistantMsg.content || "");
+        c.innerHTML = renderMarkdown(contentForDisplay(assistantMsg.content));
         decorateCodeBlocks(c);
         decorateToolCalls(c);
         assistantRow.append(c);
@@ -4311,7 +4531,6 @@ async function runCompletion(conv) {
         }
 
         setSending(false);
-        $("input").focus();
       })();
     },
 
@@ -4369,6 +4588,9 @@ inputEl.addEventListener("input", () => {
   inputEl.style.height = "auto";
   inputEl.style.height = Math.min(inputEl.scrollHeight, 220) + "px";
   updateSendButton();
+  // Persist on every keystroke. Debouncing is not worth it here: a single
+  // string write per keypress is far cheaper than the re-render that follows.
+  saveDraft(inputEl.value);
 });
 
 // Send on Enter for keyboard/mouse users; on touch devices, Enter/Return on the
@@ -4414,6 +4636,10 @@ $("fileInput").addEventListener("change", async (e) => {
 // Sidebar / theme
 // =============================================================================
 $("newChatBtn").addEventListener("click", () => {
+  // Remember whether we were in the pre-conversation composer. If so, the text
+  // currently in the box belongs to nobody yet, and it moves into the new
+  // conversation so a click does not silently discard an in-progress prompt.
+  const wasActiveId = activeId;
   const conv = newConversation();
   conversations.unshift(conv);
   activeId = conv.id;
@@ -4423,7 +4649,11 @@ $("newChatBtn").addEventListener("click", () => {
   renderMessages();
   updateWorkspaceBadge();
   closeSidebarOnMobile();
-  $("input").focus();
+  if (!wasActiveId) {
+    const text = $("input").value;
+    if (text) saveDraft(text, conv.id);
+  }
+  applyActiveDraft();
 });
 $("collapseBtn").addEventListener("click", () => {
   $("sidebar").classList.add("collapsed");
@@ -4440,7 +4670,25 @@ function closeSidebarOnMobile() {
     $("backdrop").classList.remove("open");
   }
 }
-if (window.innerWidth <= 720) $("sidebar").classList.add("collapsed");
+// The sidebar now ships collapsed in the HTML, so mobile is already hidden on
+// the first paint. Desktop wants it open, so the class comes off here - and it
+// comes off *before* the first paint because this script runs at the end of
+// the body, synchronously, ahead of any layout the browser has committed.
+//
+// This replaces the old approach of adding `collapsed` from JS when the width
+// was <= 720. That ran after the browser had already painted the sidebar in
+// its default (open) state, so on slower loads or a warm HTTP cache there was
+// a visible flash of the panel before it snapped shut.
+if (window.innerWidth > 720) {
+  $("sidebar").classList.remove("collapsed");
+}
+
+// `preload` disables the margin transition for this setup pass. One frame is
+// enough for the browser to have committed the final state without animating;
+// afterwards user-initiated toggles slide as usual.
+requestAnimationFrame(() => {
+  $("sidebar").classList.remove("preload");
+});
 
 function applyTheme() { document.documentElement.setAttribute("data-theme", settings.theme); }
 
@@ -4555,6 +4803,7 @@ function populateSettingsFields() {
   $("sAccentHex").value = settings.accentHex || "";
   $("accentSwatch").style.background = settings.accentHex ? "#" + settings.accentHex : "";
   $("sReasoningExpanded").checked = !!settings.reasoningExpanded;
+  $("sShowToolCalls").checked = settings.showToolCalls !== false;
   $("sTypingSpeed").value = settings.typingSpeed || "default";
   $("sRetryEnabled").checked = !!settings.retryEnabled;
   $("sRetryMax").value = settings.retryMax;
@@ -4895,6 +5144,7 @@ function collectAllSettings() {
   settings.accentHex = norm || "";
 
   settings.reasoningExpanded = $("sReasoningExpanded").checked;
+  settings.showToolCalls = $("sShowToolCalls").checked;
   const speedVal = $("sTypingSpeed").value;
   settings.typingSpeed = TYPING_SPEEDS[speedVal] !== undefined ? speedVal : "default";
   settings.retryEnabled = $("sRetryEnabled").checked;
@@ -4922,6 +5172,7 @@ $("settingsSave").addEventListener("click", () => {
   syncThemeSegmented();
 
   renderModelMenu();
+  // Re-render so the tool-call toggle takes effect on already-drawn messages.
   renderMessages();
   themeAtOpen = null;
   closeSettings();
@@ -4940,7 +5191,7 @@ for (const id of ["sCustomInstructions", "sPromptFinish", "sAccentHex",
   $(id).addEventListener("blur", collectAllSettings);
 }
 for (const id of ["sCustomInstructionsEnabled", "sPromptFinishEnabled",
-                  "sReasoningExpanded", "sRetryEnabled", "sTypingSpeed"]) {
+                  "sReasoningExpanded", "sShowToolCalls", "sRetryEnabled", "sTypingSpeed"]) {
   $(id).addEventListener("change", collectAllSettings);
 }
 
@@ -4963,12 +5214,93 @@ function updateWorkspaceBadge() {
   badge.style.display = Object.keys(files).length > 0 ? "block" : "none";
 }
 
+/** Folders the user has explicitly collapsed. Everything else renders open. */
+const collapsedFolders = new Set();
+
+/**
+ * Group flat file keys ("src/utils/helper.js") into a folder tree.
+ *
+ * Every input key is already canonical (see normalizePath), so splitting on "/"
+ * is safe. Files keep their original key as `full` so selection passes back the
+ * exact string stored in `conv.files`.
+ */
+function buildFileTree(names) {
+  const root = { folders: new Map(), files: [] };
+  for (const raw of names) {
+    const norm = normalizePath(raw);
+    if (!norm) continue;
+    const parts = norm.split("/");
+    let node = root;
+    for (let i = 0; i < parts.length - 1; i++) {
+      const part = parts[i];
+      if (!node.folders.has(part)) {
+        node.folders.set(part, { folders: new Map(), files: [] });
+      }
+      node = node.folders.get(part);
+    }
+    node.files.push({ name: parts[parts.length - 1], full: raw });
+  }
+  return root;
+}
+
+/**
+ * Emit one folder/file level into `container`. Folder children are appended to
+ * the same container and offset with inline padding, so an arbitrary nesting
+ * depth costs no extra wrappers and the flat scroll list stays intact.
+ */
+function renderTreeNode(container, node, depth, prefix) {
+  const indent = 10 + depth * 14;
+  const sort = (a, b) => a.localeCompare(b, undefined, { sensitivity: "base" });
+
+  const folderNames = [...node.folders.keys()].sort(sort);
+  for (const folderName of folderNames) {
+    const fullPath = prefix ? `${prefix}/${folderName}` : folderName;
+    const isOpen = !collapsedFolders.has(fullPath);
+
+    const row = el("button", {
+      type: "button",
+      className: "workspace-folder-item",
+      title: fullPath,
+    });
+    row.style.paddingLeft = `${indent}px`;
+
+    const chev = el("span", { className: "ws-folder-chev" + (isOpen ? " open" : "") });
+    chev.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>`;
+    row.append(chev);
+    row.append(el("span", { className: "ws-folder-name", textContent: folderName }));
+
+    row.addEventListener("click", () => {
+      if (collapsedFolders.has(fullPath)) collapsedFolders.delete(fullPath);
+      else collapsedFolders.add(fullPath);
+      renderWorkspaceFileList();
+    });
+    container.append(row);
+
+    if (isOpen) renderTreeNode(container, node.folders.get(folderName), depth + 1, fullPath);
+  }
+
+  const sortedFiles = node.files.slice().sort((a, b) => sort(a.name, b.name));
+  for (const f of sortedFiles) {
+    const item = el("button", {
+      type: "button",
+      className: "workspace-file-item" + (f.full === workspaceActiveFile ? " active" : ""),
+      title: f.full,
+    });
+    item.style.paddingLeft = `${indent}px`;
+    // Spacer keeps files aligned with the label of a folder row above them.
+    item.append(el("span", { className: "ws-file-spacer" }));
+    item.append(el("span", { className: "ws-file-name", textContent: f.name }));
+    item.addEventListener("click", () => selectWorkspaceFile(f.full));
+    container.append(item);
+  }
+}
+
 function renderWorkspaceFileList() {
   const list = $("workspaceFileList");
   list.innerHTML = "";
   const conv = getActive();
   const files = conv?.files || {};
-  const names = Object.keys(files).sort();
+  const names = Object.keys(files);
   if (!names.length) {
     list.append(el("div", {
       className: "workspace-empty",
@@ -4976,16 +5308,7 @@ function renderWorkspaceFileList() {
     }));
     return;
   }
-  for (const name of names) {
-    const item = el("button", {
-      type: "button",
-      className: "workspace-file-item" + (name === workspaceActiveFile ? " active" : ""),
-      title: name,
-    });
-    item.append(el("span", { className: "ws-file-name", textContent: name }));
-    item.addEventListener("click", () => selectWorkspaceFile(name));
-    list.append(item);
-  }
+  renderTreeNode(list, buildFileTree(names), 0, "");
 }
 
 function selectWorkspaceFile(name) {
@@ -5047,6 +5370,16 @@ function openWorkspaceToFile(name) {
 }
 
 function closeWorkspace() {
+  // Commit any in-progress rename before the modal hides.
+  //
+  // renameWorkspaceFile is driven by `blur`, and hiding an element with
+  // `display: none` does not fire a blur event in any browser - so a typed-
+  // but-uncommitted rename was silently dropped whenever the workspace was
+  // closed via the X, Escape, or the backdrop, instead of committing the way
+  // an ordinary focus loss would.
+  if (document.activeElement === $("workspaceFileName")) {
+    $("workspaceFileName").blur();
+  }
   $("workspaceModal").classList.remove("open");
   $("workspaceModal").classList.remove("show-panel");
 }
@@ -5054,6 +5387,7 @@ function closeWorkspace() {
 $("workspaceBtn").addEventListener("click", openWorkspace);
 $("workspaceNavCloseBtn").addEventListener("click", closeWorkspace);
 $("workspaceCloseBtn").addEventListener("click", closeWorkspace);
+$("workspaceMask").addEventListener("click", closeWorkspace);
 $("workspaceBack").addEventListener("click", () => {
   $("workspaceModal").classList.remove("show-panel");
 });
@@ -5109,7 +5443,9 @@ function renameWorkspaceFile() {
   const conv = getActive();
   if (!conv || !workspaceActiveFile) return;
   const input = $("workspaceFileName");
-  const newName = input.value.trim();
+  // Normalise on rename too, so "src\\a.js" and "src/a.js" cannot become two
+  // separate keys for the same file.
+  const newName = normalizePath(input.value.trim());
 
   if (!newName || newName === workspaceActiveFile) {
     input.value = workspaceActiveFile;
@@ -5184,9 +5520,13 @@ if (activeId && !conversations.find((c) => c.id === activeId)) {
 
 renderSidebar();
 renderMessages();
-updateSendButton();
+// Restore the active conversation's draft (or the scratch one, if no
+// conversation is open). applyActiveDraft also calls updateSendButton, so the
+// arrow lights up on a restored prompt. The composer is intentionally not
+// focused: on touch devices that pops the on-screen keyboard unprompted, and
+// the user asked to open it themselves.
+applyActiveDraft();
 updateWorkspaceBadge();
-inputEl.focus();
 
 window.addEventListener("beforeunload", (e) => {
   if (streamingAbort) { e.preventDefault(); e.returnValue = ""; }
