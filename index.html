@@ -246,9 +246,22 @@
     display: grid; place-items: center;
     color: var(--text-muted);
     flex-shrink: 0;
+    /* pointer-events is tied to visibility so the button is never a click
+       target while it is invisible. Without this, tapping the empty space on
+       the right of a conversation row on mobile hit an invisible button and
+       deleted the chat. Taps pass through to the row instead. */
+    pointer-events: none;
     transition: opacity .12s, background .12s;
   }
-  .conv-item:hover .conv-delete { opacity: 1; }
+  /* Reveal on hover, matching the code-copy button. On mobile, tapping the row
+     applies the same sticky :hover state, so one tap reveals the button and a
+     second tap on it deletes. Also reveal on focus-within so keyboard users
+     can Tab to the button and see it. */
+  .conv-item:hover .conv-delete,
+  .conv-item:focus-within .conv-delete {
+    opacity: 1;
+    pointer-events: auto;
+  }
   .conv-delete:hover { background: var(--active); color: var(--text); }
   .conv-delete svg { width: 14px; height: 14px; }
 
@@ -1707,6 +1720,61 @@
     line-height: 1.6;
   }
 
+  /* ===== Confirmation dialog ===== */
+  .dialog-shell {
+    position: fixed; inset: 0;
+    z-index: 300;
+    display: none;
+    align-items: center;
+    justify-content: center;
+  }
+  .dialog-shell.open { display: flex; }
+
+  .dialog-mask {
+    position: absolute; inset: 0;
+    background: rgba(0, 0, 0, .5);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
+
+  .dialog-window {
+    position: relative;
+    width: 400px;
+    max-width: calc(100vw - 48px);
+    padding: 22px 22px 16px;
+    border-radius: 14px;
+    background: var(--ds-bg-layer-2);
+    border: 1px solid var(--ds-border-l2);
+    box-shadow: var(--ds-shadow-lv3);
+    animation: settings-pop var(--ds-dur) var(--ds-ease-out);
+  }
+
+  .dialog-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 8px;
+  }
+
+  .dialog-message {
+    font-size: 13.5px;
+    line-height: 1.55;
+    color: var(--text-muted);
+    margin-bottom: 18px;
+    word-break: break-word;
+  }
+
+  .dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  /* Danger variant of the primary button, used by destructive confirmations
+     (delete chat, delete file, stop response). */
+  .btn-primary.danger { background: var(--ds-error); }
+  .btn-primary.danger:hover { background: #ff5252; }
+
   /* ===== Mobile ===== */
   .backdrop {
     position: fixed; inset: 0;
@@ -2296,6 +2364,21 @@
   </div>
 </div>
 
+<!-- ============================================================================
+     Confirmation dialog
+     ============================================================================ -->
+<div class="dialog-shell" id="dialogModal">
+  <div class="dialog-mask" id="dialogMask"></div>
+  <div class="dialog-window" role="dialog" aria-modal="true" aria-labelledby="dialogTitle">
+    <div class="dialog-title" id="dialogTitle">Confirm</div>
+    <div class="dialog-message" id="dialogMessage"></div>
+    <div class="dialog-actions">
+      <button type="button" class="btn-secondary" id="dialogCancel">Cancel</button>
+      <button type="button" class="btn-primary" id="dialogConfirm">Confirm</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // =============================================================================
 // Constants & state
@@ -2436,6 +2519,10 @@ const DEFAULT_SETTINGS = {
   typingSpeed: "default",
   model: "glm-5.3", models: DEFAULT_MODELS, theme: "dark", deepthink: false,
   showToolCalls: true,
+  // UI state that should survive a reload.
+  sidebarCollapsed: false,
+  settingsSection: "appearance",
+  workspaceCollapsedFolders: [],
 };
 
 const SECTION_TITLES = {
@@ -2915,6 +3002,13 @@ function loadSettings() {
   }
   if (typeof merged.promptFinish !== "string") merged.promptFinish = "";
   if (typeof merged.showToolCalls !== "boolean") merged.showToolCalls = true;
+  if (typeof merged.sidebarCollapsed !== "boolean") merged.sidebarCollapsed = false;
+  if (typeof merged.settingsSection !== "string" || !SECTION_TITLES[merged.settingsSection]) {
+    merged.settingsSection = "appearance";
+  }
+  if (!Array.isArray(merged.workspaceCollapsedFolders)) {
+    merged.workspaceCollapsedFolders = [];
+  }
   return merged;
 }
 
@@ -3049,12 +3143,44 @@ function clearDraft(id = activeId) {
  * Pull the active conversation's draft into the composer and resize the box to
  * fit. Called on boot, on conversation switch, and after "New chat".
  */
+/**
+ * Resize the composer to fit its contents.
+ *
+ * `scrollHeight` is only meaningful once the browser has laid out the current
+ * value at the current width and font, and both can still be in flux during
+ * boot (a webfont swapping in, a mobile URL bar collapsing). A stale
+ * measurement leaves the box stuck at whatever height was read at that
+ * moment - which is why it sometimes appeared pre-expanded until the first
+ * keystroke forced a fresh read.
+ */
+function resizeInput() {
+  const ta = $("input");
+  ta.style.height = "auto";
+  ta.style.height = Math.min(ta.scrollHeight, 220) + "px";
+}
+
+/**
+ * Re-run resizeInput once layout has settled, then again after fonts load.
+ *
+ * The rAF handles the immediate post-boot layout shift; document.fonts.ready
+ * handles the later swap from the fallback font to the real one, which can
+ * change the line count of a saved draft and therefore its correct height.
+ */
+function scheduleInputResize() {
+  requestAnimationFrame(() => {
+    resizeInput();
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(() => resizeInput());
+    }
+  });
+}
+
 function applyActiveDraft() {
   const ta = $("input");
   ta.value = loadDraft(activeId);
-  ta.style.height = "auto";
-  ta.style.height = Math.min(ta.scrollHeight, 220) + "px";
+  resizeInput();
   updateSendButton();
+  scheduleInputResize();
 }
 
 let settings = loadSettings();
@@ -3141,9 +3267,16 @@ function renderSidebar() {
     item.append(el("span", { className: "conv-title", textContent: conv.title }));
     const del = el("button", { className: "conv-delete", title: "Delete" });
     del.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>`;
-    del.addEventListener("click", (e) => {
+    del.addEventListener("click", async (e) => {
       e.stopPropagation();
-      if (!confirm(`Delete "${conv.title}"?`)) return;
+      const ok = await showConfirm({
+        title: "Delete conversation?",
+        message: `"${conv.title}" and its workspace files will be removed permanently.`,
+        confirmLabel: "Delete",
+        cancelLabel: "Cancel",
+        danger: true,
+      });
+      if (!ok) return;
       conversations = conversations.filter((c) => c.id !== conv.id);
       if (activeId === conv.id) {
         activeId = conversations[0]?.id ?? null;
@@ -4176,18 +4309,41 @@ async function streamWithRetry({ messages, model, thinking, onDelta, onRetry, on
 // =============================================================================
 // Send
 // =============================================================================
+/** Timer that unlocks the stop button a couple of seconds after sending. */
+let stopUnlockTimer = null;
+
 function setSending(sending) {
   const btn = $("sendBtn");
   const ta = $("input");
   const attach = $("attachBtn");
   if (sending) {
     btn.classList.add("stopping");
-    btn.disabled = false;
-    btn.title = "Stop";
+    // The stop button starts disabled so a stray click cannot kill a request
+    // that has not even reached the server yet. It unlocks after two seconds,
+    // which is long enough for the first byte to arrive in the common case and
+    // short enough that a genuinely stuck request is still cancellable.
+    btn.disabled = true;
+    btn.title = "Stop (available in a moment)";
     btn.innerHTML = STOP_ICON;
     ta.disabled = true;
     attach.disabled = true;
+
+    if (stopUnlockTimer) clearTimeout(stopUnlockTimer);
+    stopUnlockTimer = setTimeout(() => {
+      stopUnlockTimer = null;
+      // Only re-enable if we are still in the sending state - the stream may
+      // have already finished, in which case setSending(false) ran and cleared
+      // this timer for us.
+      if (btn.classList.contains("stopping")) {
+        btn.disabled = false;
+        btn.title = "Stop";
+      }
+    }, 2000);
   } else {
+    if (stopUnlockTimer) {
+      clearTimeout(stopUnlockTimer);
+      stopUnlockTimer = null;
+    }
     btn.classList.remove("stopping");
     btn.title = "Send";
     btn.innerHTML = SEND_ICON;
@@ -4223,7 +4379,7 @@ async function send() {
   const attachmentsForMessage = pendingAttachments.map((a) => ({ ...a }));
 
   ta.value = "";
-  ta.style.height = "auto";
+  resizeInput();
   pendingAttachments = [];
   renderPendingAttachments();
   updateSendButton();
@@ -4585,13 +4741,17 @@ async function regenerateFrom(index) {
 // =============================================================================
 const inputEl = $("input");
 inputEl.addEventListener("input", () => {
-  inputEl.style.height = "auto";
-  inputEl.style.height = Math.min(inputEl.scrollHeight, 220) + "px";
+  resizeInput();
   updateSendButton();
   // Persist on every keystroke. Debouncing is not worth it here: a single
   // string write per keypress is far cheaper than the re-render that follows.
   saveDraft(inputEl.value);
 });
+
+// A width change (orientation flip, mobile URL bar, window resize) can re-wrap
+// the current draft and leave the height stale. Re-measure on the next frame,
+// where rAF doubles as a light debounce against rapid resize events.
+window.addEventListener("resize", () => requestAnimationFrame(resizeInput));
 
 // Send on Enter for keyboard/mouse users; on touch devices, Enter/Return on the
 // on-screen keyboard inserts a newline and the user taps the send button.
@@ -4605,9 +4765,25 @@ inputEl.addEventListener("keydown", (e) => {
   }
 });
 
-$("sendBtn").addEventListener("click", () => {
+$("sendBtn").addEventListener("click", async () => {
   const btn = $("sendBtn");
   if (btn.classList.contains("stopping")) {
+    // Confirm before aborting. Stopping is destructive to the current turn -
+    // the model's reply is discarded mid-sentence - and a mis-tap on a phone
+    // is easy while the button is prominently placed.
+    //
+    // The stream may also have finished between the click and the confirmation
+    // (a short reply on a fast connection), in which case streamingAbort is
+    // already null and the guards below are no-ops.
+    const ok = await showConfirm({
+      title: "Stop response?",
+      message: "The reply will stop generating. Whatever has already arrived stays in the conversation.",
+      confirmLabel: "Stop",
+      cancelLabel: "Keep going",
+      danger: true,
+    });
+    if (!ok) return;
+
     if (streamingAbort) streamingAbort.abort();
     if (activeTypewriters) {
       activeTypewriters.reasoning.flush();
@@ -4657,10 +4833,20 @@ $("newChatBtn").addEventListener("click", () => {
 });
 $("collapseBtn").addEventListener("click", () => {
   $("sidebar").classList.add("collapsed");
+  // Only the desktop collapse is a preference worth remembering; on mobile
+  // the panel is collapsed by default and opening it is a temporary peek.
+  if (window.innerWidth > 720) {
+    settings.sidebarCollapsed = true;
+    saveSettings();
+  }
   closeSidebarOnMobile();
 });
 $("menuBtn").addEventListener("click", () => {
   $("sidebar").classList.remove("collapsed");
+  if (window.innerWidth > 720) {
+    settings.sidebarCollapsed = false;
+    saveSettings();
+  }
   if (window.innerWidth <= 720) $("backdrop").classList.add("open");
 });
 $("backdrop").addEventListener("click", closeSidebarOnMobile);
@@ -4679,7 +4865,7 @@ function closeSidebarOnMobile() {
 // was <= 720. That ran after the browser had already painted the sidebar in
 // its default (open) state, so on slower loads or a warm HTTP cache there was
 // a visible flash of the panel before it snapped shut.
-if (window.innerWidth > 720) {
+if (window.innerWidth > 720 && !settings.sidebarCollapsed) {
   $("sidebar").classList.remove("collapsed");
 }
 
@@ -4775,10 +4961,60 @@ $("accentResetBtn").addEventListener("click", () => {
 });
 
 // =============================================================================
+// Confirmation dialog
+// =============================================================================
+// A replacement for window.confirm(). Native confirm() is synchronous and
+// blocking, which pauses the streaming typewriter and can freeze the page on
+// some browsers while a request is in flight. This one is async: it returns a
+// Promise<boolean> the caller awaits, and the dialog is a normal DOM element
+// the rest of the UI keeps rendering behind.
+//
+// Clicking the mask, pressing Escape, or hitting Cancel all resolve to false;
+// only the confirm button resolves to true. The cancel button is focused by
+// default so a stray Enter on a destructive action is the safe outcome.
+let dialogResolver = null;
+
+function showConfirm({ title, message, confirmLabel, cancelLabel, danger } = {}) {
+  return new Promise((resolve) => {
+    dialogResolver = resolve;
+    $("dialogTitle").textContent = title || "Confirm";
+    $("dialogMessage").textContent = message || "";
+    $("dialogConfirm").textContent = confirmLabel || "Confirm";
+    $("dialogCancel").textContent = cancelLabel || "Cancel";
+    $("dialogConfirm").classList.toggle("danger", !!danger);
+    $("dialogModal").classList.add("open");
+    requestAnimationFrame(() => $("dialogCancel").focus());
+  });
+}
+
+function closeDialog(result) {
+  $("dialogModal").classList.remove("open");
+  if (dialogResolver) {
+    const r = dialogResolver;
+    dialogResolver = null;
+    r(result);
+  }
+}
+
+$("dialogConfirm").addEventListener("click", () => closeDialog(true));
+$("dialogCancel").addEventListener("click", () => closeDialog(false));
+$("dialogMask").addEventListener("click", () => closeDialog(false));
+
+// Stop the dialog's Escape from also closing a settings or workspace shell
+// that might be open behind it. This listener is registered before theirs, so
+// stopImmediatePropagation wins the race on `document`.
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && $("dialogModal").classList.contains("open")) {
+    e.stopImmediatePropagation();
+    closeDialog(false);
+  }
+});
+
+// =============================================================================
 // Settings shell
 // =============================================================================
 let themeAtOpen = null;
-let currentSection = "appearance";
+let currentSection = settings.settingsSection || "appearance";
 
 function syncCustomInstructionsDisabledState() {
   const enabled = $("sCustomInstructionsEnabled").checked;
@@ -5055,6 +5291,12 @@ function selectSection(section) {
   if (!SECTION_TITLES[section]) section = "appearance";
   currentSection = section;
 
+  // Remember which panel was open, so reopening Settings lands on it.
+  if (settings.settingsSection !== section) {
+    settings.settingsSection = section;
+    saveSettings();
+  }
+
   for (const btn of document.querySelectorAll(".settings-nav-item")) {
     btn.classList.toggle("active", btn.dataset.section === section);
   }
@@ -5082,8 +5324,9 @@ function openSettings() {
   themeAtOpen = settings.theme;
   syncThemeSegmented();
   // Always open on a section with its panel visible: the tabs sit above it, so
-  // there is nothing to drill into first.
-  selectSection(currentSection || "appearance");
+  // there is nothing to drill into first. Prefer the section last viewed.
+  currentSection = settings.settingsSection || currentSection || "appearance";
+  selectSection(currentSection);
   $("settingsModal").classList.add("open");
 }
 
@@ -5214,8 +5457,11 @@ function updateWorkspaceBadge() {
   badge.style.display = Object.keys(files).length > 0 ? "block" : "none";
 }
 
-/** Folders the user has explicitly collapsed. Everything else renders open. */
-const collapsedFolders = new Set();
+/** Folders the user has explicitly collapsed. Everything else renders open.
+ *  Loaded from persisted settings so the tree reopens in the same shape. */
+const collapsedFolders = new Set(
+  Array.isArray(settings.workspaceCollapsedFolders) ? settings.workspaceCollapsedFolders : []
+);
 
 /**
  * Group flat file keys ("src/utils/helper.js") into a folder tree.
@@ -5272,6 +5518,8 @@ function renderTreeNode(container, node, depth, prefix) {
     row.addEventListener("click", () => {
       if (collapsedFolders.has(fullPath)) collapsedFolders.delete(fullPath);
       else collapsedFolders.add(fullPath);
+      settings.workspaceCollapsedFolders = [...collapsedFolders];
+      saveSettings();
       renderWorkspaceFileList();
     });
     container.append(row);
@@ -5318,6 +5566,13 @@ function selectWorkspaceFile(name) {
 
   const hasFile = !!name && files[name] != null;
 
+  // Remember the last-viewed file for this conversation so reopening the
+  // workspace lands on it. Only store a name that actually exists.
+  if (conv && hasFile && conv.activeFile !== name) {
+    conv.activeFile = name;
+    saveConversations();
+  }
+
   $("workspaceFileName").value = hasFile ? name : "";
   $("workspaceFileName").disabled = !hasFile;
   $("workspaceFileContent").value = hasFile ? files[name] : "";
@@ -5347,8 +5602,12 @@ function openWorkspace() {
   const conv = ensureActive();
   const names = Object.keys(conv.files || {}).sort();
 
+  // Prefer the file this conversation was last viewing, but only when it
+  // still exists; otherwise fall back to the first file in the list.
   if (!workspaceActiveFile || !conv.files[workspaceActiveFile]) {
-    workspaceActiveFile = names[0] || null;
+    workspaceActiveFile = (conv.activeFile && conv.files[conv.activeFile] != null)
+      ? conv.activeFile
+      : (names[0] || null);
   }
 
   renderWorkspaceFileList();
@@ -5370,16 +5629,6 @@ function openWorkspaceToFile(name) {
 }
 
 function closeWorkspace() {
-  // Commit any in-progress rename before the modal hides.
-  //
-  // renameWorkspaceFile is driven by `blur`, and hiding an element with
-  // `display: none` does not fire a blur event in any browser - so a typed-
-  // but-uncommitted rename was silently dropped whenever the workspace was
-  // closed via the X, Escape, or the backdrop, instead of committing the way
-  // an ordinary focus loss would.
-  if (document.activeElement === $("workspaceFileName")) {
-    $("workspaceFileName").blur();
-  }
   $("workspaceModal").classList.remove("open");
   $("workspaceModal").classList.remove("show-panel");
 }
@@ -5483,10 +5732,17 @@ $("workspaceCopyBtn").addEventListener("click", async () => {
   }, 1400);
 });
 
-$("workspaceDeleteBtn").addEventListener("click", () => {
+$("workspaceDeleteBtn").addEventListener("click", async () => {
   const conv = getActive();
   if (!conv || !workspaceActiveFile) return;
-  if (!confirm(`Delete "${workspaceActiveFile}"?`)) return;
+  const ok = await showConfirm({
+    title: "Delete file?",
+    message: `"${workspaceActiveFile}" will be removed from this workspace.`,
+    confirmLabel: "Delete",
+    cancelLabel: "Cancel",
+    danger: true,
+  });
+  if (!ok) return;
   delete conv.files[workspaceActiveFile];
   workspaceActiveFile = null;
   conv.updatedAt = Date.now();
@@ -5529,6 +5785,12 @@ applyActiveDraft();
 updateWorkspaceBadge();
 
 window.addEventListener("beforeunload", (e) => {
+  // Final synchronous write of everything in-memory. Individual handlers
+  // already persist their own edits, but this closes the gap if any event
+  // was missed or a value was set without firing one.
+  try { saveSettings(); } catch { /* storage may be unavailable */ }
+  try { saveConversations(); } catch { /* quota / private mode */ }
+  try { saveDraft($("input").value, activeId); } catch { /* best effort */ }
   if (streamingAbort) { e.preventDefault(); e.returnValue = ""; }
 });
 </script>
