@@ -2607,7 +2607,16 @@ const DEFAULT_PROVIDERS = [
     route: "coding",
     modelsPath: "/models",
     note: "Goes through the CORS relay worker, which adds the headers a browser needs. Paste your z.ai key.",
-    models: DEFAULT_MODELS.slice(),
+    // Ordered with the free model first. On a key with no balance only
+    // glm-4.5-flash answers; the paid models return "Insufficient balance or no
+    // resource package" (1113), and glm-4-flash does not exist (1211). Listing a
+    // working model first means the default selection actually runs.
+    models: [
+      { id: "glm-4.5-flash", label: "GLM-4.5-Flash (free)", desc: "Free tier; works without credit" },
+      { id: "glm-4.5-air", label: "GLM-4.5-Air", desc: "Requires credit" },
+      { id: "glm-4.5", label: "GLM-4.5", desc: "Requires credit" },
+      { id: "glm-4.6", label: "GLM-4.6", desc: "Requires credit" },
+    ],
   },
   {
     id: "zai",
@@ -2710,6 +2719,10 @@ function migrateProviders(providers) {
       baseUrl: relay.baseUrl,
       route: relay.route,
       note: relay.note,
+      // Adopt the relay's model list, which leads with the free model. A saved
+      // list would otherwise keep defaulting to a paid model that this kind of
+      // key cannot call.
+      models: relay.models,
     };
   });
 
