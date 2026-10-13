@@ -569,6 +569,41 @@
      a copy at a glance. */
   .msg-action-danger:hover { background: rgba(229, 83, 75, .14); color: var(--ds-error); }
 
+  /* Truncation warning. Amber rather than red: the answer is incomplete, not
+     broken, and the rest is one button away on the DeepSeek tab. */
+  .truncation-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin: 10px 0 4px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid rgba(224, 163, 58, .45);
+    background: rgba(224, 163, 58, .10);
+    max-width: 760px;
+  }
+  .tn-icon { color: #e0a33a; flex-shrink: 0; line-height: 0; margin-top: 1px; }
+  .tn-icon svg { width: 16px; height: 16px; }
+  .tn-text {
+    flex: 1;
+    min-width: 0;
+    font-size: 12.5px;
+    line-height: 1.45;
+    color: var(--text-muted);
+  }
+  .tn-text strong { color: #e0a33a; font-weight: 600; }
+  .tn-btn {
+    flex-shrink: 0;
+    padding: 4px 10px;
+    border-radius: 6px;
+    border: 1px solid rgba(224, 163, 58, .5);
+    background: transparent;
+    color: #e0a33a;
+    font-size: 11.5px;
+    font-weight: 500;
+  }
+  .tn-btn:hover { background: rgba(224, 163, 58, .16); }
+
   /* ===== Reasoning block ===== */
   .reasoning-block {
     margin: 0 0 14px;
@@ -2085,6 +2120,18 @@
             </button>
             <input type="file" id="fileInput" multiple hidden
               accept="image/*,text/*,.md,.json,.js,.ts,.jsx,.tsx,.py,.rb,.go,.rs,.java,.c,.cpp,.h,.sh,.yml,.yaml,.toml,.xml,.csv,.log,.html,.css,.sql,.php,.pl,.lua,.r,.swift,.kt" />
+
+            <!-- Recover the last reply from the page, for when a request failed
+                 but an answer was actually produced. The bridge reads the newest
+                 assistant message and hands it back as a normal response, so a
+                 network failure does not cost another generation. -->
+            <button class="icon-btn" id="fetchLastBtn" title="Fetch the last response from the page" hidden>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M8 1.5a6.5 6.5 0 1 1-6.23 4.64.75.75 0 1 1 1.45-.38A5 5 0 1 0 8 3h-.02l1.02 1.02a.75.75 0 1 1-1.06 1.06L5.47 2.61a.75.75 0 0 1 0-1.06L7.94-.02" fill="currentColor" transform="translate(0,1.6)"/>
+                <path d="M8 1.75a6.25 6.25 0 1 0 6.25 6.25.75.75 0 1 1 1.5 0A7.75 7.75 0 1 1 8 .25a.75.75 0 0 1 0 1.5" fill="currentColor"/>
+                <path d="M4.2 5.4 2 3.2l2.2-2.2" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
           </div>
           <button class="send-btn" id="sendBtn" disabled aria-label="Send">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8.3125 0.980206C8.66767 1.05312 8.97902 1.2042 9.2627 1.43235C9.48724 1.613 9.73029 1.85795 9.97949 2.10716L14.707 6.8347L13.293 8.24876L9 3.95579V15.0417H7V3.95579L2.70703 8.24876L1.29297 6.8347L6.02051 2.10716C6.26971 1.85795 6.51277 1.613 6.7373 1.43235C6.97662 1.23988 7.28445 1.04404 7.6875 0.980206C7.8973 0.947029 8.1031 0.955183 8.3125 0.980206Z" fill="currentColor"></path></svg>
@@ -2719,6 +2766,9 @@ const SEND_ICON = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" x
 
 /** Delete a message. Used on both the user and assistant action bars. */
 const TRASH_ICON = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6.5 1.5c-.4 0-.75.25-.9.6l-.25.6H2.75a.75.75 0 0 0 0 1.5h.6l.75 9a1.5 1.5 0 0 0 1.5 1.4h4.8a1.5 1.5 0 0 0 1.5-1.4l.75-9h.6a.75.75 0 0 0 0-1.5h-2.6l-.25-.6a1 1 0 0 0-.9-.6zm-2.14 2.7h7.28l-.73 8.8a.25.25 0 0 1-.25.23h-4.8a.25.25 0 0 1-.25-.23zM6.4 6.2c.4 0 .72.32.72.72v4.2a.72.72 0 0 1-1.44 0v-4.2c0-.4.32-.72.72-.72m3.2 0c.4 0 .72.32.72.72v4.2a.72.72 0 0 1-1.44 0v-4.2c0-.4.32-.72.72-.72" fill="currentColor"/></svg>`;
+
+/** Fetch the last response from the page. Kept as a constant so flashButton can restore it. */
+const FETCH_LAST_ICON = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 2.25a5.75 5.75 0 1 0 5.75 5.75.75.75 0 0 1 1.5 0A7.25 7.25 0 1 1 8 .75a.75.75 0 0 1 0 1.5" fill="currentColor"/><path d="M8.53 1.03a.75.75 0 0 1 0 1.06L7.62 3l.91.91a.75.75 0 0 1-1.06 1.06L6.03 3.53a.75.75 0 0 1 0-1.06L7.47 1.03a.75.75 0 0 1 1.06 0" fill="currentColor"/></svg>`;
 
 const TOOL_CALL_ICONS = {
   create: `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2h7l3 3v9a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z"/><path d="M10 2v3h3"/><path d="M7.5 8v3M6 9.5h3"/></svg>`,
@@ -3960,6 +4010,36 @@ function renderMessages() {
   requestAnimationFrame(() => { m.scrollTop = m.scrollHeight; });
 }
 
+/**
+ * Warning shown when a reply stopped early because it hit a length limit.
+ *
+ * The remainder is not lost: the DeepSeek page is holding it behind its own
+ * Continue control. Saying that plainly is better than letting a half answer
+ * look finished.
+ */
+function renderTruncationNotice() {
+  const box = el("div", { className: "truncation-notice" });
+
+  const icon = el("span", { className: "tn-icon" });
+  icon.innerHTML = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0m0 4.25c.41 0 .75.34.75.75v4a.75.75 0 0 1-1.5 0V5c0-.41.34-.75.75-.75M8 11a1 1 0 1 1 0 2 1 1 0 0 1 0-2" fill="currentColor"/></svg>`;
+  box.append(icon);
+
+  const text = el("div", { className: "tn-text" });
+  text.append(el("strong", { textContent: "This response was cut off." }));
+  text.append(el("span", {
+    textContent:
+      " DeepSeek stopped it at its length limit. Switch to the DeepSeek tab and press " +
+      "Continue to let it finish, then use the fetch button to pull the rest in.",
+  }));
+  box.append(text);
+
+  const goBtn = el("button", { className: "tn-btn", type: "button", textContent: "Got it" });
+  goBtn.addEventListener("click", () => box.remove());
+  box.append(goBtn);
+
+  return box;
+}
+
 function emptyState() {
   const wrap = el("div", { className: "empty-state" });
   wrap.append(el("div", { className: "empty-logo", textContent: "D" }));
@@ -4493,7 +4573,14 @@ async function fullCompletion({ messages, model, thinking, signal, onDelta, onDo
   // rendering path unchanged - there is no separate "full" branch to maintain.
   onDelta?.({ content, reasoning });
 
-  onDone?.({ content, reasoning, usage: data?.usage ?? null, aborted: false });
+  // DeepSeek cuts a long answer off and offers a Continue control. The bridge
+  // reports it, and completion "length" is the standard OpenAI signal, so both
+  // are checked: a truncated reply must not be presented as finished.
+  const truncated =
+    data?.x_truncated === true ||
+    data?.choices?.[0]?.finish_reason === "length";
+
+  onDone?.({ content, reasoning, usage: data?.usage ?? null, aborted: false, truncated });
 }
 
 async function streamCompletion({ messages, model, thinking, signal, onDelta, onDone, onError }) {
@@ -5014,6 +5101,18 @@ async function runCompletion(conv) {
         decorateCodeBlocks(c);
         decorateToolCalls(c);
         assistantRow.append(c);
+
+        // Warn when the page cut the reply off for length.
+        //
+        // DeepSeek stops a long answer and shows its own Continue control. What
+        // arrived here is a prefix, and silently presenting it as a complete
+        // answer is misleading, so the user is told to press Continue on the
+        // DeepSeek tab before the rest can be read.
+        if (result?.truncated) {
+          assistantMsg.truncated = true;
+          assistantRow.append(renderTruncationNotice());
+        }
+
         if (assistantMsg.fileChanges && assistantMsg.fileChanges.length) {
           assistantRow.append(renderFileChangesCard(assistantMsg.fileChanges));
         }
@@ -5144,6 +5243,17 @@ $("deepthinkBtn").addEventListener("click", () => {
 });
 
 $("attachBtn").addEventListener("click", () => $("fileInput").click());
+$("fetchLastBtn").addEventListener("click", () => { loadLastResponse(); });
+
+// The fetch-last button only makes sense where a real page is being driven: in
+// the app. In a plain browser there is no page to read from, so it stays hidden
+// rather than offering an action that cannot work.
+(function initFetchLastButton() {
+  const btn = $("fetchLastBtn");
+  if (!btn) return;
+  btn.innerHTML = FETCH_LAST_ICON;
+  btn.hidden = !fetchLastAvailable();
+})();
 $("fileInput").addEventListener("change", async (e) => {
   const files = [...e.target.files];
   for (const f of files) await addAttachmentFromFile(f);
@@ -5151,6 +5261,72 @@ $("fileInput").addEventListener("change", async (e) => {
   renderPendingAttachments();
   updateSendButton();
 });
+
+// =============================================================================
+// Fetch the last response from the page
+// =============================================================================
+// When a request fails - a timeout, a dropped stream, a throttled call - the
+// page may still have produced a full answer. Asking the bridge for it costs
+// nothing and avoids spending another generation on a retry, which matters
+// because the web session is rate limited.
+
+function fetchLastAvailable() {
+  // The bridge exposes this only in the Android app.
+  try {
+    return (typeof AndroidWorkspace !== "undefined" && typeof AndroidLocalProvider !== "undefined");
+  } catch (e) {
+    return false;
+  }
+}
+
+async function loadLastResponse() {
+  const btn = $("fetchLastBtn");
+  const url = (() => {
+    const p = activeProvider();
+    const base = (p.baseUrl || "").replace(/\/+$/, "");
+    if (!base) return "";
+    const seg = p.route === "root" ? "" : `/${p.route}`;
+    return `${base}${seg}/chat/completions/last`;
+  })();
+
+  if (!url) {
+    flashButton(btn, false, FETCH_LAST_ICON);
+    return;
+  }
+
+  btn.disabled = true;
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${settings.apiKey}` },
+      body: "{}",
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}));
+      throw new Error(j.error?.message || j.error || `HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    const msg = data?.choices?.[0]?.message ?? data;
+    const content = String(msg?.content ?? "");
+    const reasoning = String(msg?.reasoning_content ?? "");
+
+    if (!content && !reasoning) throw new Error("The page had no reply to read.");
+
+    const conv = ensureActive();
+    const assistantMsg = { role: "assistant", content, reasoning, recovered: true };
+    conv.messages.push(assistantMsg);
+    conv.updatedAt = Date.now();
+    saveConversations();
+    renderMessages();
+    flashButton(btn, true, FETCH_LAST_ICON);
+  } catch (err) {
+    console.warn("Fetch last failed:", err);
+    flashButton(btn, false, FETCH_LAST_ICON);
+    alert(`Could not read the last response:\n\n${err.message}`);
+  } finally {
+    btn.disabled = false;
+  }
+}
 
 // =============================================================================
 // Sidebar / theme
