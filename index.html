@@ -865,9 +865,9 @@
   .fc-copy-all.failure { color: var(--ds-error); border-color: var(--ds-error); }
   .fc-copy-one.failure { color: var(--ds-error); border-color: var(--ds-error); }
 
-  /* Revert buttons. Styled like the copy buttons but tinted so an action that
-     changes files is not mistaken for one that only copies text. */
-  .fc-revert-one,
+  /* Revert / Apply, one control per reply. Styled like the copy buttons but
+     tinted, so an action that changes files is not mistaken for one that only
+     copies text. */
   .fc-revert-all {
     padding: 3px 9px;
     border-radius: 5px;
@@ -877,37 +877,30 @@
     border: 1px solid rgba(224, 163, 58, .45);
     background: transparent;
     flex-shrink: 0;
+    margin-left: 6px;
     transition: background var(--ds-dur) var(--ds-ease-in-out),
                 color var(--ds-dur) var(--ds-ease-in-out),
                 border-color var(--ds-dur) var(--ds-ease-in-out);
   }
-  .fc-revert-all { margin-left: 6px; }
-  .fc-revert-one:hover,
   .fc-revert-all:hover {
     background: rgba(224, 163, 58, .12);
     color: #f0b455;
     border-color: rgba(224, 163, 58, .7);
   }
-  .fc-revert-one.success,
   .fc-revert-all.success { color: var(--ds-success); border-color: var(--ds-success); }
-  .fc-revert-one.failure,
   .fc-revert-all.failure { color: var(--ds-error); border-color: var(--ds-error); }
 
-  /* Once a change is reverted the same button puts it back. Tinted green so the
-     two directions are distinguishable at a glance, and dimmed a little because
-     re-applying is the non-destructive direction. */
-  .fc-revert-one.reverted,
+  /* Rolled back, so the same control replays forward. Tinted green to mark the
+     change of direction at a glance. */
   .fc-revert-all.reverted {
     color: var(--ds-success, #4ec97a);
     border-color: rgba(78, 201, 122, .45);
     background: transparent;
   }
-  .fc-revert-one.reverted:hover,
   .fc-revert-all.reverted:hover {
     background: rgba(78, 201, 122, .12);
     border-color: rgba(78, 201, 122, .7);
   }
-  .fc-revert-one svg,
   .fc-revert-all svg {
     width: 12px;
     height: 12px;
@@ -3955,63 +3948,175 @@ function canApplyChange(c) {
 }
 
 /**
- * Toggle one change between reverted and applied.
+ * Every file change at or after a message, oldest first.
  *
- * One handler for both directions: which way it goes is decided by the current
- * state, so the button and the action can never disagree.
+ * The workspace is a timeline: each reply that touched files is a point in it.
+ * Undoing a point means undoing everything after it too, otherwise the files
+ * would be left in a state that never actually existed - a later reply's edit
+ * sitting on top of an earlier one that has been rolled back.
+ *
+ * The newest change to a given file is what decides its content, which is why
+ * the order here matters.
  */
-async function toggleChange(c, button) {
+function changesFrom(conv, messageIndex, { inclusive = true } = {}) {
+  const out = [];
+  if (!conv || !Array.isArray(conv.messages)) return out;
+  for (let i = 0; i < conv.messages.length; i++) {
+    if (inclusive ? i < messageIndex : i <= messageIndex) continue;
+    const m = conv.messages[i];
+    if (m.role !== "assistant" || !Array.isArray(m.fileChanges)) continue;
+    out.push({ index: i, changes: m.fileChanges });
+  }
+  return out;
+}
+
+/**
+ * Rewind the workspace to just before a message's changes.
+ *
+ * Walks the changes newest-first and undoes each one, so a file touched by
+ * several replies ends up at the value it had before the earliest of them. The
+ * reverse order is what makes that work: undoing forwards would let an older
+ * change overwrite the restoration of a newer one.
+ *
+ * Returns the number of changes undone.
+ */
+function rewindFrom(conv, messageIndex) {
+  const groups = changesFrom(conv, messageIndex);
+  let n = 0;
+  for (let g = groups.length - 1; g >= 0; g--) {
+    const changes = groups[g].changes;
+    for (let i = changes.length - 1; i >= 0; i--) {
+      if (revertChange(changes[i])) n++;
+    }
+  }
+  return n;
+}
+
+/**
+ * Replay the workspace forward through a message's changes.
+ *
+ * Oldest-first, the mirror of rewindFrom, so the final content of each file is
+ * whatever the last reply to touch it produced.
+ *
+ * Returns the number of changes replayed.
+ */
+function replayFrom(conv, messageIndex) {
+  const groups = changesFrom(conv, messageIndex);
+  let n = 0;
+  for (let g = 0; g < groups.length; g++) {
+    const changes = groups[g].changes;
+    for (let i = 0; i < changes.length; i++) {
+      if (applyChange(changes[i])) n++;
+    }
+  }
+  return n;
+}
+
+/**
+ * Is the workspace at or after this message's point in the timeline?
+ *
+ * True when nothing at or after the message has been undone. Drives the label,
+ * so a group whose changes are still applied offers Revert, and one that has
+ * been rolled back offers Apply.
+ */
+/**
+ * Has this message's own work been undone?
+ *
+ * Only this group's changes are consulted, not the later ones. The label has to
+ * describe what THIS control does to this reply: after rolling back a later
+ * reply, an earlier one is still applied, and calling it "Apply all" would
+ * misdescribe a button that would in fact undo it. The replay it triggers still
+ * covers everything after, which the confirmation explains.
+ */
+function isGroupApplied(conv, messageIndex) {
+  const own = changesFrom(conv, messageIndex, { inclusive: true })
+    .filter((g) => g.index === messageIndex);
+  for (const g of own) {
+    for (const c of g.changes) {
+      if (canRevertChange(c) && isChangeReverted(c)) return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Step the workspace to a point in the timeline, or forward from one.
+ *
+ * One handler for both directions, decided by where the workspace currently is
+ * rather than by a flag, so the button and the action cannot disagree.
+ *
+ * Stepping back rewinds this message and every change after it, so the files
+ * land in the state they had just before this reply; stepping forward replays
+ * this message and everything after it, so they land at the latest state. Both
+ * directions cover the whole span, which is what keeps the result a state the
+ * workspace actually passed through.
+ */
+async function toggleGroupAt(messageIndex, button) {
   const conv = getActive();
   if (!conv) return;
 
-  const reverted = isChangeReverted(c);
+  const applied = isGroupApplied(conv, messageIndex);
+  const span = changesFrom(conv, messageIndex).reduce((n, g) => n + g.changes.length, 0);
+  const laterCount = changesFrom(conv, messageIndex, { inclusive: false })
+    .reduce((n, g) => n + g.changes.length, 0);
 
-  // Confirm only the destructive direction. Putting a change back is just
-  // restoring what the reply already produced, so it needs no warning; deleting
-  // a file or overwriting it does.
-  if (!reverted) {
+  if (applied) {
+    // Confirm, because this discards the later work from the workspace. It is
+    // recoverable with Apply, and the message says so.
     const ok = await showConfirm({
-      title: c.kind === "create" ? "Remove this file?" : "Revert this change?",
-      message: c.kind === "create"
-        ? `${c.file} was created by this reply. Reverting deletes it from the workspace. ` +
-          `You can put it back afterwards.`
-        : `${c.file} will be restored to its previous contents. ` +
-          `You can re-apply the change afterwards.`,
+      title: "Revert from here?",
+      message: laterCount
+        ? `This undoes this reply's changes and the ${laterCount} change` +
+          `${laterCount === 1 ? "" : "s"} made after it, returning the workspace to ` +
+          `the state before this reply. You can apply them again afterwards.`
+        : `This undoes this reply's ${span} change${span === 1 ? "" : "s"}, returning ` +
+          `the workspace to the state before it. You can apply them again afterwards.`,
       confirmLabel: "Revert",
       danger: true,
     });
     if (!ok) return;
   }
 
-  const changed = reverted ? applyChange(c) : revertChange(c);
-  if (changed) {
-    // Record what the button did, for reference; the button's label is derived
-    // from the file contents so a later manual edit still shows the truth.
-    c.reverted = !reverted;
-    conv.updatedAt = Date.now();
+  if (applied) rewindFrom(conv, messageIndex);
+  else replayFrom(conv, messageIndex);
 
-    // The linked folder must match, or disk and workspace drift apart.
-    const content = conv.files[c.file];
-    if (content == null) {
-      deleteLinkedFile(c.file);
-    } else {
-      writeLinkedFile(c.file, content);
-    }
+  conv.updatedAt = Date.now();
 
-    renderMessages();
-    renderWorkspaceFileList();
-    updateWorkspaceBadge();
-    saveAllNow();
-    return;
-  }
+  // Disk must follow the workspace, or the two drift apart.
+  syncFilesToDisk(conv);
 
-  flashButton(button, false, reverted ? "Apply" : "Revert");
+  renderMessages();
+  renderWorkspaceFileList();
+  updateWorkspaceBadge();
+  saveAllNow();
+  void button;
 }
 
-/** Revert a single change. Kept for callers that mean this direction only. */
-async function revertOneChange(c, button) {
-  if (isChangeReverted(c)) return;
-  await toggleChange(c, button);
+/**
+ * Bring the linked folder in line with the workspace.
+ *
+ * A rewind can delete files (an undone create) as well as rewrite them, so this
+ * removes what is no longer in the workspace rather than only writing what is.
+ */
+function syncFilesToDisk(conv) {
+  const link = conv && conv.linkedFolder;
+  if (!link) return;
+  const bridge = workspaceBridge();
+  if (!bridge) return;
+
+  // Remove files the workspace no longer holds.
+  try {
+    const listed = JSON.parse(bridge.listFiles(link.id));
+    if (listed && listed.ok) {
+      for (const f of listed.files) {
+        if (!Object.prototype.hasOwnProperty.call(conv.files || {}, f.path)) {
+          try { bridge.deleteFile(link.id, f.path); } catch (e) { /* best effort */ }
+        }
+      }
+    }
+  } catch (e) { /* listing is best effort */ }
+
+  writeAllLinkedFiles();
 }
 
 /** Remove a file from the linked folder, if one is linked. */
@@ -4027,7 +4132,7 @@ function deleteLinkedFile(path) {
   }
 }
 
-function renderFileChangesCard(changes) {
+function renderFileChangesCard(changes, messageIndex) {
   const wrap = el("div", { className: "file-changes" });
 
   const changedFiles = changes.filter(c =>
@@ -4063,53 +4168,25 @@ function renderFileChangesCard(changes) {
     });
     header.append(copyAll);
 
-    // Toggle every change in this card at once.
+    // Step the workspace to this reply's point in the timeline, or forward from
+    // it.
     //
-    // The direction depends on the current state, matching the per-file
-    // buttons: if anything is still applied, this reverts the card; once all of
-    // it is reverted, the same control puts it all back.
-    if (changes.some(canRevertChange)) {
-      const allReverted = changes.filter(canRevertChange).every(isChangeReverted);
+    // One control per reply rather than one per file: undoing a point has to
+    // undo everything after it as well, so a per-file control could leave the
+    // files in a state the workspace never had. The label reflects where the
+    // workspace currently is.
+    if (messageIndex != null && changes.some(canRevertChange)) {
+      const conv = getActive();
+      const applied = isGroupApplied(conv, messageIndex);
       const revertAll = el("button", {
-        className: "fc-revert-all" + (allReverted ? " reverted" : ""),
+        className: "fc-revert-all" + (applied ? "" : " reverted"),
         type: "button",
-        textContent: allReverted ? "Apply all" : "Revert all",
+        textContent: applied ? "Revert all" : "Apply all",
       });
-      revertAll.addEventListener("click", async (e) => {
+      revertAll.addEventListener("click", (e) => {
         e.preventDefault();
         e.stopPropagation();
-
-        const target = changes.filter(canRevertChange);
-        // Confirm only the destructive direction, as with the per-file button.
-        if (!allReverted) {
-          const affected = target.filter((c) => !isChangeReverted(c));
-          const ok = await showConfirm({
-            title: "Revert all changes?",
-            message:
-              `This restores ${affected.length} file${affected.length === 1 ? "" : "s"} to their ` +
-              `previous contents. You can apply them again afterwards.`,
-            confirmLabel: "Revert",
-            danger: true,
-          });
-          if (!ok) return;
-        }
-
-        let n = 0;
-        for (const c of target) {
-          const reverted = isChangeReverted(c);
-          if (allReverted ? applyChange(c) : (!reverted && revertChange(c))) {
-            c.reverted = !allReverted;
-            n++;
-          }
-        }
-        const conv = getActive();
-        if (conv) conv.updatedAt = Date.now();
-        writeAllLinkedFiles();
-        renderMessages();
-        renderWorkspaceFileList();
-        updateWorkspaceBadge();
-        saveAllNow();
-        void n;
+        toggleGroupAt(messageIndex, revertAll);
       });
       header.append(revertAll);
     }
@@ -4162,30 +4239,11 @@ function renderFileChangeItem(c) {
     summary.append(copyBtn);
   }
 
-  // Undo this one change, or put it back if it was already undone.
+  // No per-file revert control.
   //
-  // The label is derived from the current file contents rather than from a
-  // stored flag, so it stays truthful if the file was also edited by hand or
-  // brought in by a folder sync.
-  if (canRevertChange(c)) {
-    const reverted = isChangeReverted(c);
-    const revertBtn = el("button", {
-      className: "fc-revert-one" + (reverted ? " reverted" : ""),
-      type: "button",
-      textContent: reverted ? "Apply" : "Revert",
-      title: reverted
-        ? "Put this change back"
-        : (c.kind === "create"
-            ? "Delete this file from the workspace"
-            : "Restore the previous contents"),
-    });
-    revertBtn.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      toggleChange(c, revertBtn);
-    });
-    summary.append(revertBtn);
-  }
+  // Undoing a single file could leave the workspace in a state it never had - a
+  // later reply's edit still applied on top of an earlier one that was rolled
+  // back. Reverting is offered per reply, where the cascade is well defined.
 
   summary.insertAdjacentHTML("beforeend", FC_CHEVRON_ICON);
   details.append(summary);
@@ -4331,7 +4389,9 @@ function renderMessage(msg, index) {
   row.append(content);
 
   if (msg.fileChanges && msg.fileChanges.length) {
-    row.append(renderFileChangesCard(msg.fileChanges));
+    // The message's position is what lets the card step the workspace to this
+    // point in the timeline.
+    row.append(renderFileChangesCard(msg.fileChanges, index));
   }
 
   row.append(messageActions(index, msg));
@@ -5317,7 +5377,11 @@ async function runCompletion(conv) {
         }
 
         if (assistantMsg.fileChanges && assistantMsg.fileChanges.length) {
-          assistantRow.append(renderFileChangesCard(assistantMsg.fileChanges));
+          // Same index the action bar uses: the reply is already in the list at
+          // this point, so this is its real position.
+          assistantRow.append(
+            renderFileChangesCard(assistantMsg.fileChanges, conv.messages.length - 1)
+          );
         }
         assistantRow.append(messageActions(conv.messages.length - 1, assistantMsg));
 
