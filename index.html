@@ -2125,13 +2125,7 @@
                  but an answer was actually produced. The bridge reads the newest
                  assistant message and hands it back as a normal response, so a
                  network failure does not cost another generation. -->
-            <button class="icon-btn" id="fetchLastBtn" title="Fetch the last response from the page" hidden>
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M8 1.5a6.5 6.5 0 1 1-6.23 4.64.75.75 0 1 1 1.45-.38A5 5 0 1 0 8 3h-.02l1.02 1.02a.75.75 0 1 1-1.06 1.06L5.47 2.61a.75.75 0 0 1 0-1.06L7.94-.02" fill="currentColor" transform="translate(0,1.6)"/>
-                <path d="M8 1.75a6.25 6.25 0 1 0 6.25 6.25.75.75 0 1 1 1.5 0A7.75 7.75 0 1 1 8 .25a.75.75 0 0 1 0 1.5" fill="currentColor"/>
-                <path d="M4.2 5.4 2 3.2l2.2-2.2" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-            </button>
+            <button class="icon-btn" id="fetchLastBtn" title="Fetch the last response from the page" hidden></button>
           </div>
           <button class="send-btn" id="sendBtn" disabled aria-label="Send">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8.3125 0.980206C8.66767 1.05312 8.97902 1.2042 9.2627 1.43235C9.48724 1.613 9.73029 1.85795 9.97949 2.10716L14.707 6.8347L13.293 8.24876L9 3.95579V15.0417H7V3.95579L2.70703 8.24876L1.29297 6.8347L6.02051 2.10716C6.26971 1.85795 6.51277 1.613 6.7373 1.43235C6.97662 1.23988 7.28445 1.04404 7.6875 0.980206C7.8973 0.947029 8.1031 0.955183 8.3125 0.980206Z" fill="currentColor"></path></svg>
@@ -2483,6 +2477,13 @@
           </svg>
           Copy
         </button>
+        <button type="button" class="ws-action-btn" id="workspaceOpenBtn" disabled title="Open this file in the browser">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+            <path d="M15 3h6v6M10 14L21 3"/>
+          </svg>
+          Open
+        </button>
         <button type="button" class="ws-action-btn danger" id="workspaceDeleteBtn" disabled>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
@@ -2769,8 +2770,14 @@ const SEND_ICON = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" x
 /** Delete a message. Used on both the user and assistant action bars. */
 const TRASH_ICON = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6.5 1.5c-.4 0-.75.25-.9.6l-.25.6H2.75a.75.75 0 0 0 0 1.5h.6l.75 9a1.5 1.5 0 0 0 1.5 1.4h4.8a1.5 1.5 0 0 0 1.5-1.4l.75-9h.6a.75.75 0 0 0 0-1.5h-2.6l-.25-.6a1 1 0 0 0-.9-.6zm-2.14 2.7h7.28l-.73 8.8a.25.25 0 0 1-.25.23h-4.8a.25.25 0 0 1-.25-.23zM6.4 6.2c.4 0 .72.32.72.72v4.2a.72.72 0 0 1-1.44 0v-4.2c0-.4.32-.72.72-.72m3.2 0c.4 0 .72.32.72.72v4.2a.72.72 0 0 1-1.44 0v-4.2c0-.4.32-.72.72-.72" fill="currentColor"/></svg>`;
 
-/** Fetch the last response from the page. Kept as a constant so flashButton can restore it. */
-const FETCH_LAST_ICON = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 2.25a5.75 5.75 0 1 0 5.75 5.75.75.75 0 0 1 1.5 0A7.25 7.25 0 1 1 8 .75a.75.75 0 0 1 0 1.5" fill="currentColor"/><path d="M8.53 1.03a.75.75 0 0 1 0 1.06L7.62 3l.91.91a.75.75 0 0 1-1.06 1.06L6.03 3.53a.75.75 0 0 1 0-1.06L7.47 1.03a.75.75 0 0 1 1.06 0" fill="currentColor"/></svg>`;
+/**
+ * Retry / regenerate arrow.
+ *
+ * Shared by the Regenerate button and the fetch-last button so the two always
+ * match: they are the same idea (ask the model again) and were previously
+ * drawn with different glyphs, which read as two unrelated actions.
+ */
+const RETRY_ICON = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7.921.35a7.64 7.64 0 0 1 6.035 2.949l1.172-1.171a.322.322 0 0 1 .549.227V5.54c0 .177-.144.32-.321.32H12.17a.32.32 0 0 1-.227-.548l1.02-1.021A6.259 6.259 0 1 0 14.18 8h1.392A7.651 7.651 0 1 1 7.922.348" fill="currentColor"/></svg>`;
 
 const TOOL_CALL_ICONS = {
   create: `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2h7l3 3v9a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z"/><path d="M10 2v3h3"/><path d="M7.5 8v3M6 9.5h3"/></svg>`,
@@ -4199,7 +4206,7 @@ function messageActions(index, msg) {
   bar.append(copy);
 
   const regen = el("button", { className: "msg-action", title: "Regenerate" });
-  regen.innerHTML = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7.921.35a7.64 7.64 0 0 1 6.035 2.949l1.172-1.171a.322.322 0 0 1 .549.227V5.54c0 .177-.144.32-.321.32H12.17a.32.32 0 0 1-.227-.548l1.02-1.021A6.259 6.259 0 1 0 14.18 8h1.392A7.651 7.651 0 1 1 7.922.348" fill="currentColor"/></svg>`;
+  regen.innerHTML = RETRY_ICON;
   regen.addEventListener("click", () => regenerateFrom(index));
   bar.append(regen);
 
@@ -5249,7 +5256,7 @@ $("fetchLastBtn").addEventListener("click", () => { loadLastResponse(); });
 (function initFetchLastButton() {
   const btn = $("fetchLastBtn");
   if (!btn) return;
-  btn.innerHTML = FETCH_LAST_ICON;
+  btn.innerHTML = RETRY_ICON;
   btn.hidden = !fetchLastAvailable();
 })();
 $("fileInput").addEventListener("change", async (e) => {
@@ -5435,7 +5442,7 @@ async function loadLastResponse() {
   })();
 
   if (!url) {
-    flashButton(btn, false, FETCH_LAST_ICON);
+    flashButton(btn, false, RETRY_ICON);
     return;
   }
 
@@ -5470,10 +5477,10 @@ async function loadLastResponse() {
     conv.updatedAt = Date.now();
     renderMessages();
     saveAllNow();
-    flashButton(btn, true, FETCH_LAST_ICON);
+    flashButton(btn, true, RETRY_ICON);
   } catch (err) {
     console.warn("Fetch last failed:", err);
-    flashButton(btn, false, FETCH_LAST_ICON);
+    flashButton(btn, false, RETRY_ICON);
     alert(`Could not read the last response:\n\n${err.message}`);
   } finally {
     btn.disabled = false;
@@ -6215,6 +6222,81 @@ function renderTreeNode(container, node, depth, prefix) {
   }
 }
 
+/**
+ * Can this file be handed to a viewer?
+ *
+ * Open exists for HTML in particular - the point is to see the page render with
+ * its real relative links - but any file a browser or viewer app understands is
+ * worth offering.
+ */
+const OPENABLE_EXTENSIONS = [
+  "html", "htm", "svg", "png", "jpg", "jpeg", "gif", "webp", "pdf", "txt",
+  "md", "json", "xml", "css", "js", "csv",
+];
+
+function isOpenableFile(path) {
+  if (!path) return false;
+  const ext = path.split(".").pop().toLowerCase();
+  return OPENABLE_EXTENSIONS.includes(ext);
+}
+
+function mimeTypeFor(path) {
+  const ext = (path || "").split(".").pop().toLowerCase();
+  return {
+    html: "text/html", htm: "text/html", svg: "image/svg+xml",
+    png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
+    gif: "image/gif", webp: "image/webp", pdf: "application/pdf",
+    txt: "text/plain", md: "text/plain", json: "application/json",
+    xml: "application/xml", css: "text/css", js: "text/javascript",
+    csv: "text/csv",
+  }[ext] || "*/*";
+}
+
+/**
+ * Open a workspace file in a viewer.
+ *
+ * In the app the file is handed to Android, which opens it in the device
+ * browser or another viewer - and when a folder is linked it is opened from
+ * disk, so an HTML page finds its sibling files. In a plain browser the content
+ * is turned into a blob and opened in a new tab.
+ */
+function openWorkspaceFile(path) {
+  const conv = getActive();
+  if (!conv || !path) return;
+  const content = conv.files[path] ?? "";
+  const mime = mimeTypeFor(path);
+
+  const bridge = workspaceBridge();
+  const link = conv.linkedFolder;
+
+  if (bridge && typeof bridge.openFile === "function") {
+    try {
+      const res = JSON.parse(
+        bridge.openFile(link ? link.id : null, path, mime, textToBase64(content))
+      );
+      if (!res.ok) {
+        workspaceStatus(`Open failed: ${res.error}`, true);
+      }
+      return;
+    } catch (e) {
+      workspaceStatus(`Open failed: ${e.message}`, true);
+      return;
+    }
+  }
+
+  // Browser fallback: a blob URL renders inline and keeps relative links
+  // within the same blob meaningless, which is expected here.
+  try {
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank", "noopener");
+    // Revoke later so the tab has time to load it.
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } catch (e) {
+    workspaceStatus(`Could not open the file: ${e.message}`, true);
+  }
+}
+
 function renderWorkspaceFileList() {
   const list = $("workspaceFileList");
   list.innerHTML = "";
@@ -6251,6 +6333,8 @@ function selectWorkspaceFile(name) {
   $("workspaceFileContent").disabled = !hasFile;
   $("workspaceCopyBtn").disabled = !hasFile;
   $("workspaceDeleteBtn").disabled = !hasFile;
+  // Open is only meaningful for something a browser can render.
+  $("workspaceOpenBtn").disabled = !hasFile || !isOpenableFile(name);
 
   $("workspaceEmptyPane").style.display = hasFile ? "none" : "flex";
   $("workspaceFileContent").style.display = hasFile ? "block" : "none";
@@ -6598,6 +6682,10 @@ function renameWorkspaceFile() {
   saveConversations();
   renderWorkspaceFileList();
 }
+
+$("workspaceOpenBtn").addEventListener("click", () => {
+  if (workspaceActiveFile) openWorkspaceFile(workspaceActiveFile);
+});
 
 $("workspaceCopyBtn").addEventListener("click", async () => {
   const conv = getActive();
