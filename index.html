@@ -3910,7 +3910,7 @@ function revertChange(c) {
  * Returns true when the store was modified.
  */
 function applyChange(c) {
-  if (!canApplyChange(c)) return false;
+  if (!canRevertChange(c)) return false;
   const conv = getActive();
   if (!conv) return false;
   if (!conv.files) conv.files = {};
@@ -3920,29 +3920,28 @@ function applyChange(c) {
 }
 
 /**
- * Is this change currently reverted, so it can be put back?
+ * Is this change currently undone, so it can be put back?
  *
- * Decided by comparing the workspace to the change rather than by trusting the
- * flag alone. The flag records what the buttons last did, but a file can also
- * change by hand in the editor or arrive from a folder sync, and the button must
- * describe what is actually true now.
+ * Uses the file's position in its own chain rather than comparing against this
+ * change's `before`. The direct comparison fails in the middle of a chain:
+ * with S0 -> S1 -> S2 -> S3, undoing edit 2 leaves the file at S1, so edit 3's
+ * `before` (S2) never matches and it looked permanently applied - which also
+ * stopped it being replayed, since applyChange used this as its guard.
  */
 function isChangeReverted(c) {
   if (!canRevertChange(c)) return false;
   const conv = getActive();
-  if (!conv || !conv.files) return false;
+  if (!conv) return false;
 
-  const has = Object.prototype.hasOwnProperty.call(conv.files, c.file);
+  const chain = changesForFile(conv, c.file);
+  const at = chain.findIndex((e) => e.change === c);
+  if (at < 0) return false;
 
-  // A created file is reverted when it is gone.
-  if (c.kind === "create") return !has;
-
-  // An edit is reverted when the file is back to its previous contents.
-  if (!has) return true;
-  return conv.files[c.file] === (c.before ?? "");
+  // Undone when the file has not reached this change yet.
+  return fileProgress(conv, c.file) <= at;
 }
 
-/** Can this change be put back, i.e. is it currently reverted? */
+/** Can this change be put back, i.e. is it currently undone? */
 function canApplyChange(c) {
   return canRevertChange(c) && isChangeReverted(c);
 }
@@ -4028,12 +4027,104 @@ function replayFrom(conv, messageIndex) {
  * misdescribe a button that would in fact undo it. The replay it triggers still
  * covers everything after, which the confirmation explains.
  */
+/**
+ * Is this change currently applied?
+ *
+ * Decided by walking the file's own history rather than by comparing against
+ * this change's `before` value alone.
+ *
+ * The naive check - "is the file back to `before`?" - breaks as soon as one
+ * change in the middle of a chain is undone. With edits S0 -> S1 -> S2 -> S3,
+ * undoing edit 2 leaves the file at S1, so edit 3 (whose `before` is S2) never
+ * matches and is reported as still applied even though the workspace is far
+ * behind it. S2 is no longer a reachable state at all.
+ *
+ * Instead the chain is replayed in order from the start: a change counts as
+ * applied only if the file still holds its `after`, reached by walking forward
+ * through the changes that precede it. The first change that does not hold
+ * marks the point the workspace was rewound to, and everything from there on is
+ * undone.
+ */
+function changesForFile(conv, file) {
+  const out = [];
+  if (!conv || !Array.isArray(conv.messages)) return out;
+  for (let i = 0; i < conv.messages.length; i++) {
+    const m = conv.messages[i];
+    if (m.role !== "assistant" || !Array.isArray(m.fileChanges)) continue;
+    for (const c of m.fileChanges) {
+      if (c.file === file && canRevertChange(c)) out.push({ index: i, change: c });
+    }
+  }
+  return out;
+}
+
+/**
+ * How far along its own history a file currently is.
+ *
+ * Returns the number of leading changes in the file's chain that the workspace
+ * has passed, which is the file's position in the timeline.
+ *
+ * "Passed" cannot mean "the file currently holds this change's `after`",
+ * because a chain visits many values and the file sits at exactly one of them.
+ * With S0 -> S1 -> S2 -> S3 and the file at S3, only the last change's `after`
+ * matches, yet all four have been applied.
+ *
+ * So the value is matched against the chain's outcomes instead: find which
+ * point of the chain the file is standing on, and everything up to and
+ * including that point has been applied. A file that matches nothing is either
+ * hand-edited or deleted, and is reported as fully applied - which keeps the
+ * buttons offering Revert, the safe direction, rather than claiming work is
+ * undone when it is not.
+ */
+function fileProgress(conv, file) {
+  const chain = changesForFile(conv, file);
+  const files = (conv && conv.files) || {};
+  const has = Object.prototype.hasOwnProperty.call(files, file);
+
+  // Deleted: everything that created or wrote it is undone.
+  if (!has) return 0;
+
+  const value = files[file];
+
+  // Walk the chain and find the last point whose outcome is the current value.
+  // Outcomes are each change's `after`, plus the state before the chain began
+  // (the first change's `before`), which is where a fully-reverted file sits.
+  for (let i = chain.length - 1; i >= 0; i--) {
+    if (value === (chain[i].change.after ?? "")) return i + 1;
+  }
+
+  // Not at any recorded outcome. Compare loosely by prefix so a chain against
+  // the same file still positions correctly, and otherwise treat it as fully
+  // applied.
+  if (chain.length && value === (chain[0].change.before ?? "")) return 0;
+  return chain.length;
+}
+
+/**
+ * Has this message's own work been undone?
+ *
+ * Only this group's changes are consulted, not the later ones. The label has to
+ * describe what THIS control does to this reply: after rolling back a later
+ * reply, an earlier one is still applied, and calling it "Apply all" would
+ * misdescribe a button that would in fact undo it. The replay it triggers still
+ * covers everything after, which the confirmation explains.
+ *
+ * A change counts as applied only when the file is at or beyond it in its own
+ * chain, which is what makes a group further back read "Apply all" once an
+ * earlier group has been rolled back - even though its `before` value is no
+ * longer a state the file can hold.
+ */
 function isGroupApplied(conv, messageIndex) {
   const own = changesFrom(conv, messageIndex, { inclusive: true })
     .filter((g) => g.index === messageIndex);
   for (const g of own) {
     for (const c of g.changes) {
-      if (canRevertChange(c) && isChangeReverted(c)) return false;
+      if (!canRevertChange(c)) continue;
+      const chain = changesForFile(conv, c.file);
+      const at = chain.findIndex((e) => e.change === c);
+      if (at < 0) continue;
+      // Undone when the file's progress has not reached this change.
+      if (fileProgress(conv, c.file) <= at) return false;
     }
   }
   return true;
