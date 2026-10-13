@@ -2667,12 +2667,67 @@ function normalizeProvider(p, fallbackId) {
   };
 }
 
+/**
+ * Repair provider entries that were saved before a fix.
+ *
+ * Stored settings override the built-in defaults, so changing a default only
+ * reaches a user who has never saved that provider. The GLM entry is the case
+ * that matters: it was stored pointing straight at api.z.ai, which no browser
+ * can call, and correcting the default did nothing because the stored copy kept
+ * winning. The symptom was an unchanging "Failed to fetch" that no code change
+ * could fix.
+ *
+ * Only a URL that is known to be unreachable from a page is rewritten, and the
+ * user's key, model and label are left exactly as they are. A provider with a
+ * URL the user typed themselves is never touched.
+ *
+ * Returns the providers plus a map of old id -> new id, so a saved selection
+ * can follow a rename.
+ */
+function migrateProviders(providers) {
+  const DEAD_GLM_URLS = [
+    "https://api.z.ai/api/coding/paas/v4",
+    "https://api.z.ai/api/paas/v4",
+    "https://open.bigmodel.cn/api/paas/v4",
+  ];
+  const renames = {};
+
+  const out = providers.map((p) => {
+    const url = (p.baseUrl || "").replace(/\/+$/, "");
+    if (!DEAD_GLM_URLS.includes(url)) return p;
+
+    // Point it at the relay, which answers the preflight a browser sends.
+    const relay = DEFAULT_PROVIDERS.find((d) => d.id === "zai-relay");
+    if (!relay) return p;
+
+    console.info(
+      `Provider "${p.id}" used ${url}, which a page cannot call; moving it to the CORS relay.`
+    );
+    if (p.id !== "zai-relay") renames[p.id] = "zai-relay";
+    return {
+      ...p,
+      id: "zai-relay",
+      baseUrl: relay.baseUrl,
+      route: relay.route,
+      note: relay.note,
+    };
+  });
+
+  // Two entries must not end up sharing an id.
+  const seen = new Set();
+  for (const p of out) {
+    if (seen.has(p.id)) p.id = p.id + "-direct";
+    seen.add(p.id);
+  }
+
+  return { providers: out, renames };
+}
+
 /** The provider currently in use, or the first one, or a safe empty stub. */
 function activeProvider() {
   const list = settings.providers || [];
   return list.find((p) => p.id === settings.activeProviderId) || list[0] || normalizeProvider({}, "none");
 }
-
 const DEFAULT_SETTINGS = {
   apiKey: "", workerUrl: "", plan: "coding", baseOverride: "",
   providers: DEFAULT_PROVIDERS, activeProviderId: DEFAULT_PROVIDER_ID,
@@ -3114,6 +3169,15 @@ function loadSettings() {
   let providers;
   if (Array.isArray(stored.providers) && stored.providers.length) {
     providers = stored.providers.map((p, i) => normalizeProvider(p, `provider-${i + 1}`));
+    // Follow the selection across a rename. The migration can change a
+    // provider's id, and without this the active id would point at something
+    // that no longer exists and fall back to the first provider - which looks
+    // like the app silently forgot the choice.
+    const { providers: migrated, renames } = migrateProviders(providers);
+    providers = migrated;
+    if (stored.activeProviderId && renames[stored.activeProviderId]) {
+      stored.activeProviderId = renames[stored.activeProviderId];
+    }
   } else {
     const hadLegacy = Boolean(
       (stored.apiKey && stored.apiKey.trim()) ||
