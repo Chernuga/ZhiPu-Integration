@@ -2593,30 +2593,32 @@ const DEFAULT_PROVIDERS = [
     ],
   },
   {
-    id: "zai",
-    label: "Z.ai / GLM",
-    // The published z.ai endpoints. "coding" is part of the BASE URL, not a
-    // route segment the builder should add - route is therefore "root" here.
-    // With route "coding" the builder appended a second segment and every
-    // request 404'd on /v4/coding/chat/completions.
-    baseUrl: "https://api.z.ai/api/coding/paas/v4",
-    apiKey: "",
-    route: "root",
-    modelsPath: "/models",
-    note: "Direct calls from a browser are blocked by CORS preflight. Either set Base URL to https://zai-cors-relay.ostroshile.workers.dev with route coding, or use the bridge.",
-    models: DEFAULT_MODELS.slice(),
-  },
-  {
     id: "zai-relay",
-    label: "Z.ai / GLM (via CORS relay)",
-    // Reads the same key, but routes through a Worker that adds the CORS
-    // headers a browser needs. Direct z.ai calls fail the preflight, so this
-    // is the working option for the hosted page.
+    label: "Z.ai / GLM",
+    // Routed through the CORS relay, because this page runs in a browser.
+    //
+    // api.z.ai does not answer the CORS preflight, so a direct call fails with
+    // "Failed to fetch" before a response exists - it is not a network fault and
+    // cannot be fixed client-side. The relay answers the preflight and forwards
+    // to z.ai, so it is the default. It takes the same z.ai key.
     baseUrl: "https://zai-cors-relay.ostroshile.workers.dev",
     apiKey: "",
     route: "coding",
     modelsPath: "/models",
-    note: "Use this one from a browser. The relay adds CORS headers and forwards to z.ai; paste the same z.ai key.",
+    note: "Goes through the CORS relay worker, which adds the headers a browser needs. Paste your z.ai key.",
+    models: DEFAULT_MODELS.slice(),
+  },
+  {
+    id: "zai",
+    label: "Z.ai / GLM (direct)",
+    // The raw z.ai endpoint. Correct path, but a browser call is blocked by
+    // preflight, so this only works where CORS does not apply - a native client
+    // or a tool that does not enforce it.
+    baseUrl: "https://api.z.ai/api/coding/paas/v4",
+    apiKey: "",
+    route: "root",
+    modelsPath: "/models",
+    note: "Direct z.ai. A browser blocks this at the CORS preflight; use the relay above for the hosted page.",
     models: DEFAULT_MODELS.slice(),
   },
   {
@@ -3228,7 +3230,16 @@ function commitModelsToProvider() {
   p.models = settings.models.slice();
   settings.providerModels[p.id] = settings.models.slice();
 }
-function saveSettings() { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }
+/**
+ * Persist settings.
+ *
+ * Routed through saveKey so it shares the dirty check and the non-destructive
+ * failure handling: a settings write that hits the limit reports rather than
+ * silently dropping fields.
+ */
+function saveSettings() {
+  return saveKey(SETTINGS_KEY, settings) !== "failed";
+}
 
 function loadConversations() {
   try {
@@ -3254,38 +3265,20 @@ function loadConversations() {
 }
 
 let quotaWarned = false;
+/**
+ * Persist the conversations.
+ *
+ * The previous version had a "quota" fallback that wrote a REDUCED copy of the
+ * data - every image's dataUrl replaced with null - and only logged a warning.
+ * Hitting the storage limit therefore silently destroyed attachments, and since
+ * workspace files live in the same payload they were at risk too. That is the
+ * "localStorage is messed up again" symptom.
+ *
+ * Nothing is degraded now. If a write fails the in-memory state is untouched and
+ * the user is told, so work is never quietly discarded.
+ */
 function saveConversations() {
-  try {
-    localStorage.setItem(CONV_KEY, JSON.stringify(conversations));
-    return true;
-  } catch (err) {
-    const stripped = conversations.map((c) => ({
-      ...c,
-      messages: c.messages.map((m) => {
-        if (!m.attachments || !m.attachments.length) return m;
-        return {
-          ...m,
-          attachments: m.attachments.map((a) =>
-            a.type === "image" && a.dataUrl ? { ...a, dataUrl: null } : a
-          ),
-        };
-      }),
-    }));
-    try {
-      localStorage.setItem(CONV_KEY, JSON.stringify(stripped));
-      if (!quotaWarned) {
-        quotaWarned = true;
-        console.warn("Conversation storage hit quota. Image data stripped from saved history.");
-      }
-      return "partial";
-    } catch {
-      if (!quotaWarned) {
-        quotaWarned = true;
-        console.warn("Conversation storage hit quota and could not be saved.");
-      }
-      return false;
-    }
-  }
+  return saveKey(CONV_KEY, conversations) !== "failed";
 }
 
 function loadActiveId() { return localStorage.getItem(ACTIVE_KEY) || null; }
@@ -3361,6 +3354,22 @@ function applyActiveDraft() {
 
 let settings = loadSettings();
 let conversations = loadConversations();
+
+// Seed the write cache with what is already stored.
+//
+// saveKey skips a write when the payload matches the last one it wrote. Without
+// this, a value that was loaded from storage but never written this session
+// would look "new" and be written on the first change - harmless, but the
+// reverse case matters more: seeding means the very first genuine change is
+// always written, never skipped as a false match.
+(function seedWriteCache() {
+  try {
+    const s = localStorage.getItem(SETTINGS_KEY);
+    if (s != null) lastWritten.set(SETTINGS_KEY, s);
+    const c = localStorage.getItem(CONV_KEY);
+    if (c != null) lastWritten.set(CONV_KEY, c);
+  } catch (e) { /* storage unavailable; saves will report */ }
+})();
 let activeId = loadActiveId();
 let streamingAbort = null;
 let pendingAttachments = [];
@@ -5076,21 +5085,10 @@ async function runCompletion(conv) {
           ? performance.now() - reasoningStartedAt : null;
         assistantMsg.reasoningMs = reasoningMs;
 
-        let fileChanges = [];
-        try {
-          const ops = parseFileCommands(assistantMsg.content || "");
-          if (ops.length) {
-            if (!conv.files) conv.files = {};
-            fileChanges = applyFileOps(conv.files, ops);
-            assistantMsg.fileChanges = fileChanges;
-            updateWorkspaceBadge();
-            // Mirror the model's changes to the linked folder, so what is on
-            // disk matches what the workspace shows.
-            writeAllLinkedFiles();
-          }
-        } catch (err) {
-          console.warn("File command apply failed:", err);
-        }
+        // Parse the reply for file commands and apply them. Shared with
+        // fetch-last so a recovered reply behaves identically.
+        const fileChanges = applyAssistantReply(conv, assistantMsg);
+        void fileChanges;
 
         assistantRow.innerHTML = "";
         if (assistantMsg.reasoning) {
@@ -5279,6 +5277,153 @@ function fetchLastAvailable() {
   }
 }
 
+// =============================================================================
+// Immediate persistence
+// =============================================================================
+// Every change to conversation data is written as soon as it happens. The only
+// concession to cost is a dirty check: if the serialised payload is byte-for-byte
+// what was written last time, the write is skipped. That keeps rapid typing from
+// re-serialising the whole history on every keystroke while guaranteeing that
+// anything that actually changed is on disk before the next event runs.
+
+/** Last payload written per storage key, for the dirty check. */
+const lastWritten = new Map();
+
+/**
+ * Write a value to storage, skipping the write when nothing changed.
+ *
+ * Returns "written", "unchanged" or "failed".
+ */
+function saveKey(key, value) {
+  let payload;
+  try {
+    payload = JSON.stringify(value);
+  } catch (err) {
+    console.warn(`Could not serialise ${key}:`, err);
+    return "failed";
+  }
+  if (lastWritten.get(key) === payload) return "unchanged";
+  try {
+    localStorage.setItem(key, payload);
+    lastWritten.set(key, payload);
+    return "written";
+  } catch (err) {
+    // Do not degrade the data the way the old code did - dropping image data
+    // silently lost work. The failure is surfaced instead, and the in-memory
+    // state is left intact so a later successful write still has everything.
+    console.error(`Could not save ${key}:`, err);
+    showStorageWarning(key, payload.length);
+    return "failed";
+  }
+}
+
+/** Persist everything that can change. Safe to call after any mutation. */
+function saveAllNow() {
+  saveKey(CONV_KEY, conversations);
+  saveKey(SETTINGS_KEY, settings);
+  try {
+    if (activeId) saveActiveId(activeId);
+  } catch (e) { /* best effort */ }
+}
+
+let storageWarningShown = false;
+function showStorageWarning(key, size) {
+  if (storageWarningShown) return;
+  storageWarningShown = true;
+  console.error(
+    `Storage is full: ${key} is ${(size / 1024 / 1024).toFixed(1)}MB and could not be ` +
+      `saved. Nothing has been discarded, but new changes will not persist until ` +
+      `space is freed - export or delete an old conversation.`
+  );
+  try {
+    alert(
+      "Storage is full.\n\n" +
+        "Your work has NOT been deleted, but new changes cannot be saved until " +
+        "space is freed. Delete or export an old conversation, then reload."
+    );
+  } catch (e) { /* alert may be unavailable */ }
+}
+
+/**
+ * Safety net: persist after any mutation, however it was made.
+ *
+ * Most mutation sites already call saveConversations themselves; this does not
+ * replace that, it catches the ones that do not and any added later. The write
+ * is deferred to a microtask, so a burst of changes inside one handler results
+ * in a single write, and the byte comparison in saveKey means an unchanged
+ * payload costs nothing.
+ *
+ * It is hooked to the events that actually change data rather than by proxying
+ * the data itself: a Proxy over conversations would be consulted on every
+ * property read, including the large string reads on the render path, which
+ * costs more than it saves.
+ */
+let pendingSaveQueued = false;
+function scheduleSave() {
+  if (pendingSaveQueued) return;
+  pendingSaveQueued = true;
+  queueMicrotask(() => {
+    pendingSaveQueued = false;
+    saveAllNow();
+  });
+}
+
+/**
+ * Attach the safety net.
+ *
+ * Called once at startup. These are the events after which conversation data may
+ * have changed; anything that mutates outside them still saves explicitly.
+ */
+function installSaveSafetyNet() {
+  // Any click may have changed something (send, delete, revert, link, rename).
+  document.addEventListener("click", () => scheduleSave(), true);
+
+  // Typing in the composer changes the draft, which is saved on its own, but a
+  // workspace edit also lands here.
+  document.addEventListener("input", () => scheduleSave(), true);
+
+  // Leaving the page is the last chance to write.
+  window.addEventListener("beforeunload", () => saveAllNow());
+
+  // Backgrounding the app on mobile can kill the page without a beforeunload.
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") saveAllNow();
+  });
+}
+
+// =============================================================================
+// File changes
+// =============================================================================
+
+/**
+ * Apply a finished assistant reply to its conversation.
+ *
+ * Shared by the live path and by fetch-last, so a recovered reply behaves
+ * exactly like one that arrived normally: file commands are parsed, the changes
+ * are recorded - which is what makes them revertible later - and the linked
+ * folder is updated. Doing this in only one place is why a recovered reply could
+ * not edit files and why its changes were not revertible.
+ *
+ * Returns the list of applied changes.
+ */
+function applyAssistantReply(conv, assistantMsg) {
+  let fileChanges = [];
+  try {
+    const ops = parseFileCommands(assistantMsg.content || "");
+    if (ops.length) {
+      if (!conv.files) conv.files = {};
+      fileChanges = applyFileOps(conv.files, ops);
+      assistantMsg.fileChanges = fileChanges;
+      updateWorkspaceBadge();
+      writeAllLinkedFiles();
+    }
+  } catch (err) {
+    console.warn("File command apply failed:", err);
+  }
+  saveAllNow();
+  return fileChanges;
+}
+
 async function loadLastResponse() {
   const btn = $("fetchLastBtn");
   const url = (() => {
@@ -5315,9 +5460,16 @@ async function loadLastResponse() {
     const conv = ensureActive();
     const assistantMsg = { role: "assistant", content, reasoning, recovered: true };
     conv.messages.push(assistantMsg);
+
+    // Treated exactly like a live reply: the raw text is parsed for file
+    // commands, the changes are recorded (so they stay revertible) and the
+    // linked folder is updated. Without this a recovered reply looked right but
+    // could not edit anything.
+    applyAssistantReply(conv, assistantMsg);
+
     conv.updatedAt = Date.now();
-    saveConversations();
     renderMessages();
+    saveAllNow();
     flashButton(btn, true, FETCH_LAST_ICON);
   } catch (err) {
     console.warn("Fetch last failed:", err);
@@ -6516,12 +6668,16 @@ renderMessages();
 applyActiveDraft();
 updateWorkspaceBadge();
 
+// Arm the immediate-save safety net, then write the state as loaded so the
+// stored copy is known-good from the first moment.
+installSaveSafetyNet();
+saveAllNow();
+
 window.addEventListener("beforeunload", (e) => {
   // Final synchronous write of everything in-memory. Individual handlers
   // already persist their own edits, but this closes the gap if any event
   // was missed or a value was set without firing one.
-  try { saveSettings(); } catch { /* storage may be unavailable */ }
-  try { saveConversations(); } catch { /* quota / private mode */ }
+  try { saveAllNow(); } catch { /* best effort */ }
   try { saveDraft($("input").value, activeId); } catch { /* best effort */ }
   if (streamingAbort) { e.preventDefault(); e.returnValue = ""; }
 });
