@@ -892,6 +892,21 @@
   .fc-revert-all.success { color: var(--ds-success); border-color: var(--ds-success); }
   .fc-revert-one.failure,
   .fc-revert-all.failure { color: var(--ds-error); border-color: var(--ds-error); }
+
+  /* Once a change is reverted the same button puts it back. Tinted green so the
+     two directions are distinguishable at a glance, and dimmed a little because
+     re-applying is the non-destructive direction. */
+  .fc-revert-one.reverted,
+  .fc-revert-all.reverted {
+    color: var(--ds-success, #4ec97a);
+    border-color: rgba(78, 201, 122, .45);
+    background: transparent;
+  }
+  .fc-revert-one.reverted:hover,
+  .fc-revert-all.reverted:hover {
+    background: rgba(78, 201, 122, .12);
+    border-color: rgba(78, 201, 122, .7);
+  }
   .fc-revert-one svg,
   .fc-revert-all svg {
     width: 12px;
@@ -3891,36 +3906,112 @@ function revertChange(c) {
   return true;
 }
 
-/** Revert a single change, then refresh everything that shows it. */
-async function revertOneChange(c, button) {
+/**
+ * Re-apply a change that was reverted.
+ *
+ * The mirror of revertChange: a created file comes back with the content the
+ * reply wrote, and an edit or overwrite is set to `after` again. Between them
+ * the two are a toggle, so reverting is no longer a one-way door - the change
+ * can be put back without asking the model to produce it a second time.
+ *
+ * Returns true when the store was modified.
+ */
+function applyChange(c) {
+  if (!canApplyChange(c)) return false;
+  const conv = getActive();
+  if (!conv) return false;
+  if (!conv.files) conv.files = {};
+
+  conv.files[c.file] = c.after ?? "";
+  return true;
+}
+
+/**
+ * Is this change currently reverted, so it can be put back?
+ *
+ * Decided by comparing the workspace to the change rather than by trusting the
+ * flag alone. The flag records what the buttons last did, but a file can also
+ * change by hand in the editor or arrive from a folder sync, and the button must
+ * describe what is actually true now.
+ */
+function isChangeReverted(c) {
+  if (!canRevertChange(c)) return false;
+  const conv = getActive();
+  if (!conv || !conv.files) return false;
+
+  const has = Object.prototype.hasOwnProperty.call(conv.files, c.file);
+
+  // A created file is reverted when it is gone.
+  if (c.kind === "create") return !has;
+
+  // An edit is reverted when the file is back to its previous contents.
+  if (!has) return true;
+  return conv.files[c.file] === (c.before ?? "");
+}
+
+/** Can this change be put back, i.e. is it currently reverted? */
+function canApplyChange(c) {
+  return canRevertChange(c) && isChangeReverted(c);
+}
+
+/**
+ * Toggle one change between reverted and applied.
+ *
+ * One handler for both directions: which way it goes is decided by the current
+ * state, so the button and the action can never disagree.
+ */
+async function toggleChange(c, button) {
   const conv = getActive();
   if (!conv) return;
 
-  const ok = await showConfirm({
-    title: c.kind === "create" ? "Remove this file?" : "Revert this change?",
-    message: c.kind === "create"
-      ? `${c.file} was created by this reply. Reverting deletes it from the workspace.`
-      : `${c.file} will be restored to its previous contents.`,
-    confirmLabel: "Revert",
-    danger: true,
-  });
-  if (!ok) return;
+  const reverted = isChangeReverted(c);
 
-  const changed = revertChange(c);
+  // Confirm only the destructive direction. Putting a change back is just
+  // restoring what the reply already produced, so it needs no warning; deleting
+  // a file or overwriting it does.
+  if (!reverted) {
+    const ok = await showConfirm({
+      title: c.kind === "create" ? "Remove this file?" : "Revert this change?",
+      message: c.kind === "create"
+        ? `${c.file} was created by this reply. Reverting deletes it from the workspace. ` +
+          `You can put it back afterwards.`
+        : `${c.file} will be restored to its previous contents. ` +
+          `You can re-apply the change afterwards.`,
+      confirmLabel: "Revert",
+      danger: true,
+    });
+    if (!ok) return;
+  }
+
+  const changed = reverted ? applyChange(c) : revertChange(c);
   if (changed) {
+    // Record what the button did, for reference; the button's label is derived
+    // from the file contents so a later manual edit still shows the truth.
+    c.reverted = !reverted;
     conv.updatedAt = Date.now();
-    saveConversations();
+
     // The linked folder must match, or disk and workspace drift apart.
-    if (c.kind === "create") {
+    const content = conv.files[c.file];
+    if (content == null) {
       deleteLinkedFile(c.file);
     } else {
-      writeLinkedFile(c.file, conv.files[c.file] ?? "");
+      writeLinkedFile(c.file, content);
     }
+
+    renderMessages();
+    renderWorkspaceFileList();
+    updateWorkspaceBadge();
+    saveAllNow();
+    return;
   }
-  flashButton(button, changed, "Revert");
-  renderMessages();
-  renderWorkspaceFileList();
-  updateWorkspaceBadge();
+
+  flashButton(button, false, reverted ? "Apply" : "Revert");
+}
+
+/** Revert a single change. Kept for callers that mean this direction only. */
+async function revertOneChange(c, button) {
+  if (isChangeReverted(c)) return;
+  await toggleChange(c, button);
 }
 
 /** Remove a file from the linked folder, if one is linked. */
@@ -3972,29 +4063,53 @@ function renderFileChangesCard(changes) {
     });
     header.append(copyAll);
 
-    // Revert every change in this card at once. Only offered when at least one
-    // change is actually revertible.
+    // Toggle every change in this card at once.
+    //
+    // The direction depends on the current state, matching the per-file
+    // buttons: if anything is still applied, this reverts the card; once all of
+    // it is reverted, the same control puts it all back.
     if (changes.some(canRevertChange)) {
-      const revertAll = el("button", { className: "fc-revert-all", type: "button", textContent: "Revert all" });
+      const allReverted = changes.filter(canRevertChange).every(isChangeReverted);
+      const revertAll = el("button", {
+        className: "fc-revert-all" + (allReverted ? " reverted" : ""),
+        type: "button",
+        textContent: allReverted ? "Apply all" : "Revert all",
+      });
       revertAll.addEventListener("click", async (e) => {
         e.preventDefault();
         e.stopPropagation();
-        const ok = await showConfirm({
-          title: "Revert all changes?",
-          message: `This restores ${changedFiles.length} file${changedFiles.length === 1 ? "" : "s"} to their previous contents.`,
-          confirmLabel: "Revert",
-          danger: true,
-        });
-        if (!ok) return;
+
+        const target = changes.filter(canRevertChange);
+        // Confirm only the destructive direction, as with the per-file button.
+        if (!allReverted) {
+          const affected = target.filter((c) => !isChangeReverted(c));
+          const ok = await showConfirm({
+            title: "Revert all changes?",
+            message:
+              `This restores ${affected.length} file${affected.length === 1 ? "" : "s"} to their ` +
+              `previous contents. You can apply them again afterwards.`,
+            confirmLabel: "Revert",
+            danger: true,
+          });
+          if (!ok) return;
+        }
+
         let n = 0;
-        for (const c of changes) if (revertChange(c)) n++;
+        for (const c of target) {
+          const reverted = isChangeReverted(c);
+          if (allReverted ? applyChange(c) : (!reverted && revertChange(c))) {
+            c.reverted = !allReverted;
+            n++;
+          }
+        }
         const conv = getActive();
-        if (conv) { conv.updatedAt = Date.now(); saveConversations(); }
+        if (conv) conv.updatedAt = Date.now();
         writeAllLinkedFiles();
         renderMessages();
         renderWorkspaceFileList();
         updateWorkspaceBadge();
-        flashButton(revertAll, n > 0, `Revert all`);
+        saveAllNow();
+        void n;
       });
       header.append(revertAll);
     }
@@ -4047,21 +4162,27 @@ function renderFileChangeItem(c) {
     summary.append(copyBtn);
   }
 
-  // Undo this one change. Offered only where there is something to restore:
-  // a failed change never modified anything, so it has no revert.
+  // Undo this one change, or put it back if it was already undone.
+  //
+  // The label is derived from the current file contents rather than from a
+  // stored flag, so it stays truthful if the file was also edited by hand or
+  // brought in by a folder sync.
   if (canRevertChange(c)) {
+    const reverted = isChangeReverted(c);
     const revertBtn = el("button", {
-      className: "fc-revert-one",
+      className: "fc-revert-one" + (reverted ? " reverted" : ""),
       type: "button",
-      textContent: "Revert",
-      title: c.kind === "create"
-        ? "Delete this file from the workspace"
-        : "Restore the previous contents",
+      textContent: reverted ? "Apply" : "Revert",
+      title: reverted
+        ? "Put this change back"
+        : (c.kind === "create"
+            ? "Delete this file from the workspace"
+            : "Restore the previous contents"),
     });
     revertBtn.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
-      revertOneChange(c, revertBtn);
+      toggleChange(c, revertBtn);
     });
     summary.append(revertBtn);
   }
