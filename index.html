@@ -6785,22 +6785,39 @@ function unlinkFolder() {
 }
 
 // Re-attach a folder remembered from a previous session.
+/**
+ * Re-attach a remembered folder to the Android bridge.
+ *
+ * The link is stored in the conversation, but the bridge holds the actual URI
+ * grant in memory and starts empty on every launch, so the link must be handed
+ * back before any file operation can work. Without this the workspace looked
+ * linked while every read, write and sync failed.
+ */
 async function restoreLinkedFolder() {
   const conv = ensureActive();
   const link = linkedFolderFor(conv);
   const bridge = workspaceBridge();
   if (!link || !bridge) return;
+
   try {
     const res = JSON.parse(bridge.restoreFolder(link.id, link.uri));
     if (!res.ok) {
-      // The grant was revoked or the folder is gone; drop the link so the UI
-      // does not claim access it does not have.
-      delete conv.linkedFolder;
-      saveConversations();
-      workspaceStatus(res.error || "The linked folder is no longer available.", true);
+      // Do NOT drop the link here.
+      //
+      // This used to delete conv.linkedFolder on any failure, so a transient
+      // problem - a restart mid-grant, storage briefly unavailable - destroyed
+      // the link permanently. The grant is kept by Android across restarts
+      // (verified: persisted=0x3 for the tree URI), so a failure here says
+      // nothing about whether the folder is still usable. The link is reported
+      // instead, and can be retried.
+      workspaceStatus(
+        `Could not reattach the folder: ${res.error || "unknown reason"}. ` +
+          `The link is kept; reopen the workspace to retry.`,
+        true
+      );
     }
   } catch (e) {
-    /* leave the link in place; it may work again after a restart */
+    workspaceStatus(`Could not reattach the folder: ${e.message}`, true);
   }
   renderLinkedFolder();
 }
@@ -6984,6 +7001,15 @@ renderMessages();
 // the user asked to open it themselves.
 applyActiveDraft();
 updateWorkspaceBadge();
+
+// Re-attach the linked folder to the Android bridge.
+//
+// The bridge starts with no folders known, so a conversation that remembers a
+// link cannot read or write through it until this runs. Deferred to a microtask
+// so it never blocks the first paint.
+Promise.resolve()
+  .then(() => restoreLinkedFolder())
+  .catch((e) => console.warn("Could not restore the linked folder:", e));
 
 // Arm the immediate-save safety net, then write the state as loaded so the
 // stored copy is known-good from the first moment.
