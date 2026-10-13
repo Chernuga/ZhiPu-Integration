@@ -6375,6 +6375,25 @@ function openWorkspace() {
   }
 
   $("workspaceModal").classList.add("open");
+
+  // Pull in anything that changed on disk while the app was closed.
+  //
+  // Without this the workspace showed a stale snapshot: files edited in another
+  // app, or by git, only appeared after re-linking. Runs after the panel is
+  // visible so a conflict prompt has something to sit over, and it does not
+  // block - the list refreshes when it finishes.
+  if (linkedFolderFor(conv)) {
+    Promise.resolve()
+      .then(() => syncLinkedFolder())
+      .then(() => {
+        // Re-point at the same file if it still exists; the sync may have
+        // replaced its contents.
+        if (workspaceActiveFile && conv.files[workspaceActiveFile] != null) {
+          selectWorkspaceFile(workspaceActiveFile);
+        }
+      })
+      .catch((e) => workspaceStatus(`Sync failed: ${e.message}`, true));
+  }
 }
 
 function openWorkspaceToFile(name) {
@@ -6486,7 +6505,133 @@ function renderLinkedFolder() {
   }
 }
 
-/** Open the picker, then mirror the chosen folder into the workspace. */
+/** Paths the workspace ignores when importing: build output and huge files. */
+function isIgnoredPath(path) {
+  if (/(^|\/)(\.git|node_modules|build|dist|\.gradle|__pycache__)(\/|$)/.test(path)) return true;
+  return false;
+}
+
+/** Read the whole linked folder into a { path: content } map. */
+function readFolderInto(bridge, linkId, limitBytes = 512 * 1024) {
+  const out = {};
+  let listed;
+  try {
+    listed = JSON.parse(bridge.listFiles(linkId));
+  } catch (e) {
+    return { ok: false, error: `Could not read the folder: ${e.message}`, files: out };
+  }
+  if (!listed.ok) return { ok: false, error: listed.error || "Could not list the folder.", files: out };
+
+  for (const f of listed.files) {
+    if (isIgnoredPath(f.path)) continue;
+    if (f.size > limitBytes) continue;
+    try {
+      const r = JSON.parse(bridge.readFile(linkId, f.path));
+      if (r.ok) out[f.path] = base64ToText(r.base64);
+    } catch (e) {
+      /* one unreadable file must not abort the whole read */
+    }
+  }
+  return { ok: true, files: out };
+}
+
+/**
+ * Reconcile the workspace with its linked folder.
+ *
+ * Called after linking and again whenever the workspace is opened, so files
+ * changed outside the app - in a text editor, by git, by another tool - show up
+ * without a manual re-link. Conflicts are surfaced rather than silently
+ * resolved, because guessing would silently discard one side.
+ *
+ * Returns a summary for the status line.
+ */
+async function syncLinkedFolder({ announce = true } = {}) {
+  const conv = ensureActive();
+  const link = linkedFolderFor(conv);
+  const bridge = workspaceBridge();
+  if (!link || !bridge) return null;
+
+  const disk = readFolderInto(bridge, link.id);
+  if (!disk.ok) {
+    workspaceStatus(disk.error, true);
+    return null;
+  }
+
+  if (!conv.files) conv.files = {};
+
+  const added = [];
+  const changed = [];
+  const conflicts = [];
+
+  for (const [path, diskContent] of Object.entries(disk.files)) {
+    const inWorkspace = Object.prototype.hasOwnProperty.call(conv.files, path);
+    if (!inWorkspace) {
+      // New on disk: pull it in.
+      conv.files[path] = diskContent;
+      added.push(path);
+    } else if (conv.files[path] !== diskContent) {
+      // Both sides have it and they differ. Which is newer cannot be known from
+      // the content alone, so it becomes a conflict for the user to settle.
+      conflicts.push(path);
+    }
+  }
+
+  const removed = Object.keys(conv.files).filter(
+    (p) => !Object.prototype.hasOwnProperty.call(disk.files, p)
+  );
+
+  if (conflicts.length) {
+    await resolveConflicts(conv, bridge, link, conflicts);
+  }
+
+  saveConversations();
+  renderWorkspaceFileList();
+
+  if (announce) {
+    const parts = [];
+    if (added.length) parts.push(`${added.length} new`);
+    if (changed.length) parts.push(`${changed.length} updated`);
+    if (conflicts.length) parts.push(`${conflicts.length} conflict${conflicts.length === 1 ? "" : "s"}`);
+    if (removed.length) parts.push(`${removed.length} missing on disk`);
+    workspaceStatus(
+      parts.length
+        ? `📁 ${link.name} — ${parts.join(", ")}`
+        : `📁 ${link.name} — up to date`
+    );
+  }
+  return { added, changed, conflicts, removed };
+}
+
+/**
+ * Ask the user how to settle each file that differs between the workspace and
+ * the folder.
+ *
+ * A per-file choice rather than one blanket rule: a folder often contains a mix,
+ * and applying "keep disk" across the board would throw away edits made in the
+ * app.
+ */
+async function resolveConflicts(conv, bridge, link, conflicts) {
+  for (const path of conflicts) {
+    const useDisk = await showConfirm({
+      title: "File changed in both places",
+      message:
+        `${path} differs between the workspace and the folder.\n\n` +
+        `OK keeps the version in the folder (the workspace copy is replaced).\n` +
+        `Cancel keeps the workspace version (the folder copy is overwritten).`,
+      confirmLabel: "Keep folder",
+      cancelLabel: "Keep workspace",
+    });
+
+    if (useDisk) {
+      const r = JSON.parse(bridge.readFile(link.id, path));
+      if (r.ok) conv.files[path] = base64ToText(r.base64);
+    } else {
+      writeLinkedFile(path, conv.files[path]);
+    }
+  }
+}
+
+/** Open the picker, then ask which way the files should move. */
 async function linkFolder() {
   const bridge = workspaceBridge();
   if (!bridge) return;
@@ -6505,36 +6650,45 @@ async function linkFolder() {
   }
 
   const conv = ensureActive();
-  conv.linkedFolder = { id: picked.id, name: picked.name, uri: picked.uri };
+  const workspaceCount = Object.keys(conv.files || {}).length;
 
-  // Load whatever is already in the folder, so linking does not silently start
-  // from an empty workspace.
-  let listed;
-  try {
-    listed = JSON.parse(bridge.listFiles(picked.id));
-  } catch (e) {
-    workspaceStatus(`Could not read the folder: ${e.message}`, true);
-    return;
+  // Ask the direction, because linking is destructive in either direction if it
+  // is assumed: importing replaces the workspace, exporting overwrites files on
+  // disk. A folder with existing work makes the choice meaningful, so it is only
+  // asked when there is something to lose.
+  let direction = "import";
+  if (workspaceCount > 0) {
+    const useFolder = await showConfirm({
+      title: "Link folder",
+      message:
+        `This conversation already has ${workspaceCount} file${workspaceCount === 1 ? "" : "s"}.\n\n` +
+        `OK loads the folder into the workspace (the folder wins on conflicts).\n` +
+        `Cancel keeps the workspace and writes it into the folder.`,
+      confirmLabel: "Import from folder",
+      cancelLabel: "Export to folder",
+    });
+    direction = useFolder ? "import" : "export";
   }
 
-  if (listed.ok) {
-    if (!conv.files) conv.files = {};
-    let loaded = 0;
-    for (const f of listed.files) {
-      // Skip build noise and anything huge; the workspace is for source files.
-      if (/(^|\/)(\.git|node_modules|build|dist)\//.test(f.path)) continue;
-      if (f.size > 512 * 1024) continue;
-      try {
-        const r = JSON.parse(bridge.readFile(picked.id, f.path));
-        if (r.ok) {
-          conv.files[f.path] = base64ToText(r.base64);
-          loaded++;
-        }
-      } catch (e) {
-        /* a single unreadable file must not abort the link */
-      }
+  conv.linkedFolder = { id: picked.id, name: picked.name, uri: picked.uri };
+
+  if (direction === "export") {
+    // Push the workspace out first, so the folder reflects it.
+    writeAllLinkedFiles();
+    workspaceStatus(`📁 ${picked.name} — workspace written to folder`);
+  } else {
+    const disk = readFolderInto(bridge, picked.id);
+    if (!disk.ok) {
+      workspaceStatus(disk.error, true);
+      return;
     }
-    workspaceStatus(`📁 ${picked.name} — ${loaded} file${loaded === 1 ? "" : "s"}`);
+    conv.files = conv.files || {};
+    let imported = 0;
+    for (const [path, content] of Object.entries(disk.files)) {
+      conv.files[path] = content;
+      imported++;
+    }
+    workspaceStatus(`📁 ${picked.name} — ${imported} file${imported === 1 ? "" : "s"} imported`);
   }
 
   saveConversations();
@@ -6542,7 +6696,6 @@ async function linkFolder() {
   renderWorkspaceFileList();
   const first = Object.keys(conv.files || {}).sort()[0];
   if (first) selectWorkspaceFile(first);
-  workspaceStatus(`📁 ${picked.name} linked`);
 }
 
 function unlinkFolder() {
@@ -6551,7 +6704,6 @@ function unlinkFolder() {
   delete conv.linkedFolder;
   saveConversations();
   renderLinkedFolder();
-  workspaceStatus("");
   workspaceStatus("Folder unlinked. Files stay in the workspace and on disk.");
 }
 
