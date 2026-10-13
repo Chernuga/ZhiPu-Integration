@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -107,7 +106,13 @@
     --ds-warn-bg:         rgba(184, 132, 26, .12);
   }
 
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+  * {
+    box-sizing: border-box; margin: 0; padding: 0;
+    /* Kill the grey/blue flash Android and iOS paint over tapped elements.
+       Buttons already carry their own :hover/:active feedback. */
+    -webkit-tap-highlight-color: transparent;
+    tap-highlight-color: transparent;
+  }
   html { height: 100%; }
   body {
     font-family: var(--ds-font);
@@ -141,6 +146,12 @@
     border-right: 1px solid var(--ds-border-l1);
   }
   .sidebar.collapsed { margin-left: -260px; }
+  /* Suppresses the margin transition for the very first paint only. On mobile
+     the sidebar is collapsed by the boot script, and with the transition live
+     that write animated the panel sliding shut every time the page loaded.
+     The class is removed on the next frame, so user-initiated toggles still
+     animate normally. */
+  .sidebar.preload { transition: none; }
 
   .sidebar-header {
     display: flex; align-items: center; justify-content: space-between;
@@ -235,9 +246,22 @@
     display: grid; place-items: center;
     color: var(--text-muted);
     flex-shrink: 0;
+    /* pointer-events is tied to visibility so the button is never a click
+       target while it is invisible. Without this, tapping the empty space on
+       the right of a conversation row on mobile hit an invisible button and
+       deleted the chat. Taps pass through to the row instead. */
+    pointer-events: none;
     transition: opacity .12s, background .12s;
   }
-  .conv-item:hover .conv-delete { opacity: 1; }
+  /* Reveal on hover, matching the code-copy button. On mobile, tapping the row
+     applies the same sticky :hover state, so one tap reveals the button and a
+     second tap on it deletes. Also reveal on focus-within so keyboard users
+     can Tab to the button and see it. */
+  .conv-item:hover .conv-delete,
+  .conv-item:focus-within .conv-delete {
+    opacity: 1;
+    pointer-events: auto;
+  }
   .conv-delete:hover { background: var(--active); color: var(--text); }
   .conv-delete svg { width: 14px; height: 14px; }
 
@@ -312,7 +336,11 @@
   .model-menu .m-empty { padding: 10px 12px; font-size: 13px; color: var(--text-muted); }
 
   /* ===== Messages ===== */
-  .messages { flex: 1; overflow-y: auto; padding: 0 24px; scroll-behavior: smooth; }
+  /* scroll-behavior was "smooth", which turned every scrollTop assignment into
+     an animation. Opening a conversation therefore showed the top of the
+     history and glided downward. Scrolling is now instant; the JS jumps
+     straight to the bottom before the first paint. */
+  .messages { flex: 1; overflow-y: auto; padding: 0 24px; }
   .messages-inner { max-width: 768px; margin: 0 auto; padding-bottom: 24px; }
 
   .empty-state {
@@ -783,6 +811,21 @@
   .fc-copy-one:hover { background: var(--hover); color: var(--text); }
   .fc-copy-one.success { color: var(--ds-success); border-color: var(--ds-success); }
 
+  /* The two copy buttons in the changes card swap their text label for a bare
+     SVG on click (see flashButton), but no size rule existed for that icon, so
+     it collapsed to nothing and the button looked inert. Sizing it here gives
+     the tick/cross a visible footprint, and the matching .failure rules colour
+     the cross the same red used elsewhere. */
+  .fc-copy-all svg,
+  .fc-copy-one svg {
+    width: 12px;
+    height: 12px;
+    display: inline-block;
+    vertical-align: -2px;
+  }
+  .fc-copy-all.failure { color: var(--ds-error); border-color: var(--ds-error); }
+  .fc-copy-one.failure { color: var(--ds-error); border-color: var(--ds-error); }
+
   .fc-body {
     padding: 0 14px 12px;
   }
@@ -928,14 +971,22 @@
 
   .settings-window {
     position: relative;
-    width: 100%;
-    height: 100%;
-    border-radius: 0;
+    width: 860px;
+    max-width: calc(100vw - 48px);
+    height: 680px;
+    height: min(680px, calc(100dvh - 48px));
+    border-radius: 16px;
     background: var(--ds-bg-layer-1);
+    border: 1px solid var(--ds-border-l2);
     box-shadow: var(--ds-shadow-lv3);
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    animation: settings-pop var(--ds-dur-slow) var(--ds-ease-out);
+  }
+  @keyframes settings-pop {
+    from { opacity: 0; transform: scale(.96) translateY(4px); }
+    to   { opacity: 1; transform: scale(1)   translateY(0);   }
   }
 
   .settings-title-row {
@@ -1390,20 +1441,39 @@
   .workspace-shell {
     position: fixed; inset: 0;
     z-index: 100;
-    background: var(--ds-bg-base);
     display: none;
-    flex-direction: column;
-    height: 100vh;
-    height: 100dvh;
+    align-items: center;
+    justify-content: center;
   }
   .workspace-shell.open { display: flex; }
+
+  .workspace-mask {
+    position: absolute; inset: 0;
+    background: rgba(0, 0, 0, .5);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
+
+  .workspace-window {
+    position: relative;
+    width: 1100px;
+    max-width: calc(100vw - 48px);
+    height: 740px;
+    height: min(740px, calc(100dvh - 48px));
+    border-radius: 16px;
+    background: var(--ds-bg-base);
+    border: 1px solid var(--ds-border-l2);
+    box-shadow: var(--ds-shadow-lv3);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    animation: settings-pop var(--ds-dur-slow) var(--ds-ease-out);
+  }
 
   .workspace-layout {
     display: flex;
     flex: 1;
     min-height: 0;
-    max-width: 1280px;
-    margin: 0 auto;
     width: 100%;
   }
 
@@ -1471,10 +1541,87 @@
     min-width: 0;
   }
 
+  /* Folder rows in the workspace tree. Indentation is applied inline (14px per
+     level) so the same markup also works for arbitrary nesting depth. */
+  .workspace-folder-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 10px;
+    border-radius: 7px;
+    font-size: 13px;
+    color: var(--text-muted);
+    text-align: left;
+    font-family: var(--ds-font-code);
+    width: 100%;
+    transition: background var(--ds-dur) var(--ds-ease-in-out),
+                color var(--ds-dur) var(--ds-ease-in-out);
+  }
+  .workspace-folder-item:hover { background: var(--hover); color: var(--text); }
+  .ws-folder-chev {
+    width: 12px; height: 12px;
+    display: inline-flex;
+    flex-shrink: 0;
+    color: var(--text-dim);
+    transition: transform var(--ds-dur) var(--ds-ease-in-out);
+  }
+  .ws-folder-chev svg { width: 100%; height: 100%; display: block; }
+  .ws-folder-chev.open { transform: rotate(90deg); }
+  .ws-folder-name {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+  }
+  /* Keeps file rows aligned with folder rows (folder rows have a 12px chevron). */
+  .ws-file-spacer { width: 12px; flex-shrink: 0; }
+
   .workspace-sidebar-footer {
     padding: 10px 12px 14px;
     border-top: 1px solid var(--border);
     flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  /* Linked device folder: the name row sits above the buttons, and the
+     button underneath opens the system folder picker. */
+  .workspace-linked {
+    padding: 8px 12px;
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .ws-linked-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .ws-linked-name {
+    font-size: 12px;
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    min-width: 0;
+  }
+  /* A failed read or write is worth noticing, so it reads as an error rather
+     than as the usual muted folder label. */
+  .ws-linked-name.ws-error { color: #e5534b; }
+
+  .ws-linked-btn {
+    flex-shrink: 0;
+    font-size: 11.5px;
+    padding: 3px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    background: transparent;
+  }
+  .ws-linked-btn:hover {
+    background: var(--hover);
+    color: var(--text);
   }
 
   .workspace-new-file {
@@ -1616,6 +1763,61 @@
     line-height: 1.6;
   }
 
+  /* ===== Confirmation dialog ===== */
+  .dialog-shell {
+    position: fixed; inset: 0;
+    z-index: 300;
+    display: none;
+    align-items: center;
+    justify-content: center;
+  }
+  .dialog-shell.open { display: flex; }
+
+  .dialog-mask {
+    position: absolute; inset: 0;
+    background: rgba(0, 0, 0, .5);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
+
+  .dialog-window {
+    position: relative;
+    width: 400px;
+    max-width: calc(100vw - 48px);
+    padding: 22px 22px 16px;
+    border-radius: 14px;
+    background: var(--ds-bg-layer-2);
+    border: 1px solid var(--ds-border-l2);
+    box-shadow: var(--ds-shadow-lv3);
+    animation: settings-pop var(--ds-dur) var(--ds-ease-out);
+  }
+
+  .dialog-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 8px;
+  }
+
+  .dialog-message {
+    font-size: 13.5px;
+    line-height: 1.55;
+    color: var(--text-muted);
+    margin-bottom: 18px;
+    word-break: break-word;
+  }
+
+  .dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  /* Danger variant of the primary button, used by destructive confirmations
+     (delete chat, delete file, stop response). */
+  .btn-primary.danger { background: var(--ds-error); }
+  .btn-primary.danger:hover { background: #ff5252; }
+
   /* ===== Mobile ===== */
   .backdrop {
     position: fixed; inset: 0;
@@ -1643,9 +1845,12 @@
     .msg-user-wrap { max-width: 88%; }
 
     .settings-window {
-      width: 100%;
-      height: 100dvh;
-      border-radius: 0;
+      width: calc(100vw - 24px);
+      max-width: 100%;
+      height: min(680px, calc(100dvh - 24px));
+      border-radius: 14px;
+      border: 1px solid var(--ds-border-l2);
+      animation: settings-pop var(--ds-dur-slow) var(--ds-ease-out);
     }
     .settings-title-row { padding: 18px 54px 0 16px; }
     .settings-close { top: 16px; right: 12px; }
@@ -1698,27 +1903,13 @@
       background: transparent;
     }
     .settings-nav-item svg { width: 20px; height: 20px; }
-    .settings-nav-item span {
-      font-size: 10.5px;
-      line-height: 1.15;
-      /* Long labels must not widen the row and force a scroll. */
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      max-width: 100%;
-    }
-    /* Active tab: tinted label plus an underline, since the icon alone is a
-       weaker signal at this size. */
-    .settings-nav-item.active { background: transparent; font-weight: 600; }
-    .settings-nav-item.active::after {
-      content: "";
-      position: absolute;
-      left: 18%;
-      right: 18%;
-      bottom: 2px;
-      height: 2px;
-      border-radius: 2px;
-      background: var(--accent, #4f46e5);
+    /* Labels are hidden on mobile: the icon strip stays compact and the section
+       name is already shown in the panel header below. */
+    .settings-nav-item span { display: none; }
+    /* Active tab is marked only by a tinted pill behind its icon. */
+    .settings-nav-item.active {
+      background: var(--active);
+      color: var(--text);
     }
 
     .settings-main {
@@ -1739,7 +1930,13 @@
        so the desktop layout is untouched. */
     .settings-back { display: none; }
 
-    /* Workspace mobile */
+    /* Workspace mobile: keep it a popup with 12px gutters, matching Settings. */
+    .workspace-window {
+      width: calc(100vw - 24px);
+      max-width: 100%;
+      height: min(720px, calc(100dvh - 24px));
+      border-radius: 14px;
+    }
     .workspace-sidebar {
       width: 100%;
       border-right: none;
@@ -1753,7 +1950,10 @@
 </head>
 <body>
 <div class="app">
-  <aside class="sidebar" id="sidebar">
+  <!-- `collapsed` ships in the markup so the mobile layout never paints with
+       the panel open. Desktop removes it on boot; `preload` keeps that removal
+       from animating. -->
+  <aside class="sidebar collapsed preload" id="sidebar">
     <div class="sidebar-header">
       <div class="logo"><div class="logo-mark">D</div><span>DeepSeek</span></div>
       <button class="icon-btn" id="collapseBtn" title="Close sidebar">
@@ -2070,6 +2270,15 @@
             </span>
           </label>
 
+          <label>Workspace commands</label>
+          <label class="checkrow" for="sShowToolCalls">
+            <input type="checkbox" id="sShowToolCalls">
+            <span class="check-body">
+              Show file commands as tool calls
+              <div class="check-desc">When checked, lines like <code>path/to/file.js create:</code> render as styled tool-call rows. When unchecked, the raw command text is shown instead.</div>
+            </span>
+          </label>
+
           <label for="sTypingSpeed">Typing animation speed</label>
           <select id="sTypingSpeed">
             <option value="default" selected>Default (adaptive)</option>
@@ -2130,6 +2339,8 @@
      Workspace fullscreen shell
      ============================================================================ -->
 <div class="workspace-shell" id="workspaceModal">
+  <div class="workspace-mask" id="workspaceMask"></div>
+  <div class="workspace-window">
   <div class="workspace-layout">
 
     <aside class="workspace-sidebar">
@@ -2142,7 +2353,26 @@
         </button>
       </div>
       <div class="workspace-file-list" id="workspaceFileList"></div>
+
+      <!-- Linked device folder.
+           Android only: the app exposes a bridge that opens the system folder
+           picker. When a folder is linked, the workspace reads and writes real
+           files instead of keeping them in browser storage. Hidden entirely
+           where no bridge exists, so the browser build is unchanged. -->
+      <div class="workspace-linked" id="workspaceLinked" hidden>
+        <div class="ws-linked-row">
+          <span class="ws-linked-name" id="workspaceLinkedName"></span>
+          <button type="button" class="ws-linked-btn" id="workspaceUnlinkBtn" title="Unlink this folder">Unlink</button>
+        </div>
+      </div>
+
       <div class="workspace-sidebar-footer">
+        <button class="workspace-new-file" id="workspaceLinkFolder" type="button" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+          </svg>
+          Link folder
+        </button>
         <button class="workspace-new-file" id="workspaceNewFile" type="button">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 5v14M5 12h14"/>
@@ -2193,6 +2423,22 @@
     </main>
 
   </div>
+  </div>
+</div>
+
+<!-- ============================================================================
+     Confirmation dialog
+     ============================================================================ -->
+<div class="dialog-shell" id="dialogModal">
+  <div class="dialog-mask" id="dialogMask"></div>
+  <div class="dialog-window" role="dialog" aria-modal="true" aria-labelledby="dialogTitle">
+    <div class="dialog-title" id="dialogTitle">Confirm</div>
+    <div class="dialog-message" id="dialogMessage"></div>
+    <div class="dialog-actions">
+      <button type="button" class="btn-secondary" id="dialogCancel">Cancel</button>
+      <button type="button" class="btn-primary" id="dialogConfirm">Confirm</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -2202,6 +2448,11 @@
 const SETTINGS_KEY = "deepseek-ui-settings";
 const CONV_KEY = "deepseek-ui-conversations";
 const ACTIVE_KEY = "deepseek-ui-active";
+// Drafts are stored one per conversation, so switching chats keeps whatever was
+// being written in each. The pre-conversation composer (before the first
+// message creates a conversation) has its own slot under "__new__".
+const DRAFT_PREFIX  = "deepseek-ui-draft:";
+const DRAFT_NEW_KEY = DRAFT_PREFIX + "__new__";
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const MAX_TEXT_BYTES  = 512 * 1024;
@@ -2258,11 +2509,28 @@ const DEFAULT_PROVIDERS = [
   {
     id: "zai",
     label: "Z.ai / GLM",
+    // The published z.ai endpoints. "coding" is part of the BASE URL, not a
+    // route segment the builder should add - route is therefore "root" here.
+    // With route "coding" the builder appended a second segment and every
+    // request 404'd on /v4/coding/chat/completions.
     baseUrl: "https://api.z.ai/api/coding/paas/v4",
+    apiKey: "",
+    route: "root",
+    modelsPath: "/models",
+    note: "Direct calls from a browser are blocked by CORS preflight. Either set Base URL to https://zai-cors-relay.ostroshile.workers.dev with route coding, or use the bridge.",
+    models: DEFAULT_MODELS.slice(),
+  },
+  {
+    id: "zai-relay",
+    label: "Z.ai / GLM (via CORS relay)",
+    // Reads the same key, but routes through a Worker that adds the CORS
+    // headers a browser needs. Direct z.ai calls fail the preflight, so this
+    // is the working option for the hosted page.
+    baseUrl: "https://zai-cors-relay.ostroshile.workers.dev",
     apiKey: "",
     route: "coding",
     modelsPath: "/models",
-    note: "Direct calls from a browser are blocked by CORS preflight — point the Cloudflare Worker URL at this instead, or use the bridge.",
+    note: "Use this one from a browser. The relay adds CORS headers and forwards to z.ai; paste the same z.ai key.",
     models: DEFAULT_MODELS.slice(),
   },
   {
@@ -2329,6 +2597,11 @@ const DEFAULT_SETTINGS = {
   retryMax: 2,
   typingSpeed: "default",
   model: "glm-5.3", models: DEFAULT_MODELS, theme: "dark", deepthink: false,
+  showToolCalls: true,
+  // UI state that should survive a reload.
+  sidebarCollapsed: false,
+  settingsSection: "appearance",
+  workspaceCollapsedFolders: [],
 };
 
 const SECTION_TITLES = {
@@ -2453,6 +2726,21 @@ function flashButton(btn, ok, originalHtml) {
 // =============================================================================
 const FILE_CMD_LINE_RE = /^[ \t]*([^\s`]+)[ \t]+(find|replace|create)[ \t]*:[ \t]*$/i;
 
+/**
+ * Canonicalise a workspace path.
+ *
+ * "/" and "\" are treated as the same separator, duplicate separators collapse,
+ * and leading/trailing ones are stripped. So "src\\utils/helper.js", "src\utils
+ * \helper.js" and "/src/utils/helper.js/" all resolve to "src/utils/helper.js"
+ * and land on the same key in `conv.files`.
+ */
+function normalizePath(p) {
+  return String(p)
+    .replace(/\\+/g, "/")
+    .replace(/\/+/g, "/")
+    .replace(/^\/+|\/+$/g, "");
+}
+
 function parseFileCommands(text) {
   const lines = text.split('\n');
   const ops = [];
@@ -2496,11 +2784,16 @@ function applyFileOps(files, ops) {
   let i = 0;
   while (i < ops.length) {
     const op = ops[i];
+    // Both separators describe the same file, so the command's raw path is
+    // canonicalised before it touches the store.
+    const file = normalizePath(op.file);
+    if (!file) { i++; continue; }
+
     if (op.kind === 'create') {
-      const existed = Object.prototype.hasOwnProperty.call(files, op.file);
-      files[op.file] = op.content;
+      const existed = Object.prototype.hasOwnProperty.call(files, file);
+      files[file] = op.content;
       changes.push({
-        file: op.file,
+        file,
         kind: existed ? 'overwrite' : 'create',
         after: op.content,
       });
@@ -2509,18 +2802,21 @@ function applyFileOps(files, ops) {
     }
     if (op.kind === 'find') {
       const next = ops[i + 1];
-      if (next && next.kind === 'replace' && next.file === op.file) {
-        const before = files[op.file];
+      // A "find" and a "replace" pair only matches when they name the same file
+      // once both paths have been normalised.
+      const nextFile = next ? normalizePath(next.file) : null;
+      if (next && next.kind === 'replace' && nextFile === file) {
+        const before = files[file];
         if (before == null) {
-          changes.push({ file: op.file, kind: 'missing' });
+          changes.push({ file, kind: 'missing' });
         } else {
           const idx = before.indexOf(op.content);
           if (idx < 0) {
-            changes.push({ file: op.file, kind: 'nomatch', find: op.content });
+            changes.push({ file, kind: 'nomatch', find: op.content });
           } else {
             const after = before.slice(0, idx) + next.content + before.slice(idx + op.content.length);
-            files[op.file] = after;
-            changes.push({ file: op.file, kind: 'edit', before, after });
+            files[file] = after;
+            changes.push({ file, kind: 'edit', before, after });
           }
         }
         i += 2;
@@ -2558,6 +2854,24 @@ function stripFileCommands(text) {
     i++;
   }
   return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+/**
+ * Text to actually render for an assistant turn.
+ *
+ * With "Show file commands as tool calls" enabled the raw content is shown and
+ * `decorateToolCalls` styles the marker lines. With it disabled the markers and
+ * their payload blocks are removed outright - the change is still summarised by
+ * the file-changes card under the message, so nothing is lost and the body
+ * reads as plain prose.
+ *
+ * Works mid-stream too: `stripFileCommands` runs to the end of the text when the
+ * closing fence has not yet arrived, so a create/update block stays hidden for
+ * the whole duration it is being streamed in.
+ */
+function contentForDisplay(text) {
+  const src = text || "";
+  return settings.showToolCalls === false ? stripFileCommands(src) : src;
 }
 
 // =============================================================================
@@ -2766,6 +3080,14 @@ function loadSettings() {
     merged.promptFinishEnabled = true;
   }
   if (typeof merged.promptFinish !== "string") merged.promptFinish = "";
+  if (typeof merged.showToolCalls !== "boolean") merged.showToolCalls = true;
+  if (typeof merged.sidebarCollapsed !== "boolean") merged.sidebarCollapsed = false;
+  if (typeof merged.settingsSection !== "string" || !SECTION_TITLES[merged.settingsSection]) {
+    merged.settingsSection = "appearance";
+  }
+  if (!Array.isArray(merged.workspaceCollapsedFolders)) {
+    merged.workspaceCollapsedFolders = [];
+  }
   return merged;
 }
 
@@ -2816,7 +3138,19 @@ function loadConversations() {
     const raw = JSON.parse(localStorage.getItem(CONV_KEY) ?? "[]");
     if (!Array.isArray(raw)) return [];
     for (const c of raw) {
-      if (!c.files || typeof c.files !== "object") c.files = {};
+      if (!c.files || typeof c.files !== "object") {
+        c.files = {};
+        continue;
+      }
+      // Old saves may hold mixed separators ("src\\a.js" alongside "src/a.js").
+      // Rewrite every key through the canonical form so the tree sees one file
+      // per path; later keys win on a collision.
+      const next = {};
+      for (const k of Object.keys(c.files)) {
+        const norm = normalizePath(k);
+        if (norm) next[norm] = c.files[k];
+      }
+      c.files = next;
     }
     return raw;
   } catch { return []; }
@@ -2861,6 +3195,71 @@ function loadActiveId() { return localStorage.getItem(ACTIVE_KEY) || null; }
 function saveActiveId(id) {
   if (id) localStorage.setItem(ACTIVE_KEY, id);
   else localStorage.removeItem(ACTIVE_KEY);
+}
+
+// ---- Composer drafts (one per conversation) --------------------------------
+// Every keystroke is mirrored to localStorage so a reload, an accidental tab
+// close, or a conversation switch never loses what was being written. Each
+// conversation has its own slot; the pre-conversation composer writes under
+// "__new__". An empty box removes the slot rather than storing "".
+function draftKeyFor(id) {
+  return id ? DRAFT_PREFIX + id : DRAFT_NEW_KEY;
+}
+function saveDraft(text, id = activeId) {
+  try {
+    const k = draftKeyFor(id);
+    if (text) localStorage.setItem(k, text);
+    else localStorage.removeItem(k);
+  } catch { /* storage may be unavailable or full - the draft is disposable */ }
+}
+function loadDraft(id = activeId) {
+  try { return localStorage.getItem(draftKeyFor(id)) ?? ""; } catch { return ""; }
+}
+function clearDraft(id = activeId) {
+  try { localStorage.removeItem(draftKeyFor(id)); } catch { /* ignore */ }
+}
+/**
+ * Pull the active conversation's draft into the composer and resize the box to
+ * fit. Called on boot, on conversation switch, and after "New chat".
+ */
+/**
+ * Resize the composer to fit its contents.
+ *
+ * `scrollHeight` is only meaningful once the browser has laid out the current
+ * value at the current width and font, and both can still be in flux during
+ * boot (a webfont swapping in, a mobile URL bar collapsing). A stale
+ * measurement leaves the box stuck at whatever height was read at that
+ * moment - which is why it sometimes appeared pre-expanded until the first
+ * keystroke forced a fresh read.
+ */
+function resizeInput() {
+  const ta = $("input");
+  ta.style.height = "auto";
+  ta.style.height = Math.min(ta.scrollHeight, 220) + "px";
+}
+
+/**
+ * Re-run resizeInput once layout has settled, then again after fonts load.
+ *
+ * The rAF handles the immediate post-boot layout shift; document.fonts.ready
+ * handles the later swap from the fallback font to the real one, which can
+ * change the line count of a saved draft and therefore its correct height.
+ */
+function scheduleInputResize() {
+  requestAnimationFrame(() => {
+    resizeInput();
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(() => resizeInput());
+    }
+  });
+}
+
+function applyActiveDraft() {
+  const ta = $("input");
+  ta.value = loadDraft(activeId);
+  resizeInput();
+  updateSendButton();
+  scheduleInputResize();
 }
 
 let settings = loadSettings();
@@ -2947,14 +3346,25 @@ function renderSidebar() {
     item.append(el("span", { className: "conv-title", textContent: conv.title }));
     const del = el("button", { className: "conv-delete", title: "Delete" });
     del.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>`;
-    del.addEventListener("click", (e) => {
+    del.addEventListener("click", async (e) => {
       e.stopPropagation();
-      if (!confirm(`Delete "${conv.title}"?`)) return;
+      const ok = await showConfirm({
+        title: "Delete conversation?",
+        message: `"${conv.title}" and its workspace files will be removed permanently.`,
+        confirmLabel: "Delete",
+        cancelLabel: "Cancel",
+        danger: true,
+      });
+      if (!ok) return;
       conversations = conversations.filter((c) => c.id !== conv.id);
       if (activeId === conv.id) {
         activeId = conversations[0]?.id ?? null;
         saveActiveId(activeId);
       }
+      // The conversation is gone, so its orphaned draft has no way back into
+      // the UI. Drop it instead of leaking one localStorage entry per deleted
+      // chat.
+      clearDraft(conv.id);
       saveConversations();
       renderSidebar();
       renderMessages();
@@ -2967,7 +3377,7 @@ function renderSidebar() {
       renderSidebar();
       renderMessages();
       updateWorkspaceBadge();
-      $("input").focus();
+      applyActiveDraft();
       closeSidebarOnMobile();
     });
     list.append(item);
@@ -3160,6 +3570,9 @@ function decorateCodeBlocks(container) {
 // "index.html find:") becomes a styled tool-call row with an icon and an
 // accent-coloured file name. Everything else is left untouched.
 function decorateToolCalls(container) {
+  // Honor the "Show file commands as tool calls" preference: when disabled the
+  // raw marker lines are left in place as ordinary paragraphs.
+  if (settings.showToolCalls === false) return;
   const paras = container.querySelectorAll("p");
   for (const p of paras) {
     const m = p.textContent.trim().match(FILE_CMD_LINE_RE);
@@ -3348,7 +3761,12 @@ function renderMessages() {
   for (let i = 0; i < conv.messages.length; i++) {
     inner.append(renderMessage(conv.messages[i], i));
   }
-  requestAnimationFrame(scrollToBottom);
+  // Scroll before the browser paints, so opening a conversation lands straight
+  // at the newest message instead of starting at the top and gliding down.
+  // The rAF is a second pass for late layout shifts (fonts, images).
+  const m = $("messages");
+  m.scrollTop = m.scrollHeight;
+  requestAnimationFrame(() => { m.scrollTop = m.scrollHeight; });
 }
 
 function emptyState() {
@@ -3417,7 +3835,7 @@ function renderMessage(msg, index) {
   }
 
   const content = el("div", { className: "content" });
-  content.innerHTML = renderMarkdown(msg.content || "");
+  content.innerHTML = renderMarkdown(contentForDisplay(msg.content));
   decorateCodeBlocks(content);
   decorateToolCalls(content);
   row.append(content);
@@ -3704,14 +4122,21 @@ function buildRequestUrl() {
     // inserted between it and the suffix.
     if (p.route === "root") return `${base}${suffix}`;
 
-    // Do not blindly prepend the route.
+    // Do not prepend the route when the base URL already names it.
     //
-    // A Base URL of "https://host/coding" already names the route, and adding
-    // it again produced "/coding/coding/chat/completions" - a 404 on every
-    // request. Insert the segment only when the base does not already end with
-    // it, so both "https://host" and "https://host/coding" work.
-    const already = new RegExp(`/${p.route}/?$`).test(base);
-    return already ? `${base}${suffix}` : `${base}/${p.route}${suffix}`;
+    // Two shapes exist and both are legitimate:
+    //   https://host                    -> route must be inserted
+    //   https://host/coding             -> route is already there
+    //   https://api.z.ai/api/coding/paas/v4  -> route appears mid-path
+    //
+    // Only the trailing form was checked, so the z.ai default - whose path
+    // contains "coding" before /paas/v4 - had it appended a second time,
+    // producing /v4/coding/chat/completions and a 404 on every request.
+    // The segment is now matched anywhere in the path, as a whole word, so a
+    // base like ".../coding/paas/v4" is left alone while "https://host" still
+    // gets the segment added.
+    const hasRouteSegment = new RegExp(`/${p.route}/`).test(base + "/");
+    return hasRouteSegment ? `${base}${suffix}` : `${base}/${p.route}${suffix}`;
   }
 
   // Legacy fields, kept for hand-edited settings and the workerUrl/baseOverride
@@ -3970,18 +4395,41 @@ async function streamWithRetry({ messages, model, thinking, onDelta, onRetry, on
 // =============================================================================
 // Send
 // =============================================================================
+/** Timer that unlocks the stop button a couple of seconds after sending. */
+let stopUnlockTimer = null;
+
 function setSending(sending) {
   const btn = $("sendBtn");
   const ta = $("input");
   const attach = $("attachBtn");
   if (sending) {
     btn.classList.add("stopping");
-    btn.disabled = false;
-    btn.title = "Stop";
+    // The stop button starts disabled so a stray click cannot kill a request
+    // that has not even reached the server yet. It unlocks after two seconds,
+    // which is long enough for the first byte to arrive in the common case and
+    // short enough that a genuinely stuck request is still cancellable.
+    btn.disabled = true;
+    btn.title = "Stop (available in a moment)";
     btn.innerHTML = STOP_ICON;
     ta.disabled = true;
     attach.disabled = true;
+
+    if (stopUnlockTimer) clearTimeout(stopUnlockTimer);
+    stopUnlockTimer = setTimeout(() => {
+      stopUnlockTimer = null;
+      // Only re-enable if we are still in the sending state - the stream may
+      // have already finished, in which case setSending(false) ran and cleared
+      // this timer for us.
+      if (btn.classList.contains("stopping")) {
+        btn.disabled = false;
+        btn.title = "Stop";
+      }
+    }, 2000);
   } else {
+    if (stopUnlockTimer) {
+      clearTimeout(stopUnlockTimer);
+      stopUnlockTimer = null;
+    }
     btn.classList.remove("stopping");
     btn.title = "Send";
     btn.innerHTML = SEND_ICON;
@@ -4009,14 +4457,24 @@ async function send() {
     return;
   }
 
+  // Capture the draft owner before ensureActive(), which may promote the
+  // "scratch" state (activeId === null) to a real conversation id. The draft
+  // was written under whichever id was live while the user typed.
+  const draftOwner = activeId;
   const conv = ensureActive();
   const attachmentsForMessage = pendingAttachments.map((a) => ({ ...a }));
 
   ta.value = "";
-  ta.style.height = "auto";
+  resizeInput();
   pendingAttachments = [];
   renderPendingAttachments();
   updateSendButton();
+  // The prompt is now part of the conversation. Clear both slots - the pre-
+  // creation scratch entry and the conversation's own - so a sent prompt never
+  // resurfaces. They cannot both be populated, but the pair is cheap and covers
+  // either path.
+  clearDraft(draftOwner);
+  clearDraft(conv.id);
 
   await sendUserMessage(conv, text, attachmentsForMessage, true);
 }
@@ -4176,7 +4634,11 @@ async function runCompletion(conv) {
 
   const contentTypewriter = createTypewriter({
     render: (shown) => {
-      const html = shown ? renderMarkdown(balanceCodeFences(shown)) : "";
+      // Strip first, then balance: if a command block is mid-stream and still
+      // open, strip removes everything from its marker onwards, so the balanced
+      // text never contains a half-finished fence.
+      const visible = contentForDisplay(shown);
+      const html = visible ? renderMarkdown(balanceCodeFences(visible)) : "";
       contentEl.innerHTML = html + '<span class="cursor"></span>';
       decorateToolCalls(contentEl);
     },
@@ -4280,6 +4742,9 @@ async function runCompletion(conv) {
             fileChanges = applyFileOps(conv.files, ops);
             assistantMsg.fileChanges = fileChanges;
             updateWorkspaceBadge();
+            // Mirror the model's changes to the linked folder, so what is on
+            // disk matches what the workspace shows.
+            writeAllLinkedFiles();
           }
         } catch (err) {
           console.warn("File command apply failed:", err);
@@ -4290,7 +4755,7 @@ async function runCompletion(conv) {
           assistantRow.append(buildReasoningBlock(assistantMsg.reasoning, { durationMs: reasoningMs }));
         }
         const c = el("div", { className: "content" });
-        c.innerHTML = renderMarkdown(assistantMsg.content || "");
+        c.innerHTML = renderMarkdown(contentForDisplay(assistantMsg.content));
         decorateCodeBlocks(c);
         decorateToolCalls(c);
         assistantRow.append(c);
@@ -4311,7 +4776,6 @@ async function runCompletion(conv) {
         }
 
         setSending(false);
-        $("input").focus();
       })();
     },
 
@@ -4366,10 +4830,17 @@ async function regenerateFrom(index) {
 // =============================================================================
 const inputEl = $("input");
 inputEl.addEventListener("input", () => {
-  inputEl.style.height = "auto";
-  inputEl.style.height = Math.min(inputEl.scrollHeight, 220) + "px";
+  resizeInput();
   updateSendButton();
+  // Persist on every keystroke. Debouncing is not worth it here: a single
+  // string write per keypress is far cheaper than the re-render that follows.
+  saveDraft(inputEl.value);
 });
+
+// A width change (orientation flip, mobile URL bar, window resize) can re-wrap
+// the current draft and leave the height stale. Re-measure on the next frame,
+// where rAF doubles as a light debounce against rapid resize events.
+window.addEventListener("resize", () => requestAnimationFrame(resizeInput));
 
 // Send on Enter for keyboard/mouse users; on touch devices, Enter/Return on the
 // on-screen keyboard inserts a newline and the user taps the send button.
@@ -4383,9 +4854,25 @@ inputEl.addEventListener("keydown", (e) => {
   }
 });
 
-$("sendBtn").addEventListener("click", () => {
+$("sendBtn").addEventListener("click", async () => {
   const btn = $("sendBtn");
   if (btn.classList.contains("stopping")) {
+    // Confirm before aborting. Stopping is destructive to the current turn -
+    // the model's reply is discarded mid-sentence - and a mis-tap on a phone
+    // is easy while the button is prominently placed.
+    //
+    // The stream may also have finished between the click and the confirmation
+    // (a short reply on a fast connection), in which case streamingAbort is
+    // already null and the guards below are no-ops.
+    const ok = await showConfirm({
+      title: "Stop response?",
+      message: "The reply will stop generating. Whatever has already arrived stays in the conversation.",
+      confirmLabel: "Stop",
+      cancelLabel: "Keep going",
+      danger: true,
+    });
+    if (!ok) return;
+
     if (streamingAbort) streamingAbort.abort();
     if (activeTypewriters) {
       activeTypewriters.reasoning.flush();
@@ -4414,6 +4901,10 @@ $("fileInput").addEventListener("change", async (e) => {
 // Sidebar / theme
 // =============================================================================
 $("newChatBtn").addEventListener("click", () => {
+  // Remember whether we were in the pre-conversation composer. If so, the text
+  // currently in the box belongs to nobody yet, and it moves into the new
+  // conversation so a click does not silently discard an in-progress prompt.
+  const wasActiveId = activeId;
   const conv = newConversation();
   conversations.unshift(conv);
   activeId = conv.id;
@@ -4423,14 +4914,28 @@ $("newChatBtn").addEventListener("click", () => {
   renderMessages();
   updateWorkspaceBadge();
   closeSidebarOnMobile();
-  $("input").focus();
+  if (!wasActiveId) {
+    const text = $("input").value;
+    if (text) saveDraft(text, conv.id);
+  }
+  applyActiveDraft();
 });
 $("collapseBtn").addEventListener("click", () => {
   $("sidebar").classList.add("collapsed");
+  // Only the desktop collapse is a preference worth remembering; on mobile
+  // the panel is collapsed by default and opening it is a temporary peek.
+  if (window.innerWidth > 720) {
+    settings.sidebarCollapsed = true;
+    saveSettings();
+  }
   closeSidebarOnMobile();
 });
 $("menuBtn").addEventListener("click", () => {
   $("sidebar").classList.remove("collapsed");
+  if (window.innerWidth > 720) {
+    settings.sidebarCollapsed = false;
+    saveSettings();
+  }
   if (window.innerWidth <= 720) $("backdrop").classList.add("open");
 });
 $("backdrop").addEventListener("click", closeSidebarOnMobile);
@@ -4440,7 +4945,25 @@ function closeSidebarOnMobile() {
     $("backdrop").classList.remove("open");
   }
 }
-if (window.innerWidth <= 720) $("sidebar").classList.add("collapsed");
+// The sidebar now ships collapsed in the HTML, so mobile is already hidden on
+// the first paint. Desktop wants it open, so the class comes off here - and it
+// comes off *before* the first paint because this script runs at the end of
+// the body, synchronously, ahead of any layout the browser has committed.
+//
+// This replaces the old approach of adding `collapsed` from JS when the width
+// was <= 720. That ran after the browser had already painted the sidebar in
+// its default (open) state, so on slower loads or a warm HTTP cache there was
+// a visible flash of the panel before it snapped shut.
+if (window.innerWidth > 720 && !settings.sidebarCollapsed) {
+  $("sidebar").classList.remove("collapsed");
+}
+
+// `preload` disables the margin transition for this setup pass. One frame is
+// enough for the browser to have committed the final state without animating;
+// afterwards user-initiated toggles slide as usual.
+requestAnimationFrame(() => {
+  $("sidebar").classList.remove("preload");
+});
 
 function applyTheme() { document.documentElement.setAttribute("data-theme", settings.theme); }
 
@@ -4527,10 +5050,60 @@ $("accentResetBtn").addEventListener("click", () => {
 });
 
 // =============================================================================
+// Confirmation dialog
+// =============================================================================
+// A replacement for window.confirm(). Native confirm() is synchronous and
+// blocking, which pauses the streaming typewriter and can freeze the page on
+// some browsers while a request is in flight. This one is async: it returns a
+// Promise<boolean> the caller awaits, and the dialog is a normal DOM element
+// the rest of the UI keeps rendering behind.
+//
+// Clicking the mask, pressing Escape, or hitting Cancel all resolve to false;
+// only the confirm button resolves to true. The cancel button is focused by
+// default so a stray Enter on a destructive action is the safe outcome.
+let dialogResolver = null;
+
+function showConfirm({ title, message, confirmLabel, cancelLabel, danger } = {}) {
+  return new Promise((resolve) => {
+    dialogResolver = resolve;
+    $("dialogTitle").textContent = title || "Confirm";
+    $("dialogMessage").textContent = message || "";
+    $("dialogConfirm").textContent = confirmLabel || "Confirm";
+    $("dialogCancel").textContent = cancelLabel || "Cancel";
+    $("dialogConfirm").classList.toggle("danger", !!danger);
+    $("dialogModal").classList.add("open");
+    requestAnimationFrame(() => $("dialogCancel").focus());
+  });
+}
+
+function closeDialog(result) {
+  $("dialogModal").classList.remove("open");
+  if (dialogResolver) {
+    const r = dialogResolver;
+    dialogResolver = null;
+    r(result);
+  }
+}
+
+$("dialogConfirm").addEventListener("click", () => closeDialog(true));
+$("dialogCancel").addEventListener("click", () => closeDialog(false));
+$("dialogMask").addEventListener("click", () => closeDialog(false));
+
+// Stop the dialog's Escape from also closing a settings or workspace shell
+// that might be open behind it. This listener is registered before theirs, so
+// stopImmediatePropagation wins the race on `document`.
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && $("dialogModal").classList.contains("open")) {
+    e.stopImmediatePropagation();
+    closeDialog(false);
+  }
+});
+
+// =============================================================================
 // Settings shell
 // =============================================================================
 let themeAtOpen = null;
-let currentSection = "appearance";
+let currentSection = settings.settingsSection || "appearance";
 
 function syncCustomInstructionsDisabledState() {
   const enabled = $("sCustomInstructionsEnabled").checked;
@@ -4555,6 +5128,7 @@ function populateSettingsFields() {
   $("sAccentHex").value = settings.accentHex || "";
   $("accentSwatch").style.background = settings.accentHex ? "#" + settings.accentHex : "";
   $("sReasoningExpanded").checked = !!settings.reasoningExpanded;
+  $("sShowToolCalls").checked = settings.showToolCalls !== false;
   $("sTypingSpeed").value = settings.typingSpeed || "default";
   $("sRetryEnabled").checked = !!settings.retryEnabled;
   $("sRetryMax").value = settings.retryMax;
@@ -4806,6 +5380,12 @@ function selectSection(section) {
   if (!SECTION_TITLES[section]) section = "appearance";
   currentSection = section;
 
+  // Remember which panel was open, so reopening Settings lands on it.
+  if (settings.settingsSection !== section) {
+    settings.settingsSection = section;
+    saveSettings();
+  }
+
   for (const btn of document.querySelectorAll(".settings-nav-item")) {
     btn.classList.toggle("active", btn.dataset.section === section);
   }
@@ -4833,8 +5413,9 @@ function openSettings() {
   themeAtOpen = settings.theme;
   syncThemeSegmented();
   // Always open on a section with its panel visible: the tabs sit above it, so
-  // there is nothing to drill into first.
-  selectSection(currentSection || "appearance");
+  // there is nothing to drill into first. Prefer the section last viewed.
+  currentSection = settings.settingsSection || currentSection || "appearance";
+  selectSection(currentSection);
   $("settingsModal").classList.add("open");
 }
 
@@ -4895,6 +5476,7 @@ function collectAllSettings() {
   settings.accentHex = norm || "";
 
   settings.reasoningExpanded = $("sReasoningExpanded").checked;
+  settings.showToolCalls = $("sShowToolCalls").checked;
   const speedVal = $("sTypingSpeed").value;
   settings.typingSpeed = TYPING_SPEEDS[speedVal] !== undefined ? speedVal : "default";
   settings.retryEnabled = $("sRetryEnabled").checked;
@@ -4922,6 +5504,7 @@ $("settingsSave").addEventListener("click", () => {
   syncThemeSegmented();
 
   renderModelMenu();
+  // Re-render so the tool-call toggle takes effect on already-drawn messages.
   renderMessages();
   themeAtOpen = null;
   closeSettings();
@@ -4940,7 +5523,7 @@ for (const id of ["sCustomInstructions", "sPromptFinish", "sAccentHex",
   $(id).addEventListener("blur", collectAllSettings);
 }
 for (const id of ["sCustomInstructionsEnabled", "sPromptFinishEnabled",
-                  "sReasoningExpanded", "sRetryEnabled", "sTypingSpeed"]) {
+                  "sReasoningExpanded", "sShowToolCalls", "sRetryEnabled", "sTypingSpeed"]) {
   $(id).addEventListener("change", collectAllSettings);
 }
 
@@ -4963,12 +5546,98 @@ function updateWorkspaceBadge() {
   badge.style.display = Object.keys(files).length > 0 ? "block" : "none";
 }
 
+/** Folders the user has explicitly collapsed. Everything else renders open.
+ *  Loaded from persisted settings so the tree reopens in the same shape. */
+const collapsedFolders = new Set(
+  Array.isArray(settings.workspaceCollapsedFolders) ? settings.workspaceCollapsedFolders : []
+);
+
+/**
+ * Group flat file keys ("src/utils/helper.js") into a folder tree.
+ *
+ * Every input key is already canonical (see normalizePath), so splitting on "/"
+ * is safe. Files keep their original key as `full` so selection passes back the
+ * exact string stored in `conv.files`.
+ */
+function buildFileTree(names) {
+  const root = { folders: new Map(), files: [] };
+  for (const raw of names) {
+    const norm = normalizePath(raw);
+    if (!norm) continue;
+    const parts = norm.split("/");
+    let node = root;
+    for (let i = 0; i < parts.length - 1; i++) {
+      const part = parts[i];
+      if (!node.folders.has(part)) {
+        node.folders.set(part, { folders: new Map(), files: [] });
+      }
+      node = node.folders.get(part);
+    }
+    node.files.push({ name: parts[parts.length - 1], full: raw });
+  }
+  return root;
+}
+
+/**
+ * Emit one folder/file level into `container`. Folder children are appended to
+ * the same container and offset with inline padding, so an arbitrary nesting
+ * depth costs no extra wrappers and the flat scroll list stays intact.
+ */
+function renderTreeNode(container, node, depth, prefix) {
+  const indent = 10 + depth * 14;
+  const sort = (a, b) => a.localeCompare(b, undefined, { sensitivity: "base" });
+
+  const folderNames = [...node.folders.keys()].sort(sort);
+  for (const folderName of folderNames) {
+    const fullPath = prefix ? `${prefix}/${folderName}` : folderName;
+    const isOpen = !collapsedFolders.has(fullPath);
+
+    const row = el("button", {
+      type: "button",
+      className: "workspace-folder-item",
+      title: fullPath,
+    });
+    row.style.paddingLeft = `${indent}px`;
+
+    const chev = el("span", { className: "ws-folder-chev" + (isOpen ? " open" : "") });
+    chev.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>`;
+    row.append(chev);
+    row.append(el("span", { className: "ws-folder-name", textContent: folderName }));
+
+    row.addEventListener("click", () => {
+      if (collapsedFolders.has(fullPath)) collapsedFolders.delete(fullPath);
+      else collapsedFolders.add(fullPath);
+      settings.workspaceCollapsedFolders = [...collapsedFolders];
+      saveSettings();
+      renderWorkspaceFileList();
+    });
+    container.append(row);
+
+    if (isOpen) renderTreeNode(container, node.folders.get(folderName), depth + 1, fullPath);
+  }
+
+  const sortedFiles = node.files.slice().sort((a, b) => sort(a.name, b.name));
+  for (const f of sortedFiles) {
+    const item = el("button", {
+      type: "button",
+      className: "workspace-file-item" + (f.full === workspaceActiveFile ? " active" : ""),
+      title: f.full,
+    });
+    item.style.paddingLeft = `${indent}px`;
+    // Spacer keeps files aligned with the label of a folder row above them.
+    item.append(el("span", { className: "ws-file-spacer" }));
+    item.append(el("span", { className: "ws-file-name", textContent: f.name }));
+    item.addEventListener("click", () => selectWorkspaceFile(f.full));
+    container.append(item);
+  }
+}
+
 function renderWorkspaceFileList() {
   const list = $("workspaceFileList");
   list.innerHTML = "";
   const conv = getActive();
   const files = conv?.files || {};
-  const names = Object.keys(files).sort();
+  const names = Object.keys(files);
   if (!names.length) {
     list.append(el("div", {
       className: "workspace-empty",
@@ -4976,16 +5645,7 @@ function renderWorkspaceFileList() {
     }));
     return;
   }
-  for (const name of names) {
-    const item = el("button", {
-      type: "button",
-      className: "workspace-file-item" + (name === workspaceActiveFile ? " active" : ""),
-      title: name,
-    });
-    item.append(el("span", { className: "ws-file-name", textContent: name }));
-    item.addEventListener("click", () => selectWorkspaceFile(name));
-    list.append(item);
-  }
+  renderTreeNode(list, buildFileTree(names), 0, "");
 }
 
 function selectWorkspaceFile(name) {
@@ -4994,6 +5654,13 @@ function selectWorkspaceFile(name) {
   const files = conv?.files || {};
 
   const hasFile = !!name && files[name] != null;
+
+  // Remember the last-viewed file for this conversation so reopening the
+  // workspace lands on it. Only store a name that actually exists.
+  if (conv && hasFile && conv.activeFile !== name) {
+    conv.activeFile = name;
+    saveConversations();
+  }
 
   $("workspaceFileName").value = hasFile ? name : "";
   $("workspaceFileName").disabled = !hasFile;
@@ -5024,10 +5691,15 @@ function openWorkspace() {
   const conv = ensureActive();
   const names = Object.keys(conv.files || {}).sort();
 
+  // Prefer the file this conversation was last viewing, but only when it
+  // still exists; otherwise fall back to the first file in the list.
   if (!workspaceActiveFile || !conv.files[workspaceActiveFile]) {
-    workspaceActiveFile = names[0] || null;
+    workspaceActiveFile = (conv.activeFile && conv.files[conv.activeFile] != null)
+      ? conv.activeFile
+      : (names[0] || null);
   }
 
+  renderLinkedFolder();
   renderWorkspaceFileList();
   selectWorkspaceFile(workspaceActiveFile);
 
@@ -5046,6 +5718,197 @@ function openWorkspaceToFile(name) {
   $("workspaceModal").classList.add("open");
 }
 
+// =============================================================================
+// Linked device folder
+// =============================================================================
+// The Android app exposes `AndroidWorkspace`, which opens the system folder
+// picker and reads and writes files through the Storage Access Framework.
+// When a folder is linked, the conversation's workspace mirrors it: files are
+// loaded from disk on link and written back on every change, so the workspace
+// is a real folder rather than browser storage.
+//
+// Everything here is feature-detected. In a plain browser the bridge is absent,
+// the Link button stays hidden, and the workspace behaves exactly as before.
+
+/** The SAF bridge, or null in a browser. */
+function workspaceBridge() {
+  try {
+    return (typeof AndroidWorkspace !== "undefined" && AndroidWorkspace) ? AndroidWorkspace : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function linkedFolderFor(conv = ensureActive()) {
+  return conv && conv.linkedFolder ? conv.linkedFolder : null;
+}
+
+/** Decode the base64 the bridge returns into a UTF-8 string. */
+function base64ToText(b64) {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new TextDecoder("utf-8").decode(bytes);
+}
+
+/** Encode a string as base64 for the bridge. */
+function textToBase64(text) {
+  const bytes = new TextEncoder().encode(text);
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin);
+}
+
+/**
+ * Write one file through to the linked folder.
+ *
+ * Called on every edit, and after the model creates or changes files, so the
+ * folder on disk is always the workspace's real state.
+ */
+function writeLinkedFile(path, content) {
+  const conv = ensureActive();
+  const link = linkedFolderFor(conv);
+  const bridge = workspaceBridge();
+  if (!link || !bridge) return false;
+  try {
+    const res = JSON.parse(bridge.writeFile(link.id, path, textToBase64(content || "")));
+    if (!res.ok) {
+      workspaceStatus(`Write failed: ${res.error}`, true);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    workspaceStatus(`Write failed: ${e.message}`, true);
+    return false;
+  }
+}
+
+/** Push every workspace file to the linked folder. */
+function writeAllLinkedFiles() {
+  const conv = ensureActive();
+  if (!linkedFolderFor(conv)) return;
+  for (const [path, content] of Object.entries(conv.files || {})) {
+    writeLinkedFile(path, content);
+  }
+}
+
+/** Short message under the file list; also used for errors. */
+function workspaceStatus(message, isError = false) {
+  const el = $("workspaceLinkedName");
+  if (!el) return;
+  if (message) {
+    el.textContent = message;
+    el.classList.toggle("ws-error", Boolean(isError));
+  }
+}
+
+function renderLinkedFolder() {
+  const conv = ensureActive();
+  const link = linkedFolderFor(conv);
+  const box = $("workspaceLinked");
+  const btn = $("workspaceLinkFolder");
+  if (!box || !btn) return;
+
+  if (link) {
+    box.hidden = false;
+    btn.hidden = true;
+    $("workspaceLinkedName").textContent = `📁 ${link.name}`;
+  } else {
+    box.hidden = true;
+    btn.hidden = !workspaceBridge();
+  }
+}
+
+/** Open the picker, then mirror the chosen folder into the workspace. */
+async function linkFolder() {
+  const bridge = workspaceBridge();
+  if (!bridge) return;
+
+  workspaceStatus("Choose a folder…");
+  let picked;
+  try {
+    picked = JSON.parse(bridge.pickFolder());
+  } catch (e) {
+    workspaceStatus(`Folder picker failed: ${e.message}`, true);
+    return;
+  }
+  if (!picked.ok) {
+    workspaceStatus(picked.error || "No folder chosen.", true);
+    return;
+  }
+
+  const conv = ensureActive();
+  conv.linkedFolder = { id: picked.id, name: picked.name, uri: picked.uri };
+
+  // Load whatever is already in the folder, so linking does not silently start
+  // from an empty workspace.
+  let listed;
+  try {
+    listed = JSON.parse(bridge.listFiles(picked.id));
+  } catch (e) {
+    workspaceStatus(`Could not read the folder: ${e.message}`, true);
+    return;
+  }
+
+  if (listed.ok) {
+    if (!conv.files) conv.files = {};
+    let loaded = 0;
+    for (const f of listed.files) {
+      // Skip build noise and anything huge; the workspace is for source files.
+      if (/(^|\/)(\.git|node_modules|build|dist)\//.test(f.path)) continue;
+      if (f.size > 512 * 1024) continue;
+      try {
+        const r = JSON.parse(bridge.readFile(picked.id, f.path));
+        if (r.ok) {
+          conv.files[f.path] = base64ToText(r.base64);
+          loaded++;
+        }
+      } catch (e) {
+        /* a single unreadable file must not abort the link */
+      }
+    }
+    workspaceStatus(`📁 ${picked.name} — ${loaded} file${loaded === 1 ? "" : "s"}`);
+  }
+
+  saveConversations();
+  renderLinkedFolder();
+  renderWorkspaceFileList();
+  const first = Object.keys(conv.files || {}).sort()[0];
+  if (first) selectWorkspaceFile(first);
+  workspaceStatus(`📁 ${picked.name} linked`);
+}
+
+function unlinkFolder() {
+  const conv = ensureActive();
+  if (!conv.linkedFolder) return;
+  delete conv.linkedFolder;
+  saveConversations();
+  renderLinkedFolder();
+  workspaceStatus("");
+  workspaceStatus("Folder unlinked. Files stay in the workspace and on disk.");
+}
+
+// Re-attach a folder remembered from a previous session.
+async function restoreLinkedFolder() {
+  const conv = ensureActive();
+  const link = linkedFolderFor(conv);
+  const bridge = workspaceBridge();
+  if (!link || !bridge) return;
+  try {
+    const res = JSON.parse(bridge.restoreFolder(link.id, link.uri));
+    if (!res.ok) {
+      // The grant was revoked or the folder is gone; drop the link so the UI
+      // does not claim access it does not have.
+      delete conv.linkedFolder;
+      saveConversations();
+      workspaceStatus(res.error || "The linked folder is no longer available.", true);
+    }
+  } catch (e) {
+    /* leave the link in place; it may work again after a restart */
+  }
+  renderLinkedFolder();
+}
+
 function closeWorkspace() {
   $("workspaceModal").classList.remove("open");
   $("workspaceModal").classList.remove("show-panel");
@@ -5054,6 +5917,7 @@ function closeWorkspace() {
 $("workspaceBtn").addEventListener("click", openWorkspace);
 $("workspaceNavCloseBtn").addEventListener("click", closeWorkspace);
 $("workspaceCloseBtn").addEventListener("click", closeWorkspace);
+$("workspaceMask").addEventListener("click", closeWorkspace);
 $("workspaceBack").addEventListener("click", () => {
   $("workspaceModal").classList.remove("show-panel");
 });
@@ -5063,6 +5927,9 @@ document.addEventListener("keydown", (e) => {
     closeWorkspace();
   }
 });
+
+$("workspaceLinkFolder").addEventListener("click", () => { linkFolder(); });
+$("workspaceUnlinkBtn").addEventListener("click", () => { unlinkFolder(); });
 
 $("workspaceNewFile").addEventListener("click", () => {
   const conv = ensureActive();
@@ -5075,6 +5942,8 @@ $("workspaceNewFile").addEventListener("click", () => {
   conv.files[name] = "";
   conv.updatedAt = Date.now();
   saveConversations();
+  // Create it on disk too, so the linked folder matches the workspace.
+  writeLinkedFile(name, "");
   workspaceActiveFile = name;
   renderWorkspaceFileList();
   selectWorkspaceFile(name);
@@ -5095,7 +5964,22 @@ $("workspaceFileContent").addEventListener("input", () => {
   conv.files[workspaceActiveFile] = $("workspaceFileContent").value;
   conv.updatedAt = Date.now();
   saveConversations();
+  // Mirror the edit to the linked folder, debounced: writing on every keystroke
+  // would hammer the storage provider for no benefit.
+  scheduleLinkedWrite(workspaceActiveFile, $("workspaceFileContent").value);
 });
+
+/** Debounced write-through to the linked folder. */
+const linkedWriteTimers = new Map();
+function scheduleLinkedWrite(path, content) {
+  if (!linkedFolderFor()) return;
+  const existing = linkedWriteTimers.get(path);
+  if (existing) clearTimeout(existing);
+  linkedWriteTimers.set(path, setTimeout(() => {
+    linkedWriteTimers.delete(path);
+    writeLinkedFile(path, content);
+  }, 600));
+}
 
 $("workspaceFileName").addEventListener("blur", renameWorkspaceFile);
 $("workspaceFileName").addEventListener("keydown", (e) => {
@@ -5109,7 +5993,9 @@ function renameWorkspaceFile() {
   const conv = getActive();
   if (!conv || !workspaceActiveFile) return;
   const input = $("workspaceFileName");
-  const newName = input.value.trim();
+  // Normalise on rename too, so "src\\a.js" and "src/a.js" cannot become two
+  // separate keys for the same file.
+  const newName = normalizePath(input.value.trim());
 
   if (!newName || newName === workspaceActiveFile) {
     input.value = workspaceActiveFile;
@@ -5147,10 +6033,17 @@ $("workspaceCopyBtn").addEventListener("click", async () => {
   }, 1400);
 });
 
-$("workspaceDeleteBtn").addEventListener("click", () => {
+$("workspaceDeleteBtn").addEventListener("click", async () => {
   const conv = getActive();
   if (!conv || !workspaceActiveFile) return;
-  if (!confirm(`Delete "${workspaceActiveFile}"?`)) return;
+  const ok = await showConfirm({
+    title: "Delete file?",
+    message: `"${workspaceActiveFile}" will be removed from this workspace.`,
+    confirmLabel: "Delete",
+    cancelLabel: "Cancel",
+    danger: true,
+  });
+  if (!ok) return;
   delete conv.files[workspaceActiveFile];
   workspaceActiveFile = null;
   conv.updatedAt = Date.now();
@@ -5184,11 +6077,21 @@ if (activeId && !conversations.find((c) => c.id === activeId)) {
 
 renderSidebar();
 renderMessages();
-updateSendButton();
+// Restore the active conversation's draft (or the scratch one, if no
+// conversation is open). applyActiveDraft also calls updateSendButton, so the
+// arrow lights up on a restored prompt. The composer is intentionally not
+// focused: on touch devices that pops the on-screen keyboard unprompted, and
+// the user asked to open it themselves.
+applyActiveDraft();
 updateWorkspaceBadge();
-inputEl.focus();
 
 window.addEventListener("beforeunload", (e) => {
+  // Final synchronous write of everything in-memory. Individual handlers
+  // already persist their own edits, but this closes the gap if any event
+  // was missed or a value was set without firing one.
+  try { saveSettings(); } catch { /* storage may be unavailable */ }
+  try { saveConversations(); } catch { /* quota / private mode */ }
+  try { saveDraft($("input").value, activeId); } catch { /* best effort */ }
   if (streamingAbort) { e.preventDefault(); e.returnValue = ""; }
 });
 </script>
