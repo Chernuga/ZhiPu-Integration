@@ -3992,20 +3992,29 @@ function rewindFrom(conv, messageIndex) {
 }
 
 /**
- * Replay the workspace forward through a message's changes.
+ * Replay one reply's changes.
  *
- * Oldest-first, the mirror of rewindFrom, so the final content of each file is
- * whatever the last reply to touch it produced.
+ * Only this group, not the ones after it. Reverting has to cascade forward -
+ * undoing a reply while leaving a later one applied would give a state the
+ * workspace never had - but redoing does not: applying reply 2 while replies 3
+ * and 4 stay undone lands on a real intermediate state, and lets the user walk
+ * forward one reply at a time instead of jumping to the end.
  *
  * Returns the number of changes replayed.
  */
-function replayFrom(conv, messageIndex) {
-  const groups = changesFrom(conv, messageIndex);
+function replayGroup(conv, messageIndex) {
   let n = 0;
-  for (let g = 0; g < groups.length; g++) {
-    const changes = groups[g].changes;
-    for (let i = 0; i < changes.length; i++) {
-      if (applyChange(changes[i])) n++;
+  for (const g of changesFrom(conv, messageIndex, { inclusive: true })) {
+    if (g.index !== messageIndex) continue;
+    for (const c of g.changes) {
+      // Set the value directly rather than going through applyChange's guard.
+      // A change later in a file's chain cannot be reached by the guard while
+      // the changes before it are still undone, and this is exactly the case
+      // being handled here: replaying the next step after a rewind.
+      if (!canRevertChange(c)) continue;
+      if (!conv.files) conv.files = {};
+      conv.files[c.file] = c.after ?? "";
+      n++;
     }
   }
   return n;
@@ -4168,8 +4177,14 @@ async function toggleGroupAt(messageIndex, button) {
     if (!ok) return;
   }
 
+  // Asymmetric on purpose.
+  //
+  // Reverting cascades forward, because undoing a reply while a later one stays
+  // applied would leave the files in a state they never actually held. Applying
+  // does not: redoing just this reply lands on a real intermediate state, and
+  // the user can step forward one reply at a time.
   if (applied) rewindFrom(conv, messageIndex);
-  else replayFrom(conv, messageIndex);
+  else replayGroup(conv, messageIndex);
 
   conv.updatedAt = Date.now();
 
