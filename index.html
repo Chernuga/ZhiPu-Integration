@@ -565,6 +565,10 @@
   .msg-action.success { color: #6ee7a0; }
   .msg-action.failure { color: var(--ds-error); }
 
+  /* Destructive actions read red on hover, so a delete is never mistaken for
+     a copy at a glance. */
+  .msg-action-danger:hover { background: rgba(229, 83, 75, .14); color: var(--ds-error); }
+
   /* ===== Reasoning block ===== */
   .reasoning-block {
     margin: 0 0 14px;
@@ -825,6 +829,41 @@
   }
   .fc-copy-all.failure { color: var(--ds-error); border-color: var(--ds-error); }
   .fc-copy-one.failure { color: var(--ds-error); border-color: var(--ds-error); }
+
+  /* Revert buttons. Styled like the copy buttons but tinted so an action that
+     changes files is not mistaken for one that only copies text. */
+  .fc-revert-one,
+  .fc-revert-all {
+    padding: 3px 9px;
+    border-radius: 5px;
+    font-size: 11.5px;
+    font-weight: 500;
+    color: #e0a33a;
+    border: 1px solid rgba(224, 163, 58, .45);
+    background: transparent;
+    flex-shrink: 0;
+    transition: background var(--ds-dur) var(--ds-ease-in-out),
+                color var(--ds-dur) var(--ds-ease-in-out),
+                border-color var(--ds-dur) var(--ds-ease-in-out);
+  }
+  .fc-revert-all { margin-left: 6px; }
+  .fc-revert-one:hover,
+  .fc-revert-all:hover {
+    background: rgba(224, 163, 58, .12);
+    color: #f0b455;
+    border-color: rgba(224, 163, 58, .7);
+  }
+  .fc-revert-one.success,
+  .fc-revert-all.success { color: var(--ds-success); border-color: var(--ds-success); }
+  .fc-revert-one.failure,
+  .fc-revert-all.failure { color: var(--ds-error); border-color: var(--ds-error); }
+  .fc-revert-one svg,
+  .fc-revert-all svg {
+    width: 12px;
+    height: 12px;
+    display: inline-block;
+    vertical-align: -2px;
+  }
 
   .fc-body {
     padding: 0 14px 12px;
@@ -2678,6 +2717,9 @@ const STOP_ICON = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" x
 
 const SEND_ICON = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8.3125 0.980206C8.66767 1.05312 8.97902 1.2042 9.2627 1.43235C9.48724 1.613 9.73029 1.85795 9.97949 2.10716L14.707 6.8347L13.293 8.24876L9 3.95579V15.0417H7V3.95579L2.70703 8.24876L1.29297 6.8347L6.02051 2.10716C6.26971 1.85795 6.51277 1.613 6.7373 1.43235C6.97662 1.23988 7.28445 1.04404 7.6875 0.980206C7.8973 0.947029 8.1031 0.955183 8.3125 0.980206Z" fill="currentColor"></path></svg>`;
 
+/** Delete a message. Used on both the user and assistant action bars. */
+const TRASH_ICON = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6.5 1.5c-.4 0-.75.25-.9.6l-.25.6H2.75a.75.75 0 0 0 0 1.5h.6l.75 9a1.5 1.5 0 0 0 1.5 1.4h4.8a1.5 1.5 0 0 0 1.5-1.4l.75-9h.6a.75.75 0 0 0 0-1.5h-2.6l-.25-.6a1 1 0 0 0-.9-.6zm-2.14 2.7h7.28l-.73 8.8a.25.25 0 0 1-.25.23h-4.8a.25.25 0 0 1-.25-.23zM6.4 6.2c.4 0 .72.32.72.72v4.2a.72.72 0 0 1-1.44 0v-4.2c0-.4.32-.72.72-.72m3.2 0c.4 0 .72.32.72.72v4.2a.72.72 0 0 1-1.44 0v-4.2c0-.4.32-.72.72-.72" fill="currentColor"/></svg>`;
+
 const TOOL_CALL_ICONS = {
   create: `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2h7l3 3v9a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z"/><path d="M10 2v3h3"/><path d="M7.5 8v3M6 9.5h3"/></svg>`,
   find: `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="4.5"/><path d="M13.5 13.5l-4-4"/></svg>`,
@@ -2791,10 +2833,15 @@ function applyFileOps(files, ops) {
 
     if (op.kind === 'create') {
       const existed = Object.prototype.hasOwnProperty.call(files, file);
+      // Keep the previous content so the change can be reverted. Without it a
+      // revert of an overwrite would have to guess, and an overwrite is
+      // destructive precisely because the old text is gone.
+      const before = existed ? files[file] : null;
       files[file] = op.content;
       changes.push({
         file,
         kind: existed ? 'overwrite' : 'create',
+        before,
         after: op.content,
       });
       i++;
@@ -3462,12 +3509,31 @@ function createTypewriter({ render, speed = 12, adaptive = false }) {
       if (done) notifyIdle();
       return;
     }
-    const step = adaptive
-      ? (remaining > 300 ? 8 : remaining > 100 ? 4 : remaining > 30 ? 2 : 1)
-      : 1;
+    // Adaptive pacing exists to keep a long answer from taking minutes.
+    //
+    // The step grows with the backlog, so a big reveal catches up quickly while
+    // the last few characters still appear one at a time. The thresholds are
+    // tuned against the tick delay: with only the old steps (max 8 per tick) a
+    // 1200-character answer needed 227 ticks, which at the default 200ms delay
+    // is 45 seconds - slower than every fixed speed, so "adaptive" was in
+    // practice the slowest option.
+    //
+    // The steps now scale far more aggressively with the backlog, and the delay
+    // is shortened while catching up, so long answers finish in a few seconds
+    // and the tail still reads as typing.
+    let step = 1;
+    let delay = speed;
+    if (adaptive) {
+      if (remaining > 1200)      { step = 120; delay = 0; }
+      else if (remaining > 600)  { step = 64;  delay = 0; }
+      else if (remaining > 300)  { step = 32;  delay = 4; }
+      else if (remaining > 120)  { step = 14;  delay = 12; }
+      else if (remaining > 40)   { step = 5;   delay = Math.min(speed, 30); }
+      else                       { step = 1;   delay = Math.min(speed, 60); }
+    }
     displayed = Math.min(displayed + step, buffer.length);
     paint();
-    if (!paused) timer = setTimeout(tick, speed);
+    if (!paused) timer = setTimeout(tick, delay);
   }
 
   function kick() {
@@ -3648,6 +3714,85 @@ function buildReasoningBlock(reasoning, opts = {}) {
 // =============================================================================
 // File changes card
 // =============================================================================
+/**
+ * Can this change be undone?
+ *
+ * A create is revertible by deleting the file; an edit or overwrite by putting
+ * the previous content back. A failed change never touched anything, so there
+ * is nothing to undo.
+ */
+function canRevertChange(c) {
+  return c && (c.kind === "create" || c.kind === "edit" || c.kind === "overwrite");
+}
+
+/**
+ * Undo one change against the conversation's files.
+ *
+ * A create removes the file, because it did not exist before. Everything else
+ * restores the recorded `before`: for an overwrite that is the text the model
+ * replaced, which is exactly what would otherwise be lost.
+ *
+ * Returns true when the store was modified.
+ */
+function revertChange(c) {
+  if (!canRevertChange(c)) return false;
+  const conv = getActive();
+  if (!conv) return false;
+  if (!conv.files) conv.files = {};
+
+  if (c.kind === "create") {
+    delete conv.files[c.file];
+    return true;
+  }
+  conv.files[c.file] = c.before ?? "";
+  return true;
+}
+
+/** Revert a single change, then refresh everything that shows it. */
+async function revertOneChange(c, button) {
+  const conv = getActive();
+  if (!conv) return;
+
+  const ok = await showConfirm({
+    title: c.kind === "create" ? "Remove this file?" : "Revert this change?",
+    message: c.kind === "create"
+      ? `${c.file} was created by this reply. Reverting deletes it from the workspace.`
+      : `${c.file} will be restored to its previous contents.`,
+    confirmLabel: "Revert",
+    danger: true,
+  });
+  if (!ok) return;
+
+  const changed = revertChange(c);
+  if (changed) {
+    conv.updatedAt = Date.now();
+    saveConversations();
+    // The linked folder must match, or disk and workspace drift apart.
+    if (c.kind === "create") {
+      deleteLinkedFile(c.file);
+    } else {
+      writeLinkedFile(c.file, conv.files[c.file] ?? "");
+    }
+  }
+  flashButton(button, changed, "Revert");
+  renderMessages();
+  renderWorkspaceFileList();
+  updateWorkspaceBadge();
+}
+
+/** Remove a file from the linked folder, if one is linked. */
+function deleteLinkedFile(path) {
+  const conv = getActive();
+  const link = conv && conv.linkedFolder;
+  const bridge = workspaceBridge();
+  if (!link || !bridge) return;
+  try {
+    bridge.deleteFile(link.id, path);
+  } catch (e) {
+    /* the file may only exist in the workspace */
+  }
+}
+
 function renderFileChangesCard(changes) {
   const wrap = el("div", { className: "file-changes" });
 
@@ -3683,6 +3828,33 @@ function renderFileChangesCard(changes) {
       flashButton(copyAll, ok, "Copy all");
     });
     header.append(copyAll);
+
+    // Revert every change in this card at once. Only offered when at least one
+    // change is actually revertible.
+    if (changes.some(canRevertChange)) {
+      const revertAll = el("button", { className: "fc-revert-all", type: "button", textContent: "Revert all" });
+      revertAll.addEventListener("click", async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const ok = await showConfirm({
+          title: "Revert all changes?",
+          message: `This restores ${changedFiles.length} file${changedFiles.length === 1 ? "" : "s"} to their previous contents.`,
+          confirmLabel: "Revert",
+          danger: true,
+        });
+        if (!ok) return;
+        let n = 0;
+        for (const c of changes) if (revertChange(c)) n++;
+        const conv = getActive();
+        if (conv) { conv.updatedAt = Date.now(); saveConversations(); }
+        writeAllLinkedFiles();
+        renderMessages();
+        renderWorkspaceFileList();
+        updateWorkspaceBadge();
+        flashButton(revertAll, n > 0, `Revert all`);
+      });
+      header.append(revertAll);
+    }
   }
 
   wrap.append(header);
@@ -3730,6 +3902,25 @@ function renderFileChangeItem(c) {
       flashButton(copyBtn, ok, "Copy");
     });
     summary.append(copyBtn);
+  }
+
+  // Undo this one change. Offered only where there is something to restore:
+  // a failed change never modified anything, so it has no revert.
+  if (canRevertChange(c)) {
+    const revertBtn = el("button", {
+      className: "fc-revert-one",
+      type: "button",
+      textContent: "Revert",
+      title: c.kind === "create"
+        ? "Delete this file from the workspace"
+        : "Restore the previous contents",
+    });
+    revertBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      revertOneChange(c, revertBtn);
+    });
+    summary.append(revertBtn);
   }
 
   summary.insertAdjacentHTML("beforeend", FC_CHEVRON_ICON);
@@ -3824,6 +4015,11 @@ function renderMessage(msg, index) {
     editBtn.addEventListener("click", () => enterEditMode(index, wrapper, bubble, actions));
     actions.append(editBtn);
 
+    const delBtn = el("button", { className: "msg-action msg-action-danger", title: "Delete message" });
+    delBtn.innerHTML = TRASH_ICON;
+    delBtn.addEventListener("click", () => deleteMessage(index));
+    actions.append(delBtn);
+
     wrapper.append(bubble, actions);
     row.append(wrapper);
     return row;
@@ -3848,6 +4044,60 @@ function renderMessage(msg, index) {
   return row;
 }
 
+/**
+ * Delete one message from the conversation.
+ *
+ * "Hide" would need a visibility flag carried through save, export and reload
+ * for little gain; removing it is simpler and the conversation can be reverted
+ * with the browser's own undo of the storage write only if the user exported
+ * it. The confirmation therefore says plainly that it is removed.
+ *
+ * Deleting an assistant reply also drops the file changes it introduced, so the
+ * workspace does not keep edits whose explanation is gone.
+ */
+async function deleteMessage(index) {
+  const conv = getActive();
+  if (!conv) return;
+  const msg = conv.messages[index];
+  if (!msg) return;
+
+  const isUser = msg.role === "user";
+  const preview = (msg.content || "").trim().slice(0, 120);
+  const ok = await showConfirm({
+    title: isUser ? "Delete this message?" : "Delete this response?",
+    message: preview
+      ? `"${preview}${(msg.content || "").length > 120 ? "…" : ""}" will be removed from the conversation.`
+      : "This message will be removed from the conversation.",
+    confirmLabel: "Delete",
+    danger: true,
+  });
+  if (!ok) return;
+
+  const fileChanges = Array.isArray(msg.fileChanges) ? msg.fileChanges : [];
+
+  conv.messages.splice(index, 1);
+
+  // Remove file changes that came from this reply.
+  if (!isUser && fileChanges.length) {
+    for (const c of fileChanges) revertChange(c);
+  }
+
+  // The first user message defines the conversation title; if it is gone, fall
+  // back to whatever the new first user message says.
+  const firstUser = conv.messages.find((m) => m.role === "user");
+  conv.title = firstUser ? titleFrom(firstUser.content || "", firstUser.attachments) : "New chat";
+
+  conv.updatedAt = Date.now();
+  saveConversations();
+  if (fileChanges.length) {
+    writeAllLinkedFiles();
+    renderWorkspaceFileList();
+    updateWorkspaceBadge();
+  }
+  renderMessages();
+  renderSidebar();
+}
+
 function messageActions(index, msg) {
   const bar = el("div", { className: "msg-actions" });
 
@@ -3863,6 +4113,11 @@ function messageActions(index, msg) {
   regen.innerHTML = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M7.921.35a7.64 7.64 0 0 1 6.035 2.949l1.172-1.171a.322.322 0 0 1 .549.227V5.54c0 .177-.144.32-.321.32H12.17a.32.32 0 0 1-.227-.548l1.02-1.021A6.259 6.259 0 1 0 14.18 8h1.392A7.651 7.651 0 1 1 7.922.348" fill="currentColor"/></svg>`;
   regen.addEventListener("click", () => regenerateFrom(index));
   bar.append(regen);
+
+  const del = el("button", { className: "msg-action msg-action-danger", title: "Delete message" });
+  del.innerHTML = TRASH_ICON;
+  del.addEventListener("click", () => deleteMessage(index));
+  bar.append(del);
 
   return bar;
 }
