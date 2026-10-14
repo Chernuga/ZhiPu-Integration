@@ -206,7 +206,7 @@
   .new-chat-btn svg { width: 16px; height: 16px; }
 
   .conv-list { flex: 1; overflow-y: auto; padding: 6px 8px 12px; }
-  /* Day-group labels (Today / Yesterday / Previous 7 days / â€¦). Each label
+  /* Day-group labels (Today / Yesterday / Previous 7 days / …). Each label
      carries a top border, so the line sits exactly between two day groups.
      The first label is the exception: nothing precedes it to divide from.
      The colour is a literal rather than --ds-border-l3 because the design
@@ -2218,7 +2218,7 @@
             <input type="text" id="sProviderLabel" placeholder="e.g. DeepSeek Web (bridge)">
 
             <label for="sProviderBaseUrl">Base URL</label>
-            <input type="text" id="sProviderBaseUrl" placeholder="https://â€¦workers.dev">
+            <input type="text" id="sProviderBaseUrl" placeholder="https://…workers.dev">
             <div class="hint-inline">
               Endpoint root. <code>/chat/completions</code> is appended (the route below is inserted first).
             </div>
@@ -2231,9 +2231,9 @@
 
             <label for="sProviderRoute">Route</label>
             <select id="sProviderRoute">
-              <option value="coding">coding â€” /coding/chat/completions</option>
-              <option value="general">general â€” /general/chat/completions</option>
-              <option value="root">root â€” /chat/completions</option>
+              <option value="coding">coding — /coding/chat/completions</option>
+              <option value="general">general — /general/chat/completions</option>
+              <option value="root">root — /chat/completions</option>
             </select>
             <div class="hint-inline">
               z.ai and the bridge use <code>coding</code>/<code>general</code>; OpenAI-compatible hosts use <code>root</code>.
@@ -2249,8 +2249,8 @@
 
             <label for="sProviderResponseMode">Response mode</label>
             <select id="sProviderResponseMode">
-              <option value="stream">stream â€” SSE deltas (default)</option>
-              <option value="full">full â€” one JSON response</option>
+              <option value="stream">stream — SSE deltas (default)</option>
+              <option value="full">full — one JSON response</option>
             </select>
             <div class="hint-inline">
               <code>full</code> waits for the whole answer and reads it from a single
@@ -2302,7 +2302,7 @@
             <textarea id="sPromptFinish"
               placeholder="e.g. Remember: respond in Bulgarian. Use TypeScript for all code."></textarea>
             <div class="hint-inline">
-              Appended as a <code>system</code> message <b>after</b> every turn. Sent silently â€” never appears in the chat.
+              Appended as a <code>system</code> message <b>after</b> every turn. Sent silently — never appears in the chat.
             </div>
           </div>
 
@@ -2335,7 +2335,7 @@
           </select>
           <div class="hint-inline">
             <b>Default</b> speeds up temporarily when text is buffered, so it never falls behind the stream.
-            The named speeds type at a fixed rate â€” one character per tick, always, for a perfectly smooth animation.
+            The named speeds type at a fixed rate — one character per tick, always, for a perfectly smooth animation.
           </div>
         </section>
 
@@ -2351,11 +2351,11 @@
 
           <label for="sRetryMax">Max retry attempts</label>
           <input type="number" id="sRetryMax" min="1" max="10" step="1" value="2">
-          <div class="hint-inline">Each attempt starts fresh â€” partial output from a failed attempt is discarded.</div>
+          <div class="hint-inline">Each attempt starts fresh — partial output from a failed attempt is discarded.</div>
         </section>
 
         <section class="settings-panel" data-section="models">
-          <label for="sModels">Model list â€” <span id="sModelsProvider"></span></label>
+          <label for="sModels">Model list — <span id="sModelsProvider"></span></label>
           <textarea id="sModels" class="mono" spellcheck="false" placeholder="glm-5.3 | GLM-5.3 | Flagship&#10;glm-4.7-flash"></textarea>
           <div class="hint-inline">
             One model per line, format <code>id</code>, <code>id | Label</code>, or <code>id | Label | Description</code>.
@@ -2468,7 +2468,7 @@
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
           </svg>
           <div class="ws-empty-title" id="workspaceEmptyTitle">No file selected</div>
-          <div class="ws-empty-sub" id="workspaceEmptySub">Ask the AI to edit or create files â€” they'll show up here automatically.</div>
+          <div class="ws-empty-sub" id="workspaceEmptySub">Ask the AI to edit or create files — they'll show up here automatically.</div>
         </div>
         <textarea class="workspace-editor" id="workspaceFileContent" spellcheck="false" style="display:none"></textarea>
       </div>
@@ -3892,7 +3892,7 @@ function buildReasoningBlock(reasoning, opts = {}) {
 
   const label = el("span", { className: "reasoning-label" });
   if (streaming) {
-    label.textContent = "Thinkingâ€¦";
+    label.textContent = "Thinking…";
   } else if (durationMs != null) {
     const secs = Math.max(1, Math.round(durationMs / 1000));
     label.append("Thought for ");
@@ -3953,7 +3953,7 @@ function renderFileChangesCard(changes, messageIndex) {
     title = failed.length ? "No changes applied" : "No changes";
   } else {
     title = changedFiles.length === 1 ? "1 file changed" : `${changedFiles.length} files changed`;
-    if (failed.length) title += ` Â· ${failed.length} failed`;
+    if (failed.length) title += ` · ${failed.length} failed`;
   }
   header.append(el("span", { className: "fc-title", textContent: title }));
 
@@ -4220,7 +4220,7 @@ async function deleteMessage(index) {
   const ok = await showConfirm({
     title: isUser ? "Delete this message?" : "Delete this response?",
     message: preview
-      ? `"${preview}${(msg.content || "").length > 120 ? "â€¦" : ""}" will be removed from the conversation.`
+      ? `"${preview}${(msg.content || "").length > 120 ? "…" : ""}" will be removed from the conversation.`
       : "This message will be removed from the conversation.",
     confirmLabel: "Delete",
     danger: true,
@@ -4449,7 +4449,7 @@ function renderPendingAttachments() {
     }
 
     const rm = el("button", { className: "attach-remove", title: "Remove", type: "button" });
-    rm.textContent = "Ã—";
+    rm.textContent = "×";
     rm.addEventListener("click", () => {
       pendingAttachments.splice(i, 1);
       renderPendingAttachments();
@@ -4610,9 +4610,9 @@ async function fullCompletion({ messages, model, thinking, signal, onDelta, onDo
     let msg = `HTTP ${response.status}`;
     try {
       const j = await response.json();
-      msg += ` â€” ${j.error?.message ?? j.message ?? JSON.stringify(j)}`;
+      msg += ` — ${j.error?.message ?? j.message ?? JSON.stringify(j)}`;
     } catch {
-      try { msg += ` â€” ${await response.text()}`; } catch {}
+      try { msg += ` — ${await response.text()}`; } catch {}
     }
     onError?.(new Error(msg));
     return;
@@ -4696,9 +4696,9 @@ async function streamCompletion({ messages, model, thinking, signal, onDelta, on
     let msg = `HTTP ${response.status}`;
     try {
       const j = await response.json();
-      msg += ` â€” ${j.error?.message ?? j.message ?? JSON.stringify(j)}`;
+      msg += ` — ${j.error?.message ?? j.message ?? JSON.stringify(j)}`;
     } catch {
-      try { msg += ` â€” ${await response.text()}`; } catch {}
+      try { msg += ` — ${await response.text()}`; } catch {}
     }
     onError?.(new Error(msg));
     return;
@@ -4932,7 +4932,7 @@ async function runCompletion(conv) {
 
   const spinnerNotice = el("div", { className: "retry-notice" });
   const spinner = el("span", { className: "retry-spinner" });
-  const spinnerText = el("span", { textContent: "Waiting for responseâ€¦" });
+  const spinnerText = el("span", { textContent: "Waiting for response…" });
   spinnerNotice.append(spinner, spinnerText);
   statusSlot.append(spinnerNotice);
 
@@ -5129,7 +5129,7 @@ async function runCompletion(conv) {
       reasoningSlot.innerHTML = "";
       contentEl.innerHTML = "";
 
-      showSpinner(`Connection failed. Retrying (attempt ${attempt} of ${max})â€¦`);
+      showSpinner(`Connection failed. Retrying (attempt ${attempt} of ${max})…`);
       scrollToBottom();
     },
 
@@ -5998,7 +5998,7 @@ $("sModelsFetch").addEventListener("click", async () => {
   const status = $("sModelsStatus");
   if (!p.baseUrl) { status.textContent = "Set a Base URL first."; return; }
   const url = `${p.baseUrl.replace(/\/+$/, "")}${p.modelsPath || "/models"}`;
-  status.textContent = `Fetching ${url} â€¦`;
+  status.textContent = `Fetching ${url} …`;
   $("sModelsFetch").disabled = true;
   try {
     const res = await fetch(url, {
@@ -6021,7 +6021,7 @@ $("sModelsFetch").addEventListener("click", async () => {
     status.textContent = `Loaded ${models.length} models.`;
   } catch (err) {
     status.textContent =
-      `Could not fetch (${err.message}). Many providers block browser calls via CORS â€” ` +
+      `Could not fetch (${err.message}). Many providers block browser calls via CORS — ` +
       `paste the list manually instead.`;
   } finally {
     $("sModelsFetch").disabled = false;
@@ -6116,7 +6116,7 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-// Toggle handlers â€” live sync of the disabled state of the textareas.
+// Toggle handlers — live sync of the disabled state of the textareas.
 $("sCustomInstructionsEnabled").addEventListener("change", syncCustomInstructionsDisabledState);
 $("sPromptFinishEnabled").addEventListener("change", syncPromptFinishDisabledState);
 
@@ -6422,7 +6422,7 @@ function selectWorkspaceFile(name) {
       : "No files yet";
     $("workspaceEmptySub").textContent = Object.keys(files).length
       ? "Pick a file from the list to view or edit."
-      : "Ask the AI to edit or create files â€” they'll show up here automatically.";
+      : "Ask the AI to edit or create files — they'll show up here automatically.";
   }
 
   renderWorkspaceFileList();
@@ -6670,8 +6670,8 @@ async function syncLinkedFolder({ announce = true } = {}) {
     if (removed.length) parts.push(`${removed.length} missing on disk`);
     workspaceStatus(
       parts.length
-        ? `ðŸ“ ${link.name} â€” ${parts.join(", ")}`
-        : `ðŸ“ ${link.name} â€” up to date`
+        ? `ðŸ“ ${link.name} — ${parts.join(", ")}`
+        : `ðŸ“ ${link.name} — up to date`
     );
   }
   return { added, changed, conflicts, removed };
@@ -6711,7 +6711,7 @@ async function linkFolder() {
   const bridge = workspaceBridge();
   if (!bridge) return;
 
-  workspaceStatus("Choose a folderâ€¦");
+  workspaceStatus("Choose a folder…");
   let picked;
   try {
     picked = JSON.parse(bridge.pickFolder());
@@ -6750,7 +6750,7 @@ async function linkFolder() {
   if (direction === "export") {
     // Push the workspace out first, so the folder reflects it.
     writeAllLinkedFiles();
-    workspaceStatus(`ðŸ“ ${picked.name} â€” workspace written to folder`);
+    workspaceStatus(`ðŸ“ ${picked.name} — workspace written to folder`);
   } else {
     const disk = readFolderInto(bridge, picked.id);
     if (!disk.ok) {
@@ -6763,7 +6763,7 @@ async function linkFolder() {
       conv.files[path] = content;
       imported++;
     }
-    workspaceStatus(`ðŸ“ ${picked.name} â€” ${imported} file${imported === 1 ? "" : "s"} imported`);
+    workspaceStatus(`ðŸ“ ${picked.name} — ${imported} file${imported === 1 ? "" : "s"} imported`);
   }
 
   saveConversations();
