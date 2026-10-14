@@ -3633,6 +3633,16 @@ function renderSidebar() {
       updateWorkspaceBadge();
       applyActiveDraft();
       closeSidebarOnMobile();
+
+      // Pull the linked folder in as soon as the conversation opens.
+      //
+      // Silent and folder-wins: this runs on every open, so a prompt would be
+      // noise, and the folder is the copy the user edits on disk. Without it a
+      // conversation showed whatever the workspace last held, so changes made
+      // outside the app only appeared if the workspace panel was opened.
+      Promise.resolve().then(() =>
+        syncLinkedFolder({ announce: false, pull: true }).catch(() => {})
+      );
     });
     list.append(item);
   }
@@ -6620,7 +6630,20 @@ function readFolderInto(bridge, linkId, limitBytes = 512 * 1024) {
  *
  * Returns a summary for the status line.
  */
-async function syncLinkedFolder({ announce = true } = {}) {
+/**
+ * Bring the workspace in line with its linked folder.
+ *
+ * Two modes, because the right behaviour differs by when it runs:
+ *
+ *  - `pull: true` (silent, used when a conversation is opened) takes the folder
+ *    as the truth: files on disk are read in, and where the two disagree the
+ *    folder wins. Nothing is asked, because this runs on every load and a prompt
+ *    each time would be noise.
+ *
+ *  - otherwise conflicting files are raised for the user to settle, which is what
+ *    the workspace panel wants when opened deliberately.
+ */
+async function syncLinkedFolder({ announce = true, pull = false } = {}) {
   const conv = ensureActive();
   const link = linkedFolderFor(conv);
   const bridge = workspaceBridge();
@@ -6645,15 +6668,36 @@ async function syncLinkedFolder({ announce = true } = {}) {
       conv.files[path] = diskContent;
       added.push(path);
     } else if (conv.files[path] !== diskContent) {
-      // Both sides have it and they differ. Which is newer cannot be known from
-      // the content alone, so it becomes a conflict for the user to settle.
-      conflicts.push(path);
+      if (pull) {
+        // The folder is the source of truth, so its copy replaces the
+        // workspace's without asking.
+        conv.files[path] = diskContent;
+        changed.push(path);
+      } else {
+        // Which side is newer cannot be told from the content alone, so opening
+        // the panel deliberately raises it for the user to settle.
+        conflicts.push(path);
+      }
     }
   }
 
   const removed = Object.keys(conv.files).filter(
     (p) => !Object.prototype.hasOwnProperty.call(disk.files, p)
   );
+
+  // Files that exist only in the workspace are pushed out, so the folder gains
+  // anything the model created while it was not being watched.
+  let pushed = 0;
+  if (pull) {
+    for (const path of removed) {
+      try {
+        bridge.writeFile(link.id, path, textToBase64(conv.files[path] ?? ""));
+        pushed++;
+      } catch (e) {
+        /* a single unwritable file must not abort the sync */
+      }
+    }
+  }
 
   if (conflicts.length) {
     await resolveConflicts(conv, bridge, link, conflicts);
@@ -6813,6 +6857,21 @@ async function restoreLinkedFolder() {
           `The link is kept; reopen the workspace to retry.`,
         true
       );
+    } else {
+      // The folder answered, so bring its contents in straight away, silently.
+      //
+      // Restoring the link only re-opens the channel; without this the workspace
+      // still showed whatever it held when the app last closed, so edits made to
+      // the folder in between did not appear until the panel was opened by hand.
+      await syncLinkedFolder({ announce: false, pull: true }).catch(() => {});
+
+      if (res.durable === false) {
+        workspaceStatus(
+          "The folder is linked for this session only - Android did not keep the " +
+            "permission. Link it again to make it permanent.",
+          true
+        );
+      }
     }
   } catch (e) {
     workspaceStatus(`Could not reattach the folder: ${e.message}`, true);
