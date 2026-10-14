@@ -1239,6 +1239,38 @@
     flex-shrink: 0;
     position: relative;
   }
+
+  /* A switch setting, laid out like .checkrow so it matches the others.
+     The box wraps, and the switch sits at the right end of the row.
+     Qualified with .settings-panel because that rule sets display:block on every
+     label and comes later in the sheet, so an equally specific selector here
+     would lose and the row would stack vertically. */
+  .settings-panel label.setting-switch {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 12px;
+    margin-top: 8px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 400;
+    font-size: 13.5px;
+    color: var(--text);
+    transition: background var(--ds-dur) var(--ds-ease-in-out);
+  }
+  .settings-panel label.setting-switch:hover { background: var(--hover); }
+  /* The text takes the free space, which is what pushes the switch to the right
+     edge. Without it the toggle follows the text and sits under the description. */
+  .setting-switch .setting-switch-text { flex: 1 1 auto; min-width: 0; }
+  .setting-switch .toggle { margin-left: auto; }
+  .setting-switch .setting-switch-desc {
+    color: var(--text-muted);
+    font-size: 12px;
+    margin-top: 3px;
+    line-height: 1.5;
+  }
+  .setting-switch input:disabled ~ .toggle-track { opacity: .5; }
   .toggle input {
     position: absolute;
     opacity: 0;
@@ -2279,31 +2311,48 @@
           <div class="field-group">
             <div class="field-header">
               <label for="sCustomInstructions">Custom instructions</label>
-              <label class="toggle" title="Enable custom instructions">
-                <input type="checkbox" id="sCustomInstructionsEnabled">
-                <span class="toggle-track"><span class="toggle-thumb"></span></span>
-              </label>
             </div>
             <textarea id="sCustomInstructions"
               placeholder="e.g. You are a senior front-end engineer. Always produce complete, runnable code."></textarea>
             <div class="hint-inline">
               Prepended as a <code>system</code> message before the conversation. Some models respond better to a short prompt finish instead (below).
             </div>
+            <!--
+              The switch sits here, at the right end of its own row, rather than
+              beside the field label. In the header it was pushed past the edge of
+              the settings window, so reaching it meant scrolling sideways.
+            -->
+            <label class="setting-switch" for="sCustomInstructionsEnabled">
+              <span class="setting-switch-text">
+                <span>Enable custom instructions</span>
+                <div class="setting-switch-desc">Send them with every message.</div>
+              </span>
+              <span class="toggle">
+                <input type="checkbox" id="sCustomInstructionsEnabled">
+                <span class="toggle-track"><span class="toggle-thumb"></span></span>
+              </span>
+            </label>
           </div>
 
           <div class="field-group">
             <div class="field-header">
               <label for="sPromptFinish">Prompt finish</label>
-              <label class="toggle" title="Enable prompt finish">
-                <input type="checkbox" id="sPromptFinishEnabled">
-                <span class="toggle-track"><span class="toggle-thumb"></span></span>
-              </label>
             </div>
             <textarea id="sPromptFinish"
               placeholder="e.g. Remember: respond in Bulgarian. Use TypeScript for all code."></textarea>
             <div class="hint-inline">
               Appended as a <code>system</code> message <b>after</b> every turn. Sent silently — never appears in the chat.
             </div>
+            <label class="setting-switch" for="sPromptFinishEnabled">
+              <span class="setting-switch-text">
+                <span>Enable prompt finish</span>
+                <div class="setting-switch-desc">Append it after every turn.</div>
+              </span>
+              <span class="toggle">
+                <input type="checkbox" id="sPromptFinishEnabled">
+                <span class="toggle-track"><span class="toggle-thumb"></span></span>
+              </span>
+            </label>
           </div>
 
           <label>Reasoning display</label>
@@ -3629,7 +3678,8 @@ function renderSidebar() {
       activeId = conv.id;
       saveActiveId(activeId);
       renderSidebar();
-      renderMessages();
+      // Opening a conversation lands at its newest message.
+      renderMessages({ toBottom: true });
       updateWorkspaceBadge();
       applyActiveDraft();
       closeSidebarOnMobile();
@@ -4073,7 +4123,36 @@ function renderFileChangeItem(c) {
 // =============================================================================
 // Message rendering
 // =============================================================================
-function renderMessages() {
+/**
+ * Render the transcript.
+ *
+ * Scroll position is preserved by default, and only moves when asked.
+ *
+ * It used to jump to the bottom unconditionally, so every re-render during a
+ * reply yanked the view down - you could not read back through a long answer, or
+ * scroll up while one was arriving, because the next delta pulled you to the end.
+ *
+ * The two callers that genuinely want the bottom - opening a conversation, and
+ * sending a message - pass `toBottom`.
+ *
+ * Passing `anchor` keeps a specific message's position instead, which is what an
+ * edit wants: the message being changed should stay where it was.
+ */
+function renderMessages({ toBottom = false, anchor = null } = {}) {
+  // Measure before the rebuild, so the position can be restored after it.
+  const box = $("messages");
+  const previousTop = box.scrollTop;
+  const previousHeight = box.scrollHeight;
+
+  // Where the anchored message sat relative to the top of the viewport.
+  let anchorOffset = null;
+  if (anchor != null) {
+    const node = box.querySelector(`[data-index="${anchor}"]`);
+    if (node) anchorOffset = node.getBoundingClientRect().top - box.getBoundingClientRect().top;
+  }
+
+  const wasAtBottom = previousHeight - previousTop - box.clientHeight < 40;
+
   const inner = $("messagesInner");
   inner.innerHTML = "";
   const conv = getActive();
@@ -4084,12 +4163,24 @@ function renderMessages() {
   for (let i = 0; i < conv.messages.length; i++) {
     inner.append(renderMessage(conv.messages[i], i));
   }
-  // Scroll before the browser paints, so opening a conversation lands straight
-  // at the newest message instead of starting at the top and gliding down.
-  // The rAF is a second pass for late layout shifts (fonts, images).
-  const m = $("messages");
-  m.scrollTop = m.scrollHeight;
-  requestAnimationFrame(() => { m.scrollTop = m.scrollHeight; });
+
+  // Restore position, before paint so there is no visible jump.
+  if (toBottom || (anchor == null && wasAtBottom)) {
+    // Following the newest message. Staying pinned to the bottom is right when
+    // the reader was already there, so a live reply keeps its place.
+    box.scrollTop = box.scrollHeight;
+  } else if (anchorOffset != null) {
+    const node = box.querySelector(`[data-index="${anchor}"]`);
+    if (node) {
+      const now = node.getBoundingClientRect().top - box.getBoundingClientRect().top;
+      box.scrollTop += now - anchorOffset;
+    }
+  } else {
+    // Hold the reader's place. Content above may have grown, so the same
+    // scrollTop would show different text; shift by the height difference to
+    // keep the same content under the viewport.
+    box.scrollTop = previousTop + (box.scrollHeight - previousHeight);
+  }
 }
 
 /**
@@ -4133,6 +4224,8 @@ function emptyState() {
 function renderMessage(msg, index) {
   if (msg.role === "user") {
     const row = el("div", { className: "msg msg-user" });
+    // Recorded so a re-render can hold this message's place on screen.
+    row.dataset.index = String(index);
     const wrapper = el("div", { className: "msg-user-wrap" });
 
     const bubble = el("div", { className: "bubble" });
@@ -4188,6 +4281,8 @@ function renderMessage(msg, index) {
   }
 
   const row = el("div", { className: "msg msg-assistant" });
+  // Recorded so a re-render can hold this message's place on screen.
+  row.dataset.index = String(index);
   if (msg.reasoning) {
     row.append(buildReasoningBlock(msg.reasoning, { durationMs: msg.reasoningMs ?? null }));
   }
@@ -4323,7 +4418,7 @@ function enterEditMode(index, wrapperEl, bubbleEl, actionsEl) {
   ta.addEventListener("input", updateSaveState);
   updateSaveState();
 
-  cancel.addEventListener("click", () => { renderMessages(); });
+  cancel.addEventListener("click", () => { renderMessages({ toBottom: true }); });
 
   save.addEventListener("click", () => {
     const newText = ta.value.trim();
@@ -4354,7 +4449,9 @@ async function commitEdit(index, newText, attachments) {
   if (!conv) return;
   conv.messages = conv.messages.slice(0, index);
   if (index === 0) conv.title = titleFrom(newText, attachments);
-  renderMessages();
+  // Anchor, not bottom: the message being edited was scrolled to deliberately,
+  // and moving the view to the end would lose the reader's place.
+  renderMessages({ anchor: index });
   await sendUserMessage(conv, newText, attachments, false);
 }
 
@@ -5586,7 +5683,7 @@ $("newChatBtn").addEventListener("click", () => {
   saveConversations();
   saveActiveId(activeId);
   renderSidebar();
-  renderMessages();
+  renderMessages({ toBottom: true });
   updateWorkspaceBadge();
   closeSidebarOnMobile();
   if (!wasActiveId) {
