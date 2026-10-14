@@ -206,7 +206,7 @@
   .new-chat-btn svg { width: 16px; height: 16px; }
 
   .conv-list { flex: 1; overflow-y: auto; padding: 6px 8px 12px; }
-  /* Day-group labels (Today / Yesterday / Previous 7 days / …). Each label
+  /* Day-group labels (Today / Yesterday / Previous 7 days / â€¦). Each label
      carries a top border, so the line sits exactly between two day groups.
      The first label is the exception: nothing precedes it to divide from.
      The colour is a literal rather than --ds-border-l3 because the design
@@ -864,49 +864,6 @@
   }
   .fc-copy-all.failure { color: var(--ds-error); border-color: var(--ds-error); }
   .fc-copy-one.failure { color: var(--ds-error); border-color: var(--ds-error); }
-
-  /* Revert / Apply, one control per reply. Styled like the copy buttons but
-     tinted, so an action that changes files is not mistaken for one that only
-     copies text. */
-  .fc-revert-all {
-    padding: 3px 9px;
-    border-radius: 5px;
-    font-size: 11.5px;
-    font-weight: 500;
-    color: #e0a33a;
-    border: 1px solid rgba(224, 163, 58, .45);
-    background: transparent;
-    flex-shrink: 0;
-    margin-left: 6px;
-    transition: background var(--ds-dur) var(--ds-ease-in-out),
-                color var(--ds-dur) var(--ds-ease-in-out),
-                border-color var(--ds-dur) var(--ds-ease-in-out);
-  }
-  .fc-revert-all:hover {
-    background: rgba(224, 163, 58, .12);
-    color: #f0b455;
-    border-color: rgba(224, 163, 58, .7);
-  }
-  .fc-revert-all.success { color: var(--ds-success); border-color: var(--ds-success); }
-  .fc-revert-all.failure { color: var(--ds-error); border-color: var(--ds-error); }
-
-  /* Rolled back, so the same control replays forward. Tinted green to mark the
-     change of direction at a glance. */
-  .fc-revert-all.reverted {
-    color: var(--ds-success, #4ec97a);
-    border-color: rgba(78, 201, 122, .45);
-    background: transparent;
-  }
-  .fc-revert-all.reverted:hover {
-    background: rgba(78, 201, 122, .12);
-    border-color: rgba(78, 201, 122, .7);
-  }
-  .fc-revert-all svg {
-    width: 12px;
-    height: 12px;
-    display: inline-block;
-    vertical-align: -2px;
-  }
 
   .fc-body {
     padding: 0 14px 12px;
@@ -2261,7 +2218,7 @@
             <input type="text" id="sProviderLabel" placeholder="e.g. DeepSeek Web (bridge)">
 
             <label for="sProviderBaseUrl">Base URL</label>
-            <input type="text" id="sProviderBaseUrl" placeholder="https://…workers.dev">
+            <input type="text" id="sProviderBaseUrl" placeholder="https://â€¦workers.dev">
             <div class="hint-inline">
               Endpoint root. <code>/chat/completions</code> is appended (the route below is inserted first).
             </div>
@@ -2274,9 +2231,9 @@
 
             <label for="sProviderRoute">Route</label>
             <select id="sProviderRoute">
-              <option value="coding">coding — /coding/chat/completions</option>
-              <option value="general">general — /general/chat/completions</option>
-              <option value="root">root — /chat/completions</option>
+              <option value="coding">coding â€” /coding/chat/completions</option>
+              <option value="general">general â€” /general/chat/completions</option>
+              <option value="root">root â€” /chat/completions</option>
             </select>
             <div class="hint-inline">
               z.ai and the bridge use <code>coding</code>/<code>general</code>; OpenAI-compatible hosts use <code>root</code>.
@@ -2292,8 +2249,8 @@
 
             <label for="sProviderResponseMode">Response mode</label>
             <select id="sProviderResponseMode">
-              <option value="stream">stream — SSE deltas (default)</option>
-              <option value="full">full — one JSON response</option>
+              <option value="stream">stream â€” SSE deltas (default)</option>
+              <option value="full">full â€” one JSON response</option>
             </select>
             <div class="hint-inline">
               <code>full</code> waits for the whole answer and reads it from a single
@@ -2345,7 +2302,7 @@
             <textarea id="sPromptFinish"
               placeholder="e.g. Remember: respond in Bulgarian. Use TypeScript for all code."></textarea>
             <div class="hint-inline">
-              Appended as a <code>system</code> message <b>after</b> every turn. Sent silently — never appears in the chat.
+              Appended as a <code>system</code> message <b>after</b> every turn. Sent silently â€” never appears in the chat.
             </div>
           </div>
 
@@ -2378,7 +2335,7 @@
           </select>
           <div class="hint-inline">
             <b>Default</b> speeds up temporarily when text is buffered, so it never falls behind the stream.
-            The named speeds type at a fixed rate — one character per tick, always, for a perfectly smooth animation.
+            The named speeds type at a fixed rate â€” one character per tick, always, for a perfectly smooth animation.
           </div>
         </section>
 
@@ -2394,11 +2351,11 @@
 
           <label for="sRetryMax">Max retry attempts</label>
           <input type="number" id="sRetryMax" min="1" max="10" step="1" value="2">
-          <div class="hint-inline">Each attempt starts fresh — partial output from a failed attempt is discarded.</div>
+          <div class="hint-inline">Each attempt starts fresh â€” partial output from a failed attempt is discarded.</div>
         </section>
 
         <section class="settings-panel" data-section="models">
-          <label for="sModels">Model list — <span id="sModelsProvider"></span></label>
+          <label for="sModels">Model list â€” <span id="sModelsProvider"></span></label>
           <textarea id="sModels" class="mono" spellcheck="false" placeholder="glm-5.3 | GLM-5.3 | Flagship&#10;glm-4.7-flash"></textarea>
           <div class="hint-inline">
             One model per line, format <code>id</code>, <code>id | Label</code>, or <code>id | Label | Description</code>.
@@ -2511,7 +2468,7 @@
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
           </svg>
           <div class="ws-empty-title" id="workspaceEmptyTitle">No file selected</div>
-          <div class="ws-empty-sub" id="workspaceEmptySub">Ask the AI to edit or create files — they'll show up here automatically.</div>
+          <div class="ws-empty-sub" id="workspaceEmptySub">Ask the AI to edit or create files â€” they'll show up here automatically.</div>
         </div>
         <textarea class="workspace-editor" id="workspaceFileContent" spellcheck="false" style="display:none"></textarea>
       </div>
@@ -2956,6 +2913,21 @@ function parseFileCommands(text) {
   return ops;
 }
 
+/**
+ * Apply a reply's file commands, and describe what was done.
+ *
+ * Only the OUTCOME is recorded - which file, and whether it was created,
+ * overwritten or edited. The file text is not copied into the record.
+ *
+ * It used to store both `before` and `after` for every change, to support
+ * revert. That is two full copies of the file per edit: a file edited ten times
+ * carried twenty copies in the conversation on top of its live content, which is
+ * what filled the storage quota. Revert is gone, so the copies are gone with it.
+ *
+ * `before`/`after` are still returned in the change list because the card shows
+ * the result of the change while the page is open; they are simply no longer
+ * written to storage. persistable() below is what keeps that separation honest.
+ */
 function applyFileOps(files, ops) {
   const changes = [];
   let i = 0;
@@ -2968,15 +2940,10 @@ function applyFileOps(files, ops) {
 
     if (op.kind === 'create') {
       const existed = Object.prototype.hasOwnProperty.call(files, file);
-      // Keep the previous content so the change can be reverted. Without it a
-      // revert of an overwrite would have to guess, and an overwrite is
-      // destructive precisely because the old text is gone.
-      const before = existed ? files[file] : null;
       files[file] = op.content;
       changes.push({
         file,
         kind: existed ? 'overwrite' : 'create',
-        before,
         after: op.content,
       });
       i++;
@@ -2988,17 +2955,17 @@ function applyFileOps(files, ops) {
       // once both paths have been normalised.
       const nextFile = next ? normalizePath(next.file) : null;
       if (next && next.kind === 'replace' && nextFile === file) {
-        const before = files[file];
-        if (before == null) {
+        const current = files[file];
+        if (current == null) {
           changes.push({ file, kind: 'missing' });
         } else {
-          const idx = before.indexOf(op.content);
+          const idx = current.indexOf(op.content);
           if (idx < 0) {
             changes.push({ file, kind: 'nomatch', find: op.content });
           } else {
-            const after = before.slice(0, idx) + next.content + before.slice(idx + op.content.length);
+            const after = current.slice(0, idx) + next.content + current.slice(idx + op.content.length);
             files[file] = after;
-            changes.push({ file, kind: 'edit', before, after });
+            changes.push({ file, kind: 'edit', after });
           }
         }
         i += 2;
@@ -3010,6 +2977,45 @@ function applyFileOps(files, ops) {
     i++;
   }
   return changes;
+}
+
+/**
+ * Strip the bulky fields from a change before it is stored.
+ *
+ * The card needs a change's resulting text while the page is open, but keeping
+ * it would put a full copy of the file in the conversation for every edit - the
+ * exact cost that filled the quota. So the text is dropped at the storage
+ * boundary and only the description survives.
+ */
+function persistableChanges(changes) {
+  return (changes || []).map((c) => {
+    const out = { file: c.file, kind: c.kind };
+    if (c.find != null) out.find = c.find;
+    return out;
+  });
+}
+
+/**
+ * Apply the same trimming to every conversation's stored changes.
+ *
+ * Runs once on load so conversations written before this change give their space
+ * back rather than staying large forever.
+ */
+function shrinkStoredChanges(conversations) {
+  let freed = 0;
+  for (const conv of conversations || []) {
+    for (const m of conv.messages || []) {
+      if (!Array.isArray(m.fileChanges) || !m.fileChanges.length) continue;
+      const before = JSON.stringify(m.fileChanges).length;
+      const slim = persistableChanges(m.fileChanges);
+      const after = JSON.stringify(slim).length;
+      if (after < before) {
+        freed += before - after;
+        m.fileChanges = slim;
+      }
+    }
+  }
+  return freed;
 }
 
 function stripFileCommands(text) {
@@ -3369,8 +3375,38 @@ let quotaWarned = false;
  * Nothing is degraded now. If a write fails the in-memory state is untouched and
  * the user is told, so work is never quietly discarded.
  */
+/**
+ * Persist the conversations, without the bulky per-change text.
+ *
+ * The trim happens here rather than at each mutation site, so no caller can
+ * forget it and no future one can reintroduce the cost. It also means the
+ * in-memory changes keep their `after` text, which the card shows while the page
+ * is open, while storage holds only the description.
+ */
 function saveConversations() {
-  return saveKey(CONV_KEY, conversations) !== "failed";
+  return saveKey(CONV_KEY, conversations, storedConversations()) !== "failed";
+}
+
+/** A view of the conversations with the per-change text removed. */
+function storedConversations() {
+  return conversations.map((conv) => {
+    if (!Array.isArray(conv.messages)) return conv;
+    // Only copy when there is something to trim, so the common case allocates
+    // nothing.
+    const needsTrim = conv.messages.some(
+      (m) => Array.isArray(m.fileChanges) &&
+        m.fileChanges.some((c) => "after" in c || "before" in c)
+    );
+    if (!needsTrim) return conv;
+    return {
+      ...conv,
+      messages: conv.messages.map((m) =>
+        Array.isArray(m.fileChanges) && m.fileChanges.length
+          ? { ...m, fileChanges: persistableChanges(m.fileChanges) }
+          : m
+      ),
+    };
+  });
 }
 
 function loadActiveId() { return localStorage.getItem(ACTIVE_KEY) || null; }
@@ -3446,6 +3482,26 @@ function applyActiveDraft() {
 
 let settings = loadSettings();
 let conversations = loadConversations();
+
+// Drop the per-change text that earlier versions stored.
+//
+// Every change used to carry the file's previous and new contents so it could be
+// reverted. Revert is gone, so those copies are pure overhead - two full copies
+// of a file per edit. Trimming them here gives the space back on the next save
+// rather than only for newly written conversations, and it runs before the write
+// cache is seeded so the first save is not mistaken for a no-op.
+(function reclaimChangeStorage() {
+  try {
+    const freed = shrinkStoredChanges(conversations);
+    if (freed > 0) {
+      console.info(
+        `Released ${(freed / 1024).toFixed(0)} KB by trimming stored file-change text.`
+      );
+    }
+  } catch (e) {
+    console.warn("Could not trim stored changes:", e);
+  }
+})();
 
 // Seed the write cache with what is already stored.
 //
@@ -3836,7 +3892,7 @@ function buildReasoningBlock(reasoning, opts = {}) {
 
   const label = el("span", { className: "reasoning-label" });
   if (streaming) {
-    label.textContent = "Thinking…";
+    label.textContent = "Thinkingâ€¦";
   } else if (durationMs != null) {
     const secs = Math.max(1, Math.round(durationMs / 1000));
     label.append("Thought for ");
@@ -3865,366 +3921,6 @@ function buildReasoningBlock(reasoning, opts = {}) {
 // =============================================================================
 // File changes card
 // =============================================================================
-/**
- * Can this change be undone?
- *
- * A create is revertible by deleting the file; an edit or overwrite by putting
- * the previous content back. A failed change never touched anything, so there
- * is nothing to undo.
- */
-function canRevertChange(c) {
-  return c && (c.kind === "create" || c.kind === "edit" || c.kind === "overwrite");
-}
-
-/**
- * Undo one change against the conversation's files.
- *
- * A create removes the file, because it did not exist before. Everything else
- * restores the recorded `before`: for an overwrite that is the text the model
- * replaced, which is exactly what would otherwise be lost.
- *
- * Returns true when the store was modified.
- */
-function revertChange(c) {
-  if (!canRevertChange(c)) return false;
-  const conv = getActive();
-  if (!conv) return false;
-  if (!conv.files) conv.files = {};
-
-  if (c.kind === "create") {
-    delete conv.files[c.file];
-    return true;
-  }
-  conv.files[c.file] = c.before ?? "";
-  return true;
-}
-
-/**
- * Re-apply a change that was reverted.
- *
- * The mirror of revertChange: a created file comes back with the content the
- * reply wrote, and an edit or overwrite is set to `after` again. Between them
- * the two are a toggle, so reverting is no longer a one-way door - the change
- * can be put back without asking the model to produce it a second time.
- *
- * Returns true when the store was modified.
- */
-function applyChange(c) {
-  if (!canRevertChange(c)) return false;
-  const conv = getActive();
-  if (!conv) return false;
-  if (!conv.files) conv.files = {};
-
-  conv.files[c.file] = c.after ?? "";
-  return true;
-}
-
-/**
- * Is this change currently undone, so it can be put back?
- *
- * Uses the file's position in its own chain rather than comparing against this
- * change's `before`. The direct comparison fails in the middle of a chain:
- * with S0 -> S1 -> S2 -> S3, undoing edit 2 leaves the file at S1, so edit 3's
- * `before` (S2) never matches and it looked permanently applied - which also
- * stopped it being replayed, since applyChange used this as its guard.
- */
-function isChangeReverted(c) {
-  if (!canRevertChange(c)) return false;
-  const conv = getActive();
-  if (!conv) return false;
-
-  const chain = changesForFile(conv, c.file);
-  const at = chain.findIndex((e) => e.change === c);
-  if (at < 0) return false;
-
-  // Undone when the file has not reached this change yet.
-  return fileProgress(conv, c.file) <= at;
-}
-
-/** Can this change be put back, i.e. is it currently undone? */
-function canApplyChange(c) {
-  return canRevertChange(c) && isChangeReverted(c);
-}
-
-/**
- * Every file change at or after a message, oldest first.
- *
- * The workspace is a timeline: each reply that touched files is a point in it.
- * Undoing a point means undoing everything after it too, otherwise the files
- * would be left in a state that never actually existed - a later reply's edit
- * sitting on top of an earlier one that has been rolled back.
- *
- * The newest change to a given file is what decides its content, which is why
- * the order here matters.
- */
-function changesFrom(conv, messageIndex, { inclusive = true } = {}) {
-  const out = [];
-  if (!conv || !Array.isArray(conv.messages)) return out;
-  for (let i = 0; i < conv.messages.length; i++) {
-    if (inclusive ? i < messageIndex : i <= messageIndex) continue;
-    const m = conv.messages[i];
-    if (m.role !== "assistant" || !Array.isArray(m.fileChanges)) continue;
-    out.push({ index: i, changes: m.fileChanges });
-  }
-  return out;
-}
-
-/**
- * Rewind the workspace to just before a message's changes.
- *
- * Walks the changes newest-first and undoes each one, so a file touched by
- * several replies ends up at the value it had before the earliest of them. The
- * reverse order is what makes that work: undoing forwards would let an older
- * change overwrite the restoration of a newer one.
- *
- * Returns the number of changes undone.
- */
-function rewindFrom(conv, messageIndex) {
-  const groups = changesFrom(conv, messageIndex);
-  let n = 0;
-  for (let g = groups.length - 1; g >= 0; g--) {
-    const changes = groups[g].changes;
-    for (let i = changes.length - 1; i >= 0; i--) {
-      if (revertChange(changes[i])) n++;
-    }
-  }
-  return n;
-}
-
-/**
- * Replay one reply's changes.
- *
- * Only this group, not the ones after it. Reverting has to cascade forward -
- * undoing a reply while leaving a later one applied would give a state the
- * workspace never had - but redoing does not: applying reply 2 while replies 3
- * and 4 stay undone lands on a real intermediate state, and lets the user walk
- * forward one reply at a time instead of jumping to the end.
- *
- * Returns the number of changes replayed.
- */
-function replayGroup(conv, messageIndex) {
-  let n = 0;
-  for (const g of changesFrom(conv, messageIndex, { inclusive: true })) {
-    if (g.index !== messageIndex) continue;
-    for (const c of g.changes) {
-      // Set the value directly rather than going through applyChange's guard.
-      // A change later in a file's chain cannot be reached by the guard while
-      // the changes before it are still undone, and this is exactly the case
-      // being handled here: replaying the next step after a rewind.
-      if (!canRevertChange(c)) continue;
-      if (!conv.files) conv.files = {};
-      conv.files[c.file] = c.after ?? "";
-      n++;
-    }
-  }
-  return n;
-}
-
-/**
- * Is the workspace at or after this message's point in the timeline?
- *
- * True when nothing at or after the message has been undone. Drives the label,
- * so a group whose changes are still applied offers Revert, and one that has
- * been rolled back offers Apply.
- */
-/**
- * Has this message's own work been undone?
- *
- * Only this group's changes are consulted, not the later ones. The label has to
- * describe what THIS control does to this reply: after rolling back a later
- * reply, an earlier one is still applied, and calling it "Apply all" would
- * misdescribe a button that would in fact undo it. The replay it triggers still
- * covers everything after, which the confirmation explains.
- */
-/**
- * Is this change currently applied?
- *
- * Decided by walking the file's own history rather than by comparing against
- * this change's `before` value alone.
- *
- * The naive check - "is the file back to `before`?" - breaks as soon as one
- * change in the middle of a chain is undone. With edits S0 -> S1 -> S2 -> S3,
- * undoing edit 2 leaves the file at S1, so edit 3 (whose `before` is S2) never
- * matches and is reported as still applied even though the workspace is far
- * behind it. S2 is no longer a reachable state at all.
- *
- * Instead the chain is replayed in order from the start: a change counts as
- * applied only if the file still holds its `after`, reached by walking forward
- * through the changes that precede it. The first change that does not hold
- * marks the point the workspace was rewound to, and everything from there on is
- * undone.
- */
-function changesForFile(conv, file) {
-  const out = [];
-  if (!conv || !Array.isArray(conv.messages)) return out;
-  for (let i = 0; i < conv.messages.length; i++) {
-    const m = conv.messages[i];
-    if (m.role !== "assistant" || !Array.isArray(m.fileChanges)) continue;
-    for (const c of m.fileChanges) {
-      if (c.file === file && canRevertChange(c)) out.push({ index: i, change: c });
-    }
-  }
-  return out;
-}
-
-/**
- * How far along its own history a file currently is.
- *
- * Returns the number of leading changes in the file's chain that the workspace
- * has passed, which is the file's position in the timeline.
- *
- * "Passed" cannot mean "the file currently holds this change's `after`",
- * because a chain visits many values and the file sits at exactly one of them.
- * With S0 -> S1 -> S2 -> S3 and the file at S3, only the last change's `after`
- * matches, yet all four have been applied.
- *
- * So the value is matched against the chain's outcomes instead: find which
- * point of the chain the file is standing on, and everything up to and
- * including that point has been applied. A file that matches nothing is either
- * hand-edited or deleted, and is reported as fully applied - which keeps the
- * buttons offering Revert, the safe direction, rather than claiming work is
- * undone when it is not.
- */
-function fileProgress(conv, file) {
-  const chain = changesForFile(conv, file);
-  const files = (conv && conv.files) || {};
-  const has = Object.prototype.hasOwnProperty.call(files, file);
-
-  // Deleted: everything that created or wrote it is undone.
-  if (!has) return 0;
-
-  const value = files[file];
-
-  // Walk the chain and find the last point whose outcome is the current value.
-  // Outcomes are each change's `after`, plus the state before the chain began
-  // (the first change's `before`), which is where a fully-reverted file sits.
-  for (let i = chain.length - 1; i >= 0; i--) {
-    if (value === (chain[i].change.after ?? "")) return i + 1;
-  }
-
-  // Not at any recorded outcome. Compare loosely by prefix so a chain against
-  // the same file still positions correctly, and otherwise treat it as fully
-  // applied.
-  if (chain.length && value === (chain[0].change.before ?? "")) return 0;
-  return chain.length;
-}
-
-/**
- * Has this message's own work been undone?
- *
- * Only this group's changes are consulted, not the later ones. The label has to
- * describe what THIS control does to this reply: after rolling back a later
- * reply, an earlier one is still applied, and calling it "Apply all" would
- * misdescribe a button that would in fact undo it. The replay it triggers still
- * covers everything after, which the confirmation explains.
- *
- * A change counts as applied only when the file is at or beyond it in its own
- * chain, which is what makes a group further back read "Apply all" once an
- * earlier group has been rolled back - even though its `before` value is no
- * longer a state the file can hold.
- */
-function isGroupApplied(conv, messageIndex) {
-  const own = changesFrom(conv, messageIndex, { inclusive: true })
-    .filter((g) => g.index === messageIndex);
-  for (const g of own) {
-    for (const c of g.changes) {
-      if (!canRevertChange(c)) continue;
-      const chain = changesForFile(conv, c.file);
-      const at = chain.findIndex((e) => e.change === c);
-      if (at < 0) continue;
-      // Undone when the file's progress has not reached this change.
-      if (fileProgress(conv, c.file) <= at) return false;
-    }
-  }
-  return true;
-}
-
-/**
- * Step the workspace to a point in the timeline, or forward from one.
- *
- * One handler for both directions, decided by where the workspace currently is
- * rather than by a flag, so the button and the action cannot disagree.
- *
- * Stepping back rewinds this message and every change after it, so the files
- * land in the state they had just before this reply; stepping forward replays
- * this message and everything after it, so they land at the latest state. Both
- * directions cover the whole span, which is what keeps the result a state the
- * workspace actually passed through.
- */
-async function toggleGroupAt(messageIndex, button) {
-  const conv = getActive();
-  if (!conv) return;
-
-  const applied = isGroupApplied(conv, messageIndex);
-  const span = changesFrom(conv, messageIndex).reduce((n, g) => n + g.changes.length, 0);
-  const laterCount = changesFrom(conv, messageIndex, { inclusive: false })
-    .reduce((n, g) => n + g.changes.length, 0);
-
-  if (applied) {
-    // Confirm, because this discards the later work from the workspace. It is
-    // recoverable with Apply, and the message says so.
-    const ok = await showConfirm({
-      title: "Revert from here?",
-      message: laterCount
-        ? `This undoes this reply's changes and the ${laterCount} change` +
-          `${laterCount === 1 ? "" : "s"} made after it, returning the workspace to ` +
-          `the state before this reply. You can apply them again afterwards.`
-        : `This undoes this reply's ${span} change${span === 1 ? "" : "s"}, returning ` +
-          `the workspace to the state before it. You can apply them again afterwards.`,
-      confirmLabel: "Revert",
-      danger: true,
-    });
-    if (!ok) return;
-  }
-
-  // Asymmetric on purpose.
-  //
-  // Reverting cascades forward, because undoing a reply while a later one stays
-  // applied would leave the files in a state they never actually held. Applying
-  // does not: redoing just this reply lands on a real intermediate state, and
-  // the user can step forward one reply at a time.
-  if (applied) rewindFrom(conv, messageIndex);
-  else replayGroup(conv, messageIndex);
-
-  conv.updatedAt = Date.now();
-
-  // Disk must follow the workspace, or the two drift apart.
-  syncFilesToDisk(conv);
-
-  renderMessages();
-  renderWorkspaceFileList();
-  updateWorkspaceBadge();
-  saveAllNow();
-  void button;
-}
-
-/**
- * Bring the linked folder in line with the workspace.
- *
- * A rewind can delete files (an undone create) as well as rewrite them, so this
- * removes what is no longer in the workspace rather than only writing what is.
- */
-function syncFilesToDisk(conv) {
-  const link = conv && conv.linkedFolder;
-  if (!link) return;
-  const bridge = workspaceBridge();
-  if (!bridge) return;
-
-  // Remove files the workspace no longer holds.
-  try {
-    const listed = JSON.parse(bridge.listFiles(link.id));
-    if (listed && listed.ok) {
-      for (const f of listed.files) {
-        if (!Object.prototype.hasOwnProperty.call(conv.files || {}, f.path)) {
-          try { bridge.deleteFile(link.id, f.path); } catch (e) { /* best effort */ }
-        }
-      }
-    }
-  } catch (e) { /* listing is best effort */ }
-
-  writeAllLinkedFiles();
-}
-
 /** Remove a file from the linked folder, if one is linked. */
 function deleteLinkedFile(path) {
   const conv = getActive();
@@ -4257,45 +3953,32 @@ function renderFileChangesCard(changes, messageIndex) {
     title = failed.length ? "No changes applied" : "No changes";
   } else {
     title = changedFiles.length === 1 ? "1 file changed" : `${changedFiles.length} files changed`;
-    if (failed.length) title += ` · ${failed.length} failed`;
+    if (failed.length) title += ` Â· ${failed.length} failed`;
   }
   header.append(el("span", { className: "fc-title", textContent: title }));
 
   if (changedFiles.length) {
     const copyAll = el("button", { className: "fc-copy-all", type: "button", textContent: "Copy all" });
     copyAll.addEventListener("click", async () => {
+      // Current content, for the same reason as the per-file button.
+      const conv = getActive();
+      const files = (conv && conv.files) || {};
       const parts = [];
       for (const c of changedFiles) {
-        if (c.after == null) continue;
-        parts.push(`=== ${c.file} ===\n${c.after}`);
+        if (files[c.file] == null) continue;
+        parts.push(`=== ${c.file} ===\n${files[c.file]}`);
       }
       const ok = await copyText(parts.join("\n\n"));
       flashButton(copyAll, ok, "Copy all");
     });
     header.append(copyAll);
 
-    // Step the workspace to this reply's point in the timeline, or forward from
-    // it.
+    // No revert control.
     //
-    // One control per reply rather than one per file: undoing a point has to
-    // undo everything after it as well, so a per-file control could leave the
-    // files in a state the workspace never had. The label reflects where the
-    // workspace currently is.
-    if (messageIndex != null && changes.some(canRevertChange)) {
-      const conv = getActive();
-      const applied = isGroupApplied(conv, messageIndex);
-      const revertAll = el("button", {
-        className: "fc-revert-all" + (applied ? "" : " reverted"),
-        type: "button",
-        textContent: applied ? "Revert all" : "Apply all",
-      });
-      revertAll.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        toggleGroupAt(messageIndex, revertAll);
-      });
-      header.append(revertAll);
-    }
+    // Revert required keeping both the previous and the new text of every change,
+    // which cost two full copies of a file per edit and is what exhausted the
+    // storage quota. The card now reports what a reply did rather than offering
+    // to undo it.
   }
 
   wrap.append(header);
@@ -4334,12 +4017,19 @@ function renderFileChangeItem(c) {
     summary.append(el("span", { className: "fc-note", textContent: "file not in workspace" }));
   }
 
-  if (c.after != null) {
+  if (c.kind !== "nomatch" && c.kind !== "missing") {
     const copyBtn = el("button", { className: "fc-copy-one", type: "button", textContent: "Copy" });
     copyBtn.addEventListener("click", async (e) => {
       e.preventDefault();
       e.stopPropagation();
-      const ok = await copyText(c.after);
+      // Copy the file's current content rather than a snapshot from when the
+      // change was recorded: later replies may have edited it since, and the
+      // snapshot is no longer stored.
+      const conv = getActive();
+      const text = (conv && conv.files && conv.files[c.file] != null)
+        ? conv.files[c.file]
+        : "";
+      const ok = await copyText(text);
       flashButton(copyBtn, ok, "Copy");
     });
     summary.append(copyBtn);
@@ -4354,10 +4044,14 @@ function renderFileChangeItem(c) {
   summary.insertAdjacentHTML("beforeend", FC_CHEVRON_ICON);
   details.append(summary);
 
-  if (c.after != null) {
+  // The expandable body shows the file's current content, read at render time
+  // rather than from a snapshot stored with the change.
+  const currentConv = getActive();
+  const currentText = (currentConv && currentConv.files) ? currentConv.files[c.file] : null;
+  if (currentText != null) {
     const body = el("div", { className: "fc-body" });
     const pre = el("pre");
-    const code = el("code", { textContent: c.after });
+    const code = el("code", { textContent: currentText });
     pre.append(code);
     body.append(pre);
     details.append(body);
@@ -4526,7 +4220,7 @@ async function deleteMessage(index) {
   const ok = await showConfirm({
     title: isUser ? "Delete this message?" : "Delete this response?",
     message: preview
-      ? `"${preview}${(msg.content || "").length > 120 ? "…" : ""}" will be removed from the conversation.`
+      ? `"${preview}${(msg.content || "").length > 120 ? "â€¦" : ""}" will be removed from the conversation.`
       : "This message will be removed from the conversation.",
     confirmLabel: "Delete",
     danger: true,
@@ -4537,10 +4231,12 @@ async function deleteMessage(index) {
 
   conv.messages.splice(index, 1);
 
-  // Remove file changes that came from this reply.
-  if (!isUser && fileChanges.length) {
-    for (const c of fileChanges) revertChange(c);
-  }
+  // The files this reply produced stay as they are.
+  //
+  // Deleting a message used to roll its changes back, which needed the previous
+  // text of every file it touched. With that history gone the workspace keeps
+  // its current contents; removing a message from the transcript no longer
+  // reaches into the files.
 
   // The first user message defines the conversation title; if it is gone, fall
   // back to whatever the new first user message says.
@@ -4753,7 +4449,7 @@ function renderPendingAttachments() {
     }
 
     const rm = el("button", { className: "attach-remove", title: "Remove", type: "button" });
-    rm.textContent = "×";
+    rm.textContent = "Ã—";
     rm.addEventListener("click", () => {
       pendingAttachments.splice(i, 1);
       renderPendingAttachments();
@@ -4914,9 +4610,9 @@ async function fullCompletion({ messages, model, thinking, signal, onDelta, onDo
     let msg = `HTTP ${response.status}`;
     try {
       const j = await response.json();
-      msg += ` — ${j.error?.message ?? j.message ?? JSON.stringify(j)}`;
+      msg += ` â€” ${j.error?.message ?? j.message ?? JSON.stringify(j)}`;
     } catch {
-      try { msg += ` — ${await response.text()}`; } catch {}
+      try { msg += ` â€” ${await response.text()}`; } catch {}
     }
     onError?.(new Error(msg));
     return;
@@ -5000,9 +4696,9 @@ async function streamCompletion({ messages, model, thinking, signal, onDelta, on
     let msg = `HTTP ${response.status}`;
     try {
       const j = await response.json();
-      msg += ` — ${j.error?.message ?? j.message ?? JSON.stringify(j)}`;
+      msg += ` â€” ${j.error?.message ?? j.message ?? JSON.stringify(j)}`;
     } catch {
-      try { msg += ` — ${await response.text()}`; } catch {}
+      try { msg += ` â€” ${await response.text()}`; } catch {}
     }
     onError?.(new Error(msg));
     return;
@@ -5236,7 +4932,7 @@ async function runCompletion(conv) {
 
   const spinnerNotice = el("div", { className: "retry-notice" });
   const spinner = el("span", { className: "retry-spinner" });
-  const spinnerText = el("span", { textContent: "Waiting for response…" });
+  const spinnerText = el("span", { textContent: "Waiting for responseâ€¦" });
   spinnerNotice.append(spinner, spinnerText);
   statusSlot.append(spinnerNotice);
 
@@ -5433,7 +5129,7 @@ async function runCompletion(conv) {
       reasoningSlot.innerHTML = "";
       contentEl.innerHTML = "";
 
-      showSpinner(`Connection failed. Retrying (attempt ${attempt} of ${max})…`);
+      showSpinner(`Connection failed. Retrying (attempt ${attempt} of ${max})â€¦`);
       scrollToBottom();
     },
 
@@ -5669,10 +5365,19 @@ const lastWritten = new Map();
  *
  * Returns "written", "unchanged" or "failed".
  */
-function saveKey(key, value) {
+/**
+ * Write a value to storage, skipping the write when nothing changed.
+ *
+ * `store` may differ from `value`: the conversations are held in memory with
+ * their per-change text and written without it, and the comparison has to be
+ * against what is actually stored or every save would look like a change.
+ *
+ * Returns "written", "unchanged" or "failed".
+ */
+function saveKey(key, value, store = value) {
   let payload;
   try {
-    payload = JSON.stringify(value);
+    payload = JSON.stringify(store);
   } catch (err) {
     console.warn(`Could not serialise ${key}:`, err);
     return "failed";
@@ -5694,7 +5399,9 @@ function saveKey(key, value) {
 
 /** Persist everything that can change. Safe to call after any mutation. */
 function saveAllNow() {
-  saveKey(CONV_KEY, conversations);
+  // The trimmed view is used everywhere, so no save path can write the bulky
+  // per-change text back to storage.
+  saveKey(CONV_KEY, conversations, storedConversations());
   saveKey(SETTINGS_KEY, settings);
   try {
     if (activeId) saveActiveId(activeId);
@@ -6291,7 +5998,7 @@ $("sModelsFetch").addEventListener("click", async () => {
   const status = $("sModelsStatus");
   if (!p.baseUrl) { status.textContent = "Set a Base URL first."; return; }
   const url = `${p.baseUrl.replace(/\/+$/, "")}${p.modelsPath || "/models"}`;
-  status.textContent = `Fetching ${url} …`;
+  status.textContent = `Fetching ${url} â€¦`;
   $("sModelsFetch").disabled = true;
   try {
     const res = await fetch(url, {
@@ -6314,7 +6021,7 @@ $("sModelsFetch").addEventListener("click", async () => {
     status.textContent = `Loaded ${models.length} models.`;
   } catch (err) {
     status.textContent =
-      `Could not fetch (${err.message}). Many providers block browser calls via CORS — ` +
+      `Could not fetch (${err.message}). Many providers block browser calls via CORS â€” ` +
       `paste the list manually instead.`;
   } finally {
     $("sModelsFetch").disabled = false;
@@ -6409,7 +6116,7 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-// Toggle handlers — live sync of the disabled state of the textareas.
+// Toggle handlers â€” live sync of the disabled state of the textareas.
 $("sCustomInstructionsEnabled").addEventListener("change", syncCustomInstructionsDisabledState);
 $("sPromptFinishEnabled").addEventListener("change", syncPromptFinishDisabledState);
 
@@ -6715,7 +6422,7 @@ function selectWorkspaceFile(name) {
       : "No files yet";
     $("workspaceEmptySub").textContent = Object.keys(files).length
       ? "Pick a file from the list to view or edit."
-      : "Ask the AI to edit or create files — they'll show up here automatically.";
+      : "Ask the AI to edit or create files â€” they'll show up here automatically.";
   }
 
   renderWorkspaceFileList();
@@ -6866,7 +6573,7 @@ function renderLinkedFolder() {
   if (link) {
     box.hidden = false;
     btn.hidden = true;
-    $("workspaceLinkedName").textContent = `📁 ${link.name}`;
+    $("workspaceLinkedName").textContent = `ðŸ“ ${link.name}`;
   } else {
     box.hidden = true;
     btn.hidden = !workspaceBridge();
@@ -6963,8 +6670,8 @@ async function syncLinkedFolder({ announce = true } = {}) {
     if (removed.length) parts.push(`${removed.length} missing on disk`);
     workspaceStatus(
       parts.length
-        ? `📁 ${link.name} — ${parts.join(", ")}`
-        : `📁 ${link.name} — up to date`
+        ? `ðŸ“ ${link.name} â€” ${parts.join(", ")}`
+        : `ðŸ“ ${link.name} â€” up to date`
     );
   }
   return { added, changed, conflicts, removed };
@@ -7004,7 +6711,7 @@ async function linkFolder() {
   const bridge = workspaceBridge();
   if (!bridge) return;
 
-  workspaceStatus("Choose a folder…");
+  workspaceStatus("Choose a folderâ€¦");
   let picked;
   try {
     picked = JSON.parse(bridge.pickFolder());
@@ -7043,7 +6750,7 @@ async function linkFolder() {
   if (direction === "export") {
     // Push the workspace out first, so the folder reflects it.
     writeAllLinkedFiles();
-    workspaceStatus(`📁 ${picked.name} — workspace written to folder`);
+    workspaceStatus(`ðŸ“ ${picked.name} â€” workspace written to folder`);
   } else {
     const disk = readFolderInto(bridge, picked.id);
     if (!disk.ok) {
@@ -7056,7 +6763,7 @@ async function linkFolder() {
       conv.files[path] = content;
       imported++;
     }
-    workspaceStatus(`📁 ${picked.name} — ${imported} file${imported === 1 ? "" : "s"} imported`);
+    workspaceStatus(`ðŸ“ ${picked.name} â€” ${imported} file${imported === 1 ? "" : "s"} imported`);
   }
 
   saveConversations();
