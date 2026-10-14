@@ -6573,7 +6573,7 @@ function renderLinkedFolder() {
   if (link) {
     box.hidden = false;
     btn.hidden = true;
-    $("workspaceLinkedName").textContent = `ðŸ“ ${link.name}`;
+    $("workspaceLinkedName").textContent = `📁 ${link.name}`;
   } else {
     box.hidden = true;
     btn.hidden = !workspaceBridge();
@@ -6670,8 +6670,8 @@ async function syncLinkedFolder({ announce = true } = {}) {
     if (removed.length) parts.push(`${removed.length} missing on disk`);
     workspaceStatus(
       parts.length
-        ? `ðŸ“ ${link.name} — ${parts.join(", ")}`
-        : `ðŸ“ ${link.name} — up to date`
+        ? `📁 ${link.name} — ${parts.join(", ")}`
+        : `📁 ${link.name} — up to date`
     );
   }
   return { added, changed, conflicts, removed };
@@ -6750,7 +6750,7 @@ async function linkFolder() {
   if (direction === "export") {
     // Push the workspace out first, so the folder reflects it.
     writeAllLinkedFiles();
-    workspaceStatus(`ðŸ“ ${picked.name} — workspace written to folder`);
+    workspaceStatus(`📁 ${picked.name} — workspace written to folder`);
   } else {
     const disk = readFolderInto(bridge, picked.id);
     if (!disk.ok) {
@@ -6763,7 +6763,7 @@ async function linkFolder() {
       conv.files[path] = content;
       imported++;
     }
-    workspaceStatus(`ðŸ“ ${picked.name} — ${imported} file${imported === 1 ? "" : "s"} imported`);
+    workspaceStatus(`📁 ${picked.name} — ${imported} file${imported === 1 ? "" : "s"} imported`);
   }
 
   saveConversations();
