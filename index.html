@@ -6796,17 +6796,16 @@ async function syncLinkedFolder({ announce = true, pull = false } = {}) {
     (p) => !Object.prototype.hasOwnProperty.call(disk.files, p)
   );
 
-  // Files that exist only in the workspace are pushed out, so the folder gains
-  // anything the model created while it was not being watched.
-  let pushed = 0;
   if (pull) {
+    // Mirror the folder exactly: files that exist only in the workspace go.
+    //
+    // This is the opposite of what it did before, which wrote them out to the
+    // folder. Pushing was wrong in two ways: a file the model created but never
+    // saved reappeared in the folder on every open, and a file deleted from the
+    // folder came back, so deleting anything was impossible. The folder is the
+    // workspace, so what is not in it is not in the workspace.
     for (const path of removed) {
-      try {
-        bridge.writeFile(link.id, path, textToBase64(conv.files[path] ?? ""));
-        pushed++;
-      } catch (e) {
-        /* a single unwritable file must not abort the sync */
-      }
+      delete conv.files[path];
     }
   }
 
@@ -7128,15 +7127,40 @@ $("workspaceCopyBtn").addEventListener("click", async () => {
 $("workspaceDeleteBtn").addEventListener("click", async () => {
   const conv = getActive();
   if (!conv || !workspaceActiveFile) return;
+  const link = linkedFolderFor(conv);
+  const name = workspaceActiveFile;
   const ok = await showConfirm({
     title: "Delete file?",
-    message: `"${workspaceActiveFile}" will be removed from this workspace.`,
+    // Says where it goes, because the deletion is real when a folder is linked.
+    message: link
+      ? `"${name}" will be deleted from this workspace and from the linked folder.`
+      : `"${name}" will be removed from this workspace.`,
     confirmLabel: "Delete",
     cancelLabel: "Cancel",
     danger: true,
   });
   if (!ok) return;
-  delete conv.files[workspaceActiveFile];
+
+  // Remove it from the folder too, so the deletion is real rather than a change
+  // that the next import would immediately undo.
+  if (link) {
+    const bridge = workspaceBridge();
+    if (bridge) {
+      try {
+        const res = JSON.parse(bridge.deleteFile(link.id, name));
+        if (!res.ok) {
+          workspaceStatus(
+            `Removed from the workspace, but not from the folder: ${res.error || "unknown reason"}`,
+            true
+          );
+        }
+      } catch (e) {
+        workspaceStatus(`Removed from the workspace, but not from the folder: ${e.message}`, true);
+      }
+    }
+  }
+
+  delete conv.files[name];
   workspaceActiveFile = null;
   conv.updatedAt = Date.now();
   saveConversations();
