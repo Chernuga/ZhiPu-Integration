@@ -6707,28 +6707,48 @@ function isIgnoredPath(path) {
   return false;
 }
 
-/** Read the whole linked folder into a { path: content } map. */
-function readFolderInto(bridge, linkId, limitBytes = 512 * 1024) {
+/**
+ * Read the whole linked folder into a { path: content } map.
+ *
+ * `skipped` names every file left out and why, so a file never simply fails to
+ * appear. The previous cap was 512 KB and silent, which made a 536 KB index.html
+ * invisible with nothing to explain it.
+ */
+function readFolderInto(bridge, linkId, limitBytes = 50 * 1024 * 1024) {
   const out = {};
+  const skipped = [];
   let listed;
   try {
     listed = JSON.parse(bridge.listFiles(linkId));
   } catch (e) {
-    return { ok: false, error: `Could not read the folder: ${e.message}`, files: out };
+    return { ok: false, error: `Could not read the folder: ${e.message}`, files: out, skipped };
   }
-  if (!listed.ok) return { ok: false, error: listed.error || "Could not list the folder.", files: out };
+  if (!listed.ok) {
+    return { ok: false, error: listed.error || "Could not list the folder.", files: out, skipped };
+  }
 
   for (const f of listed.files) {
-    if (isIgnoredPath(f.path)) continue;
-    if (f.size > limitBytes) continue;
+    if (isIgnoredPath(f.path)) {
+      skipped.push({ path: f.path, reason: "in a folder the workspace ignores" });
+      continue;
+    }
+    if (f.size > limitBytes) {
+      skipped.push({
+        path: f.path,
+        reason: `${Math.round(f.size / 1024 / 1024 * 10) / 10} MB, over the ` +
+          `${Math.round(limitBytes / 1024 / 1024)} MB limit`,
+      });
+      continue;
+    }
     try {
       const r = JSON.parse(bridge.readFile(linkId, f.path));
       if (r.ok) out[f.path] = base64ToText(r.base64);
+      else skipped.push({ path: f.path, reason: r.error || "unreadable" });
     } catch (e) {
-      /* one unreadable file must not abort the whole read */
+      skipped.push({ path: f.path, reason: e.message });
     }
   }
-  return { ok: true, files: out };
+  return { ok: true, files: out, skipped };
 }
 
 /**
@@ -6827,8 +6847,19 @@ async function syncLinkedFolder({ announce = true, pull = false } = {}) {
         ? `📁 ${link.name} — ${parts.join(", ")}`
         : `📁 ${link.name} — up to date`
     );
+
+    // Name anything left out. A skipped file used to vanish from the workspace
+    // with nothing said, which reads as the app losing it.
+    if (disk.skipped && disk.skipped.length) {
+      const shown = disk.skipped
+        .slice(0, 5)
+        .map((s) => `${s.path} (${s.reason})`)
+        .join("; ");
+      const more = disk.skipped.length > 5 ? `, and ${disk.skipped.length - 5} more` : "";
+      workspaceStatus(`📁 ${link.name} — not imported: ${shown}${more}`, true);
+    }
   }
-  return { added, changed, conflicts, removed };
+  return { added, changed, conflicts, removed, skipped: disk.skipped || [] };
 }
 
 /**
