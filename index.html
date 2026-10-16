@@ -3283,6 +3283,18 @@ function loadSettings() {
     const bridge = DEFAULT_PROVIDERS.find((p) => p.id === "deepseek-web");
     if (bridge) providers.unshift(normalizeProvider(bridge, "deepseek-web"));
   }
+  // Add back any built-in that a stored list has lost.
+  //
+  // A stored list was treated as the complete set, so anything written to storage
+  // before the page ran - a native client seeding its own provider, for instance -
+  // could leave the user with that entry alone and no sign of the built-ins. Only
+  // entries the user actually configured are their own; the rest are defaults that
+  // should always be offered.
+  for (const d of DEFAULT_PROVIDERS) {
+    if (!providers.some((p) => p.id === d.id)) {
+      providers.push(normalizeProvider(d, d.id));
+    }
+  }
   stored.providers = providers;
   if (!providers.some((p) => p.id === stored.activeProviderId)) {
     stored.activeProviderId = providers[0].id;
