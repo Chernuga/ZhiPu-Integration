@@ -3672,6 +3672,13 @@ function renderSidebar() {
       renderSidebar();
       renderMessages();
       updateWorkspaceBadge();
+
+      // Deleting the open conversation shows a different one, so its folder has
+      // to be attached to the bridge just as a click would.
+      Promise.resolve()
+        .then(() => restoreLinkedFolder())
+        .then(() => syncLinkedFolder({ announce: false, pull: true }))
+        .catch(() => {});
     });
     item.append(del);
     item.addEventListener("click", () => {
@@ -3684,15 +3691,19 @@ function renderSidebar() {
       applyActiveDraft();
       closeSidebarOnMobile();
 
-      // Pull the linked folder in as soon as the conversation opens.
+      // Attach this conversation's folder, then pull it in.
       //
-      // Silent and folder-wins: this runs on every open, so a prompt would be
-      // noise, and the folder is the copy the user edits on disk. Without it a
-      // conversation showed whatever the workspace last held, so changes made
-      // outside the app only appeared if the workspace panel was opened.
-      Promise.resolve().then(() =>
-        syncLinkedFolder({ announce: false, pull: true }).catch(() => {})
-      );
+      // The attach comes first and is not optional: the bridge keys folders by
+      // link id and knows only the ones it has been told about, so a conversation
+      // other than the one attached at startup would fail every file operation
+      // with "No folder is linked".
+      //
+      // The pull is silent and folder-wins: it runs on every open, so a prompt
+      // would be noise, and the folder is the copy the user edits on disk.
+      Promise.resolve()
+        .then(() => restoreLinkedFolder(conv))
+        .then(() => syncLinkedFolder({ announce: false, pull: true }))
+        .catch(() => {});
     });
     list.append(item);
   }
@@ -6566,6 +6577,9 @@ function openWorkspace() {
   // block - the list refreshes when it finishes.
   if (linkedFolderFor(conv)) {
     Promise.resolve()
+      // Attach first: the bridge may not know this conversation's folder, and a
+      // sync against an unknown id reports "No folder is linked".
+      .then(() => restoreLinkedFolder(conv))
       .then(() => syncLinkedFolder())
       .then(() => {
         // Re-point at the same file if it still exists; the sync may have
@@ -6931,12 +6945,19 @@ function unlinkFolder() {
  * grant in memory and starts empty on every launch, so the link must be handed
  * back before any file operation can work. Without this the workspace looked
  * linked while every read, write and sync failed.
+ *
+ * It takes the conversation to attach, and must run on every switch, not once.
+ *
+ * The bridge keys folders by link id, so it knows only the folders it has been
+ * told about. Attaching the active conversation at startup left every OTHER linked
+ * conversation unknown to it - switching to one gave "No folder is linked" even
+ * though the conversation plainly held a link, which is the bug this fixes. It
+ * looked like a permission problem, and was not.
  */
-async function restoreLinkedFolder() {
-  const conv = ensureActive();
+async function restoreLinkedFolder(conv = ensureActive()) {
   const link = linkedFolderFor(conv);
   const bridge = workspaceBridge();
-  if (!link || !bridge) return;
+  if (!link || !bridge || !conv) return;
 
   try {
     const res = JSON.parse(bridge.restoreFolder(link.id, link.uri));
