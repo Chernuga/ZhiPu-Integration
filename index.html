@@ -2484,25 +2484,27 @@
           </svg>
         </button>
         <input type="text" class="workspace-filename" id="workspaceFileName" placeholder="No file selected" spellcheck="false" disabled />
-        <button type="button" class="ws-action-btn" id="workspaceCopyBtn" disabled>
+        <!--
+          Icons only. The titles are in the tooltips: on a phone there is no room
+          for the words beside the filename, and they pushed the buttons off the
+          row.
+        -->
+        <button type="button" class="ws-action-btn" id="workspaceCopyBtn" title="Copy file contents" aria-label="Copy file contents" disabled>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="9" y="9" width="13" height="13" rx="2"/>
             <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
           </svg>
-          Copy
         </button>
-        <button type="button" class="ws-action-btn" id="workspaceOpenBtn" disabled title="Open this file in the browser">
+        <button type="button" class="ws-action-btn" id="workspaceOpenBtn" title="Open this file" aria-label="Open this file" disabled>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
             <path d="M15 3h6v6M10 14L21 3"/>
           </svg>
-          Open
         </button>
-        <button type="button" class="ws-action-btn danger" id="workspaceDeleteBtn" disabled>
+        <button type="button" class="ws-action-btn danger" id="workspaceDeleteBtn" title="Delete file" aria-label="Delete file" disabled>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
           </svg>
-          Delete
         </button>
         <button type="button" class="icon-btn" id="workspaceCloseBtn" title="Close">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -6321,6 +6323,17 @@ $("sAccentHex").addEventListener("input", () => {
 // =============================================================================
 let workspaceActiveFile = null;
 
+/**
+ * A name typed into the filename field but not yet applied.
+ *
+ * The rename is deferred to when the editor closes, so a name can be retyped
+ * freely without writing a file each time.
+ */
+let workspacePendingName = null;
+
+/** Guards commitWorkspaceFile against re-entering itself via a re-render. */
+let workspaceCommitting = false;
+
 function updateWorkspaceBadge() {
   const badge = $("workspaceBadge");
   if (!badge) return;
@@ -6507,6 +6520,15 @@ function renderWorkspaceFileList() {
 }
 
 function selectWorkspaceFile(name) {
+  // Save whatever was open before replacing it.
+  //
+  // Selecting another file overwrites the editor, so without this an edit in
+  // progress - or a name just typed - would be discarded silently. The guard
+  // stops the re-selection that follows a sync from committing into itself.
+  if (workspaceActiveFile && workspaceActiveFile !== name) {
+    commitWorkspaceFile();
+  }
+
   workspaceActiveFile = name;
   const conv = getActive();
   const files = conv?.files || {};
@@ -7027,7 +7049,19 @@ async function restoreLinkedFolder(conv = ensureActive()) {
   renderLinkedFolder();
 }
 
+/**
+ * Leave the editor, saving first.
+ *
+ * Closing is the only moment a file is written, so an edit in progress and a
+ * half-typed name are never committed separately.
+ */
+function leaveEditor() {
+  if (workspaceActiveFile) commitWorkspaceFile();
+  $("workspaceModal").classList.remove("show-panel");
+}
+
 function closeWorkspace() {
+  if (workspaceActiveFile) commitWorkspaceFile();
   $("workspaceModal").classList.remove("open");
   $("workspaceModal").classList.remove("show-panel");
 }
@@ -7036,9 +7070,9 @@ $("workspaceBtn").addEventListener("click", openWorkspace);
 $("workspaceNavCloseBtn").addEventListener("click", closeWorkspace);
 $("workspaceCloseBtn").addEventListener("click", closeWorkspace);
 $("workspaceMask").addEventListener("click", closeWorkspace);
-$("workspaceBack").addEventListener("click", () => {
-  $("workspaceModal").classList.remove("show-panel");
-});
+// The back button leaves the editor for the file list, which closes it just as
+// the close button does, so it saves the same way.
+$("workspaceBack").addEventListener("click", leaveEditor);
 
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && $("workspaceModal").classList.contains("open")) {
@@ -7099,40 +7133,99 @@ function scheduleLinkedWrite(path, content) {
   }, 600));
 }
 
-$("workspaceFileName").addEventListener("blur", renameWorkspaceFile);
+/**
+ * Take the name from the input, without touching anything.
+ *
+ * The rename used to happen on blur, so every time the field lost focus a file
+ * was written. Typing a name in stages - "a", then "ab", then "abc", clicking away
+ * between them - left a file for each, which is the duplicate-files problem.
+ *
+ * Nothing is renamed or written until the editor is closed, so a name can be
+ * typed and retyped freely and only the final value takes effect.
+ */
+function stageWorkspaceFileName() {
+  const input = $("workspaceFileName");
+  const conv = getActive();
+  if (!conv || !workspaceActiveFile) return;
+  workspacePendingName = normalizePath(input.value.trim());
+}
+
+/** Apply the staged name and write the file. Called when the editor closes. */
+function commitWorkspaceFile() {
+  // Re-entrancy guard.
+  //
+  // This renders the file list at the end, which can re-select a file, which
+  // commits again. One flag is simpler and safer than reasoning about every call
+  // path that reaches here.
+  if (workspaceCommitting) return;
+  workspaceCommitting = true;
+  try {
+    commitWorkspaceFileNow();
+  } finally {
+    workspaceCommitting = false;
+  }
+}
+
+function commitWorkspaceFileNow() {
+  const conv = getActive();
+  if (!conv || !workspaceActiveFile) return;
+
+  const input = $("workspaceFileName");
+  const wanted = workspacePendingName || normalizePath(input.value.trim());
+  workspacePendingName = null;
+
+  // The content is whatever the editor holds; it is saved here and not on every
+  // keystroke, so an edit in progress is never half-written.
+  const content = $("workspaceFileContent").value;
+  const from = workspaceActiveFile;
+  let to = from;
+
+  if (wanted && wanted !== from) {
+    if (conv.files[wanted] != null) {
+      // Refuse silently rather than with an alert: this runs on close, and a
+      // dialog there would block the close the user just asked for.
+      workspaceStatus(`"${wanted}" already exists, so the file kept its name "${from}".`, true);
+      input.value = from;
+    } else {
+      to = wanted;
+      conv.files[to] = conv.files[from];
+      delete conv.files[from];
+      workspaceActiveFile = to;
+    }
+  }
+
+  conv.files[to] = content;
+  conv.updatedAt = Date.now();
+  saveConversations();
+
+  // Write through to the folder: the new name first, then remove the old, so a
+  // failure between the two cannot lose the content.
+  const link = linkedFolderFor(conv);
+  if (link) {
+    const wrote = writeLinkedFile(to, content);
+    if (wrote && to !== from) {
+      const bridge = workspaceBridge();
+      if (bridge) {
+        try {
+          bridge.deleteFile(link.id, from);
+        } catch (e) {
+          workspaceStatus(`Renamed here, but the old file remains in the folder: ${e.message}`, true);
+        }
+      }
+    }
+  }
+
+  renderWorkspaceFileList();
+  updateWorkspaceBadge();
+}
+
+$("workspaceFileName").addEventListener("blur", stageWorkspaceFileName);
 $("workspaceFileName").addEventListener("keydown", (e) => {
   if (e.key === "Enter") {
     e.preventDefault();
     $("workspaceFileName").blur();
   }
 });
-
-function renameWorkspaceFile() {
-  const conv = getActive();
-  if (!conv || !workspaceActiveFile) return;
-  const input = $("workspaceFileName");
-  // Normalise on rename too, so "src\\a.js" and "src/a.js" cannot become two
-  // separate keys for the same file.
-  const newName = normalizePath(input.value.trim());
-
-  if (!newName || newName === workspaceActiveFile) {
-    input.value = workspaceActiveFile;
-    return;
-  }
-
-  if (conv.files[newName] != null) {
-    alert(`"${newName}" already exists.`);
-    input.value = workspaceActiveFile;
-    return;
-  }
-
-  conv.files[newName] = conv.files[workspaceActiveFile];
-  delete conv.files[workspaceActiveFile];
-  workspaceActiveFile = newName;
-  conv.updatedAt = Date.now();
-  saveConversations();
-  renderWorkspaceFileList();
-}
 
 $("workspaceOpenBtn").addEventListener("click", () => {
   if (workspaceActiveFile) openWorkspaceFile(workspaceActiveFile);
@@ -7145,13 +7238,18 @@ $("workspaceCopyBtn").addEventListener("click", async () => {
   const btn = $("workspaceCopyBtn");
   const prev = btn.innerHTML;
   const ok = await copyText(content);
+  // Icons only, matching the other buttons: a tick or a cross, with the colour
+  // carrying the result. Words here would undo the point of dropping the labels.
   btn.classList.toggle("success", ok);
+  btn.classList.toggle("danger", !ok);
   btn.innerHTML = ok
-    ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg> Copied`
-    : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg> Failed`;
+    ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>`
+    : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>`;
+  btn.title = ok ? "Copied" : "Copy failed";
   setTimeout(() => {
     btn.innerHTML = prev;
-    btn.classList.remove("success");
+    btn.classList.remove("success", "danger");
+    btn.title = "Copy file contents";
   }, 1400);
 });
 
