@@ -663,6 +663,15 @@
     line-height: 1.65;
     padding: 2px 0 4px;
   }
+  /*
+     An empty reasoning area draws only padding, which shows as a stray gap under
+     the summary before the first fragment arrives - and again if a reply turns out
+     to have no reasoning at all. Collapsing it when there is nothing to show
+     removes both.
+  */
+  .reasoning-block .reasoning-text:empty {
+    display: none;
+  }
   .reasoning-block .reasoning-text p { margin: 0 0 8px; }
   .reasoning-block .reasoning-text p:last-child { margin-bottom: 0; }
   .reasoning-block .reasoning-text code {
@@ -2087,22 +2096,79 @@
         <div class="input-attachments" id="inputAttachments"></div>
         <div class="input-toggles">
           <button class="pill" id="deepthinkBtn" title="Enable extended reasoning">
-            <span class="pill-thinking-icon" id="deepthinkIcon"></span>
+            <span class="pill-thinking-icon" id="deepthinkIcon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false" data-icon="think">
+  <title>DeepThink</title>
+  
+  <g stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+    <g transform="translate(8 8)">
+      <g transform="translate(-8 -8)">
+        <path d="M10.731 5.269C13.936 8.474 15.31 12.294 13.802 13.802C12.294 15.31 8.475 13.936 5.27 10.731C2.065 7.526 0.69 3.706 2.198 2.198C3.706 0.69 7.526 2.064 10.731 5.269Z"><animate attributeName="d" dur="0.4167s" begin="indefinite" fill="freeze" repeatCount="1" calcMode="spline" keyTimes="0;0.4;0.8;0.85;0.9;0.95;1" keySplines="0.58 1 1 1;0.58 1 0.42 0;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1" values="M10.731 5.269C13.936 8.474 15.31 12.294 13.802 13.802C12.294 15.31 8.475 13.936 5.27 10.731C2.065 7.526 0.69 3.706 2.198 2.198C3.706 0.69 7.526 2.064 10.731 5.269Z;M9.366 6.635C12.571 9.84 14.556 13.048 13.802 13.802C13.048 14.556 9.84 12.571 6.635 9.366C3.43 6.161 1.444 2.952 2.198 2.198C2.952 1.444 6.161 3.43 9.366 6.635Z;M10.731 5.269C13.936 8.474 15.31 12.294 13.802 13.802C12.294 15.31 8.475 13.936 5.27 10.731C2.065 7.526 0.69 3.706 2.198 2.198C3.706 0.69 7.526 2.064 10.731 5.269Z;M10.731 5.269C13.936 8.474 15.31 12.294 13.802 13.802C12.294 15.31 8.475 13.936 5.27 10.731C2.065 7.526 0.69 3.706 2.198 2.198C3.706 0.69 7.526 2.064 10.731 5.269Z;M10.731 5.269C13.936 8.474 15.31 12.294 13.802 13.802C12.294 15.31 8.475 13.936 5.27 10.731C2.065 7.526 0.69 3.706 2.198 2.198C3.706 0.69 7.526 2.064 10.731 5.269Z;M10.731 5.269C13.936 8.474 15.31 12.294 13.802 13.802C12.294 15.31 8.475 13.936 5.27 10.731C2.065 7.526 0.69 3.706 2.198 2.198C3.706 0.69 7.526 2.064 10.731 5.269Z;M10.731 5.269C13.936 8.474 15.31 12.294 13.802 13.802C12.294 15.31 8.475 13.936 5.27 10.731C2.065 7.526 0.69 3.706 2.198 2.198C3.706 0.69 7.526 2.064 10.731 5.269Z" id="think-on-pni37cx" data-leg="on"/><animate attributeName="d" dur="0.4167s" begin="indefinite" fill="freeze" repeatCount="1" calcMode="spline" keyTimes="0;0.05;0.1;0.15;0.2;0.6;1" keySplines="0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0.58 1 0.42 0;0 0 0.42 0" values="M10.731 5.269C13.936 8.474 15.31 12.294 13.802 13.802C12.294 15.31 8.475 13.936 5.27 10.731C2.065 7.526 0.69 3.706 2.198 2.198C3.706 0.69 7.526 2.064 10.731 5.269Z;M10.731 5.269C13.936 8.474 15.31 12.294 13.802 13.802C12.294 15.31 8.475 13.936 5.27 10.731C2.065 7.526 0.69 3.706 2.198 2.198C3.706 0.69 7.526 2.064 10.731 5.269Z;M10.731 5.269C13.936 8.474 15.31 12.294 13.802 13.802C12.294 15.31 8.475 13.936 5.27 10.731C2.065 7.526 0.69 3.706 2.198 2.198C3.706 0.69 7.526 2.064 10.731 5.269Z;M10.731 5.269C13.936 8.474 15.31 12.294 13.802 13.802C12.294 15.31 8.475 13.936 5.27 10.731C2.065 7.526 0.69 3.706 2.198 2.198C3.706 0.69 7.526 2.064 10.731 5.269Z;M10.731 5.269C13.936 8.474 15.31 12.294 13.802 13.802C12.294 15.31 8.475 13.936 5.27 10.731C2.065 7.526 0.69 3.706 2.198 2.198C3.706 0.69 7.526 2.064 10.731 5.269Z;M9.366 6.635C12.571 9.84 14.556 13.048 13.802 13.802C13.048 14.556 9.84 12.571 6.635 9.366C3.43 6.161 1.444 2.952 2.198 2.198C2.952 1.444 6.161 3.43 9.366 6.635Z;M10.731 5.269C13.936 8.474 15.31 12.294 13.802 13.802C12.294 15.31 8.475 13.936 5.27 10.731C2.065 7.526 0.69 3.706 2.198 2.198C3.706 0.69 7.526 2.064 10.731 5.269Z" id="think-off-pni37cx" data-leg="off"/></path>
+      </g>
+    </g>
+  </g>
+  <g stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+    <g transform="translate(8 8)">
+      <g transform="translate(-8 -8)">
+        <path d="M10.731 10.731C7.526 13.936 3.706 15.31 2.198 13.802C0.69 12.294 2.065 8.474 5.27 5.269C8.475 2.064 12.294 0.69 13.802 2.198C15.31 3.706 13.936 7.526 10.731 10.731Z"><animate attributeName="d" dur="0.4167s" begin="indefinite" fill="freeze" repeatCount="1" calcMode="spline" keyTimes="0;0.24;0.64;0.7;0.76;0.82;0.88;0.94;1" keySplines="0 0 1 1;0.58 1 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1" values="M10.731 10.731C7.526 13.936 3.706 15.31 2.198 13.802C0.69 12.294 2.065 8.474 5.27 5.269C8.475 2.064 12.294 0.69 13.802 2.198C15.31 3.706 13.936 7.526 10.731 10.731Z;M10.731 10.731C7.526 13.936 3.706 15.31 2.198 13.802C0.69 12.294 2.065 8.474 5.27 5.269C8.475 2.064 12.294 0.69 13.802 2.198C15.31 3.706 13.936 7.526 10.731 10.731Z;M9.366 9.366C6.161 12.571 2.952 14.556 2.198 13.802C1.444 13.048 3.43 9.839 6.635 6.634C9.84 3.429 13.048 1.444 13.802 2.198C14.556 2.952 12.571 6.161 9.366 9.366Z;M9.692 9.692C6.487 12.897 3.132 14.736 2.198 13.802C1.264 12.868 3.104 9.513 6.309 6.308C9.514 3.103 12.868 1.264 13.802 2.198C14.736 3.132 12.897 6.487 9.692 9.692Z;M9.94 9.94C6.735 13.145 3.269 14.873 2.198 13.802C1.127 12.731 2.856 9.265 6.061 6.06C9.266 2.855 12.731 1.127 13.802 2.198C14.873 3.269 13.145 6.735 9.94 9.94Z;M10.046 10.046C6.841 13.251 3.328 14.932 2.198 13.802C1.068 12.672 2.75 9.159 5.955 5.954C9.16 2.749 12.672 1.068 13.802 2.198C14.932 3.328 13.251 6.841 10.046 10.046Z;M10.067 10.067C6.862 13.272 3.339 14.943 2.198 13.802C1.057 12.661 2.729 9.138 5.934 5.933C9.139 2.728 12.661 1.057 13.802 2.198C14.943 3.339 13.272 6.862 10.067 10.067Z;M10.227 10.227C7.022 13.432 3.428 15.032 2.198 13.802C0.968 12.572 2.569 8.978 5.774 5.773C8.979 2.568 12.572 0.968 13.802 2.198C15.032 3.428 13.432 7.022 10.227 10.227Z;M10.507 10.507C7.302 13.712 3.582 15.186 2.198 13.802C0.814 12.418 2.289 8.698 5.494 5.493C8.699 2.288 12.418 0.814 13.802 2.198C15.186 3.582 13.712 7.302 10.507 10.507Z" id="think-on-pxz729d" data-leg="on"/><animate attributeName="d" dur="0.4167s" begin="indefinite" fill="freeze" repeatCount="1" calcMode="spline" keyTimes="0;0.06;0.12;0.18;0.24;0.3;0.36;0.76;1" keySplines="0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 0.42 0;0 0 1 1" values="M10.507 10.507C7.302 13.712 3.582 15.186 2.198 13.802C0.814 12.418 2.289 8.698 5.494 5.493C8.699 2.288 12.418 0.814 13.802 2.198C15.186 3.582 13.712 7.302 10.507 10.507Z;M10.227 10.227C7.022 13.432 3.428 15.032 2.198 13.802C0.968 12.572 2.569 8.978 5.774 5.773C8.979 2.568 12.572 0.968 13.802 2.198C15.032 3.428 13.432 7.022 10.227 10.227Z;M10.067 10.067C6.862 13.272 3.339 14.943 2.198 13.802C1.057 12.661 2.729 9.138 5.934 5.933C9.139 2.728 12.661 1.057 13.802 2.198C14.943 3.339 13.272 6.862 10.067 10.067Z;M10.046 10.046C6.841 13.251 3.328 14.932 2.198 13.802C1.068 12.672 2.75 9.159 5.955 5.954C9.16 2.749 12.672 1.068 13.802 2.198C14.932 3.328 13.251 6.841 10.046 10.046Z;M9.94 9.94C6.735 13.145 3.269 14.873 2.198 13.802C1.127 12.731 2.856 9.265 6.061 6.06C9.266 2.855 12.731 1.127 13.802 2.198C14.873 3.269 13.145 6.735 9.94 9.94Z;M9.692 9.692C6.487 12.897 3.132 14.736 2.198 13.802C1.264 12.868 3.104 9.513 6.309 6.308C9.514 3.103 12.868 1.264 13.802 2.198C14.736 3.132 12.897 6.487 9.692 9.692Z;M9.366 9.366C6.161 12.571 2.952 14.556 2.198 13.802C1.444 13.048 3.43 9.839 6.635 6.634C9.84 3.429 13.048 1.444 13.802 2.198C14.556 2.952 12.571 6.161 9.366 9.366Z;M10.731 10.731C7.526 13.936 3.706 15.31 2.198 13.802C0.69 12.294 2.065 8.474 5.27 5.269C8.475 2.064 12.294 0.69 13.802 2.198C15.31 3.706 13.936 7.526 10.731 10.731Z;M10.731 10.731C7.526 13.936 3.706 15.31 2.198 13.802C0.69 12.294 2.065 8.474 5.27 5.269C8.475 2.064 12.294 0.69 13.802 2.198C15.31 3.706 13.936 7.526 10.731 10.731Z" id="think-off-pxz729d" data-leg="off"/></path>
+      </g>
+    </g>
+  </g>
+  <g fill="currentColor">
+    <g transform="translate(8 8)">
+      <g transform="scale(1 1)">
+        <animateTransform attributeName="transform" type="scale" dur="0.4167s" begin="indefinite" fill="freeze" repeatCount="1" calcMode="spline" keyTimes="0;0.48;0.56;0.615;0.67;0.725;0.78;0.835;0.89;0.945;1" keySplines="0.58 1 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1" values="1 1;0.5 0.5;0.5 0.5;0.594 0.594;0.679 0.679;0.755 0.755;0.821 0.821;0.879 0.879;0.927 0.927;0.964 0.964;0.991 0.991" id="think-on-l1" data-leg="on"/>
+        <g>
+          <animateTransform attributeName="transform" type="scale" dur="0.4167s" begin="indefinite" fill="freeze" repeatCount="1" calcMode="spline" keyTimes="0;0.055;0.11;0.165;0.22;0.275;0.33;0.385;0.44;0.52;1" keySplines="0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 0.42 0" values="0.991 0.991;0.964 0.964;0.927 0.927;0.879 0.879;0.821 0.821;0.755 0.755;0.679 0.679;0.594 0.594;0.5 0.5;0.5 0.5;1 1" id="think-off-l1" data-leg="off"/>
+          <g transform="translate(-8 -8)">
+            <circle cx="8" cy="8" r="1.23"/>
+          </g>
+        </g>
+      </g>
+    </g>
+  </g>
+  
+</svg></span>
             DeepThink
           </button>
-          <button class="pill" id="searchBtn" disabled title="Not available on this endpoint">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" style="width:100%;height:100%;transform:translate3d(0,0,0);content-visibility:visible">
-  <defs>
-    <clipPath id="a">
-      <path d="M0 0h16v16H0z"/>
-    </clipPath>
-  </defs>
-  <g clip-path="url(#a)" stroke-linecap="round" stroke-linejoin="round" stroke="currentColor" stroke-width="1.4" fill="none">
-    <path d="M8 14.85c1.598 0 2.894-3.067 2.894-6.85S9.598 1.15 8 1.15m0 13.7c-1.6 0-2.895-3.067-2.895-6.85S6.401 1.15 8 1.15" style="display:block"/>
-    <path d="M8 1.15a6.849 6.849 0 1 1 0 13.7 6.849 6.849 0 0 1 0-13.7M1.64 8h12.72" style="display:block"/>
+          <button class="pill" id="searchBtn" title="Let the model search the web">
+            <span class="pill-thinking-icon" id="searchIcon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false" data-icon="search">
+  <title>Smart Search</title>
+  
+  <g stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+    <g transform="translate(8 8)">
+      <g transform="translate(-8 -8)">
+        <path d="M1.64 8C1.64 8 14.36 8 14.36 8"/>
+        <path d="M8 1.151C11.782 1.151 14.849 4.217 14.849 8C14.849 11.783 11.782 14.849 8 14.849C4.217 14.849 1.15 11.783 1.15 8C1.15 4.217 4.217 1.151 8 1.151Z"/>
+      </g>
+    </g>
   </g>
-</svg>
-
+  <g opacity="0" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+    <animate attributeName="opacity" dur="0.4833s" begin="indefinite" fill="freeze" repeatCount="1" calcMode="spline" keyTimes="0;0.10345;0.15326;0.20307;0.25287;0.30268;0.35249;0.4023;0.45211;0.50192;0.55172;0.60153;0.65134;0.70115;0.75096;0.80077;0.85057;0.90038;0.95019;1" keySplines="0.58 1 0.42 0;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1" values="0;1;1;1;1;1;1;1;1;1;1;1;1;1;1;1;1;1;1;1" id="search-on-l1" data-leg="on"/>
+    <animate attributeName="opacity" dur="0.4833s" begin="indefinite" fill="freeze" repeatCount="1" calcMode="spline" keyTimes="0;0.04981;0.09962;0.14943;0.19923;0.24904;0.29885;0.34866;0.39847;0.44828;0.49808;0.54789;0.5977;0.64751;0.69732;0.74713;0.79693;0.84674;0.89655;1" keySplines="0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0 0 1 1;0.58 1 0.42 0" values="1;1;1;1;1;1;1;1;1;1;1;1;1;1;1;1;1;1;1;0" id="search-off-l1" data-leg="off"/>
+    <g transform="translate(8 8)">
+      <g transform="translate(-8 -8)">
+        <path d="M8 14.849C4.217 14.849 1.15 11.783 1.15 8C1.15 4.217 4.217 1.151 8 1.151"><animate attributeName="d" dur="0.4833s" begin="indefinite" fill="freeze" repeatCount="1" calcMode="spline" keyTimes="0;0.10345;0.17241;0.27586;0.34483;0.44828;0.51724;0.58621;0.65517;0.75862;0.82759;0.93103;1" keySplines="0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0" values="M8 14.849C4.217 14.849 1.15 11.783 1.15 8C1.15 4.217 4.217 1.151 8 1.151;M8 14.849C4.217 14.849 1.15 11.783 1.15 8C1.15 4.217 4.217 1.151 8 1.151;M8 14.849C4.218 14.849 1.152 11.783 1.152 8C1.152 4.217 4.218 1.151 8 1.151;M8 14.849C4.226 14.849 1.168 11.783 1.168 8C1.168 4.217 4.226 1.151 8 1.151;M8 14.849C4.27 14.849 1.247 11.783 1.247 8C1.247 4.217 4.27 1.151 8 1.151;M8 14.849C4.419 14.849 1.516 11.783 1.516 8C1.516 4.217 4.419 1.151 8 1.151;M8 14.849C4.809 14.849 2.223 11.783 2.223 8C2.223 4.217 4.809 1.151 8 1.151;M8 14.849C5.381 14.849 3.258 11.783 3.258 8C3.258 4.217 5.381 1.151 8 1.151;M8 14.849C5.85 14.849 4.107 11.783 4.107 8C4.107 4.217 5.85 1.151 8 1.151;M8 14.849C6.162 14.849 4.673 11.783 4.673 8C4.673 4.217 6.162 1.151 8 1.151;M8 14.849C6.329 14.849 4.975 11.783 4.975 8C4.975 4.217 6.329 1.151 8 1.151;M8 14.849C6.392 14.849 5.089 11.783 5.089 8C5.089 4.217 6.392 1.151 8 1.151;M8 14.849C6.401 14.849 5.105 11.783 5.105 8C5.105 4.217 6.401 1.151 8 1.151" id="search-on-pojehuj" data-leg="on"/><animate attributeName="d" dur="0.4833s" begin="indefinite" fill="freeze" repeatCount="1" calcMode="spline" keyTimes="0;0.06897;0.17241;0.24138;0.34483;0.41379;0.48276;0.55172;0.65517;0.72414;0.82759;0.89655;1" keySplines="0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0" values="M8 14.849C6.401 14.849 5.105 11.783 5.105 8C5.105 4.217 6.401 1.151 8 1.151;M8 14.849C6.392 14.849 5.089 11.783 5.089 8C5.089 4.217 6.392 1.151 8 1.151;M8 14.849C6.329 14.849 4.975 11.783 4.975 8C4.975 4.217 6.329 1.151 8 1.151;M8 14.849C6.162 14.849 4.673 11.783 4.673 8C4.673 4.217 6.162 1.151 8 1.151;M8 14.849C5.85 14.849 4.107 11.783 4.107 8C4.107 4.217 5.85 1.151 8 1.151;M8 14.849C5.381 14.849 3.258 11.783 3.258 8C3.258 4.217 5.381 1.151 8 1.151;M8 14.849C4.809 14.849 2.223 11.783 2.223 8C2.223 4.217 4.809 1.151 8 1.151;M8 14.849C4.419 14.849 1.516 11.783 1.516 8C1.516 4.217 4.419 1.151 8 1.151;M8 14.849C4.27 14.849 1.247 11.783 1.247 8C1.247 4.217 4.27 1.151 8 1.151;M8 14.849C4.226 14.849 1.168 11.783 1.168 8C1.168 4.217 4.226 1.151 8 1.151;M8 14.849C4.218 14.849 1.152 11.783 1.152 8C1.152 4.217 4.218 1.151 8 1.151;M8 14.849C4.217 14.849 1.15 11.783 1.15 8C1.15 4.217 4.217 1.151 8 1.151;M8 14.849C4.217 14.849 1.15 11.783 1.15 8C1.15 4.217 4.217 1.151 8 1.151" id="search-off-pojehuj" data-leg="off"/></path>
+      </g>
+    </g>
+  </g>
+  <g stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+    <g transform="translate(8 8)">
+      <g transform="translate(-8 -8)">
+        <path d="M8 14.849C6.401 14.849 5.105 11.783 5.105 8C5.105 4.217 6.401 1.151 8 1.151"><animate attributeName="d" dur="0.4833s" begin="indefinite" fill="freeze" repeatCount="1" calcMode="spline" keyTimes="0;0.10345;0.17241;0.27586;0.34483;0.44828;0.51724;0.58621;0.65517;0.75862;0.82759;0.93103;1" keySplines="0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0" values="M8 14.849C6.401 14.849 5.105 11.783 5.105 8C5.105 4.217 6.401 1.151 8 1.151;M8 14.849C6.408 14.849 5.118 11.783 5.118 8C5.118 4.217 6.408 1.151 8 1.151;M8 14.849C6.457 14.849 5.206 11.783 5.206 8C5.206 4.217 6.457 1.151 8 1.151;M8 14.849C6.59 14.849 5.448 11.783 5.448 8C5.448 4.217 6.59 1.151 8 1.151;M8 14.849C6.856 14.849 5.929 11.783 5.929 8C5.929 4.217 6.856 1.151 8 1.151;M8 14.849C7.308 14.849 6.748 11.783 6.748 8C6.748 4.217 7.308 1.151 8 1.151;M8 14.849C8 14.849 8 11.783 8 8C8 4.217 8 1.151 8 1.151;M8 14.849C8.691 14.849 9.252 11.783 9.252 8C9.252 4.217 8.691 1.151 8 1.151;M8 14.849C9.143 14.849 10.07 11.783 10.07 8C10.07 4.217 9.143 1.151 8 1.151;M8 14.849C9.409 14.849 10.551 11.783 10.551 8C10.551 4.217 9.409 1.151 8 1.151;M8 14.849C9.543 14.849 10.793 11.783 10.793 8C10.793 4.217 9.543 1.151 8 1.151;M8 14.849C9.591 14.849 10.882 11.783 10.882 8C10.882 4.217 9.591 1.151 8 1.151;M8 14.849C9.598 14.849 10.894 11.783 10.894 8C10.894 4.217 9.598 1.151 8 1.151" id="search-on-pelb4e6" data-leg="on"/><animate attributeName="d" dur="0.4833s" begin="indefinite" fill="freeze" repeatCount="1" calcMode="spline" keyTimes="0;0.06897;0.17241;0.24138;0.34483;0.41379;0.48276;0.55172;0.65517;0.72414;0.82759;0.89655;1" keySplines="0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0" values="M8 14.849C9.598 14.849 10.894 11.783 10.894 8C10.894 4.217 9.598 1.151 8 1.151;M8 14.849C9.591 14.849 10.882 11.783 10.882 8C10.882 4.217 9.591 1.151 8 1.151;M8 14.849C9.543 14.849 10.793 11.783 10.793 8C10.793 4.217 9.543 1.151 8 1.151;M8 14.849C9.409 14.849 10.551 11.783 10.551 8C10.551 4.217 9.409 1.151 8 1.151;M8 14.849C9.143 14.849 10.07 11.783 10.07 8C10.07 4.217 9.143 1.151 8 1.151;M8 14.849C8.691 14.849 9.252 11.783 9.252 8C9.252 4.217 8.691 1.151 8 1.151;M8 14.849C8 14.849 8 11.783 8 8C8 4.217 8 1.151 8 1.151;M8 14.849C7.308 14.849 6.748 11.783 6.748 8C6.748 4.217 7.308 1.151 8 1.151;M8 14.849C6.856 14.849 5.929 11.783 5.929 8C5.929 4.217 6.856 1.151 8 1.151;M8 14.849C6.59 14.849 5.448 11.783 5.448 8C5.448 4.217 6.59 1.151 8 1.151;M8 14.849C6.457 14.849 5.206 11.783 5.206 8C5.206 4.217 6.457 1.151 8 1.151;M8 14.849C6.408 14.849 5.118 11.783 5.118 8C5.118 4.217 6.408 1.151 8 1.151;M8 14.849C6.401 14.849 5.105 11.783 5.105 8C5.105 4.217 6.401 1.151 8 1.151" id="search-off-pelb4e6" data-leg="off"/></path>
+      </g>
+    </g>
+  </g>
+  <g stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+    <animate attributeName="opacity" dur="0.4833s" begin="indefinite" fill="freeze" repeatCount="1" calcMode="spline" keyTimes="0;0.96552;1" keySplines="0.5 0.5 0.5 0.5;0.58 1 0.42 0" values="1;1;0" id="search-on-l2" data-leg="on"/>
+    <animate attributeName="opacity" dur="0.4833s" begin="indefinite" fill="freeze" repeatCount="1" calcMode="spline" keyTimes="0;0.03448;1" keySplines="0.58 1 0.42 0;0.5 0.5 0.5 0.5" values="0;1;1" id="search-off-l2" data-leg="off"/>
+    <g transform="translate(8 8)">
+      <g transform="translate(-8 -8)">
+        <path d="M8 14.849C9.598 14.849 10.894 11.783 10.894 8C10.894 4.217 9.598 1.151 8 1.151"><animate attributeName="d" dur="0.4833s" begin="indefinite" fill="freeze" repeatCount="1" calcMode="spline" keyTimes="0;0.10345;0.17241;0.27586;0.34483;0.44828;0.51724;0.58621;0.65517;0.75862;0.82759;0.93103;1" keySplines="0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0" values="M8 14.849C9.598 14.849 10.894 11.783 10.894 8C10.894 4.217 9.598 1.151 8 1.151;M8 14.849C9.607 14.849 10.91 11.783 10.91 8C10.91 4.217 9.607 1.151 8 1.151;M8 14.849C9.67 14.849 11.024 11.783 11.024 8C11.024 4.217 9.67 1.151 8 1.151;M8 14.849C9.837 14.849 11.327 11.783 11.327 8C11.327 4.217 9.837 1.151 8 1.151;M8 14.849C10.149 14.849 11.892 11.783 11.892 8C11.892 4.217 10.149 1.151 8 1.151;M8 14.849C10.618 14.849 12.741 11.783 12.741 8C12.741 4.217 10.618 1.151 8 1.151;M8 14.849C11.19 14.849 13.776 11.783 13.776 8C13.776 4.217 11.19 1.151 8 1.151;M8 14.849C11.58 14.849 14.483 11.783 14.483 8C14.483 4.217 11.58 1.151 8 1.151;M8 14.849C11.729 14.849 14.752 11.783 14.752 8C14.752 4.217 11.729 1.151 8 1.151;M8 14.849C11.773 14.849 14.832 11.783 14.832 8C14.832 4.217 11.773 1.151 8 1.151;M8 14.849C11.782 14.849 14.847 11.783 14.847 8C14.847 4.217 11.782 1.151 8 1.151;M8 14.849C11.782 14.849 14.849 11.783 14.849 8C14.849 4.217 11.782 1.151 8 1.151;M8 14.849C11.782 14.849 14.849 11.783 14.849 8C14.849 4.217 11.782 1.151 8 1.151" id="search-on-pvibav7" data-leg="on"/><animate attributeName="d" dur="0.4833s" begin="indefinite" fill="freeze" repeatCount="1" calcMode="spline" keyTimes="0;0.06897;0.17241;0.24138;0.34483;0.41379;0.48276;0.55172;0.65517;0.72414;0.82759;0.89655;1" keySplines="0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0;0.58 1 0.42 0" values="M8 14.849C11.782 14.849 14.849 11.783 14.849 8C14.849 4.217 11.782 1.151 8 1.151;M8 14.849C11.782 14.849 14.849 11.783 14.849 8C14.849 4.217 11.782 1.151 8 1.151;M8 14.849C11.782 14.849 14.847 11.783 14.847 8C14.847 4.217 11.782 1.151 8 1.151;M8 14.849C11.773 14.849 14.832 11.783 14.832 8C14.832 4.217 11.773 1.151 8 1.151;M8 14.849C11.729 14.849 14.752 11.783 14.752 8C14.752 4.217 11.729 1.151 8 1.151;M8 14.849C11.58 14.849 14.483 11.783 14.483 8C14.483 4.217 11.58 1.151 8 1.151;M8 14.849C11.19 14.849 13.776 11.783 13.776 8C13.776 4.217 11.19 1.151 8 1.151;M8 14.849C10.618 14.849 12.741 11.783 12.741 8C12.741 4.217 10.618 1.151 8 1.151;M8 14.849C10.149 14.849 11.892 11.783 11.892 8C11.892 4.217 10.149 1.151 8 1.151;M8 14.849C9.837 14.849 11.327 11.783 11.327 8C11.327 4.217 9.837 1.151 8 1.151;M8 14.849C9.67 14.849 11.024 11.783 11.024 8C11.024 4.217 9.67 1.151 8 1.151;M8 14.849C9.607 14.849 10.91 11.783 10.91 8C10.91 4.217 9.607 1.151 8 1.151;M8 14.849C9.598 14.849 10.894 11.783 10.894 8C10.894 4.217 9.598 1.151 8 1.151" id="search-off-pvibav7" data-leg="off"/></path>
+      </g>
+    </g>
+  </g>
+  
+</svg></span>
             Search
           </button>
         </div>
@@ -2769,7 +2835,7 @@ const DEFAULT_SETTINGS = {
   retryEnabled: true,
   retryMax: 2,
   typingSpeed: "default",
-  model: "glm-5.3", models: DEFAULT_MODELS, theme: "dark", deepthink: false,
+  model: "glm-5.3", models: DEFAULT_MODELS, theme: "dark", deepthink: false, search: false,
   showToolCalls: true,
   // UI state that should survive a reload.
   sidebarCollapsed: false,
@@ -3598,7 +3664,36 @@ function newConversation() {
     messages: [],
     model: settings.model,
     files: {},
+    // Which DeepSeek conversation this maps to. Empty until the first reply,
+    // when the app reports the URL it ended up on. A new conversation therefore
+    // opens the DeepSeek home page, which creates a fresh chat on the first
+    // request - which is what a new chat should mean.
+    chatUrl: "",
   };
+}
+
+/** The page a fresh conversation starts on, in the app. */
+const DEEPSEEK_ENTRY_URL = "https://chat.deepseek.com/";
+
+/**
+ * Whether a real DeepSeek page is being driven, and so whether a conversation can
+ * be steered at all. In a plain browser the request goes to whatever the provider
+ * is, and the page is none of our business.
+ */
+function isAppHost() {
+  return fetchLastAvailable();
+}
+
+/**
+ * The DeepSeek chat this conversation should be sent to.
+ *
+ * A conversation with no URL yet asks for the entry page, so the app clears
+ * whatever chat it was showing. Leaving it out entirely would pour a new chat's
+ * first message into the previous conversation.
+ */
+function deepseekTargetFor(conv) {
+  if (!isAppHost()) return "";
+  return conv && conv.chatUrl ? conv.chatUrl : DEEPSEEK_ENTRY_URL;
 }
 function getActive() { return conversations.find((c) => c.id === activeId) || null; }
 function ensureActive() {
@@ -3775,12 +3870,24 @@ function balanceCodeFences(text) {
 // =============================================================================
 function createTypewriter({ render, speed = 12, adaptive = false }) {
   const instant = speed <= 0;
+
+  /** Everything received so far. */
   let buffer = "";
+  /** How much of it has been drawn. */
   let displayed = 0;
   let done = false;
   let paused = false;
   let timer = null;
   let idleResolvers = [];
+
+  /**
+   * Where the reveal is currently heading, when still behind.
+   *
+   * In adaptive mode this is the newest fragment's length: the reveal animates
+   * towards it while later fragments queue up. Reaching it means the reveal has
+   * caught up with what has arrived, so a new fragment re-aims it.
+   */
+  let target = 0;
 
   function isIdle() { return displayed >= buffer.length; }
   function notifyIdle() {
@@ -3793,36 +3900,53 @@ function createTypewriter({ render, speed = 12, adaptive = false }) {
     render(buffer.slice(0, displayed));
   }
 
+  /**
+   * Characters per tick, from how much is left to reveal.
+   *
+   * Proportional rather than stepped: the reveal moves a fraction of the remaining
+   * distance each frame, which is what makes it look like continuous typing
+   * instead of a series of jumps. A floor of 1 keeps the tail from creeping
+   * asymptotically and never finishing.
+   */
+  function stepFor(remaining) {
+    if (remaining <= 1) return 1;
+    return Math.max(1, Math.ceil(remaining * 0.18));
+  }
+
   function tick() {
     timer = null;
     if (paused) return;
+
     const remaining = buffer.length - displayed;
     if (remaining <= 0) {
       if (done) notifyIdle();
       return;
     }
-    // Adaptive pacing exists to keep a long answer from taking minutes.
-    //
-    // The step grows with the backlog, so a big reveal catches up quickly while
-    // the last few characters still appear one at a time. The thresholds are
-    // tuned against the tick delay: with only the old steps (max 8 per tick) a
-    // 1200-character answer needed 227 ticks, which at the default 200ms delay
-    // is 45 seconds - slower than every fixed speed, so "adaptive" was in
-    // practice the slowest option.
-    //
-    // The steps now scale far more aggressively with the backlog, and the delay
-    // is shortened while catching up, so long answers finish in a few seconds
-    // and the tail still reads as typing.
-    let step = 1;
-    let delay = speed;
-    if (adaptive) {
-      if (remaining > 1200)      { step = 120; delay = 0; }
-      else if (remaining > 600)  { step = 64;  delay = 0; }
-      else if (remaining > 300)  { step = 32;  delay = 4; }
-      else if (remaining > 120)  { step = 14;  delay = 12; }
-      else if (remaining > 40)   { step = 5;   delay = Math.min(speed, 30); }
-      else                       { step = 1;   delay = Math.min(speed, 60); }
+
+    if (instant) {
+      displayed = buffer.length;
+      paint();
+      if (done) notifyIdle();
+      return;
     }
+
+    let step;
+    let delay = speed;
+
+    if (adaptive) {
+      // Aim at the newest fragment. Once it is reached, aim at the buffer, which
+      // is the same thing - a later fragment has by then arrived and grown it.
+      target = Math.max(target, buffer.length);
+      const toTarget = Math.max(1, target - displayed);
+      step = stepFor(toTarget);
+
+      // Keep a steady frame rate: fast enough to look continuous, slow enough that
+      // a long answer does not burn a core re-rendering markdown.
+      delay = toTarget > 40 ? 8 : 16;
+    } else {
+      step = 1;
+    }
+
     displayed = Math.min(displayed + step, buffer.length);
     paint();
     if (!paused) timer = setTimeout(tick, delay);
@@ -3844,6 +3968,9 @@ function createTypewriter({ render, speed = 12, adaptive = false }) {
     set(full) {
       if (full.length <= buffer.length) return;
       buffer = full;
+      // Every new fragment becomes the next stopping point the reveal animates
+      // towards, which is what ties the animation to the rate of generation.
+      target = buffer.length;
       kick();
     },
     pause() {
@@ -3856,7 +3983,7 @@ function createTypewriter({ render, speed = 12, adaptive = false }) {
     },
     reset() {
       if (timer !== null) { clearTimeout(timer); timer = null; }
-      buffer = ""; displayed = 0; done = false; paused = false;
+      buffer = ""; displayed = 0; done = false; paused = false; target = 0;
       idleResolvers = [];
       render("");
     },
@@ -3864,6 +3991,7 @@ function createTypewriter({ render, speed = 12, adaptive = false }) {
       if (timer !== null) { clearTimeout(timer); timer = null; }
       paused = false;
       displayed = buffer.length;
+      target = buffer.length;
       paint();
       if (done) notifyIdle();
     },
@@ -4704,7 +4832,7 @@ function buildRequestUrl() {
  *   OpenAI-style  { choices: [ { message: { content, reasoning_content } } ] }
  *   simple        { content, reasoning_content }
  */
-async function fullCompletion({ messages, model, thinking, signal, onDelta, onDone, onError }) {
+async function fullCompletion({ messages, model, thinking, search, chatUrl, signal, onDelta, onDone, onError }) {
   const p = activeProvider();
 
   // `stream: false` keeps an OpenAI-compatible host from opening an SSE body.
@@ -4712,9 +4840,14 @@ async function fullCompletion({ messages, model, thinking, signal, onDelta, onDo
     model, messages, stream: false,
     thinking: { type: thinking ? "enabled" : "disabled" },
   };
+  if (chatUrl) payload.chat_url = chatUrl;
   // Ask the bridge for the reasoning too; harmless elsewhere, and it keeps the
   // two modes showing the same thing.
   payload.include_reasoning = true;
+
+  // The app reads this and clicks the DeepSeek page's own Search control. Other
+  // providers ignore it.
+  if (search) payload.search = true;
 
   let response;
   try {
@@ -4788,15 +4921,32 @@ async function fullCompletion({ messages, model, thinking, signal, onDelta, onDo
     data?.x_truncated === true ||
     data?.choices?.[0]?.finish_reason === "length";
 
-  onDone?.({ content, reasoning, usage: data?.usage ?? null, aborted: false, truncated });
+  onDone?.({
+    content,
+    reasoning,
+    usage: data?.usage ?? null,
+    aborted: false,
+    truncated,
+    // Reported by the app so a conversation started from the home page learns
+    // which DeepSeek chat it now belongs to.
+    chatUrl: typeof data?.x_chat_url === "string" ? data.x_chat_url : "",
+  });
 }
 
-async function streamCompletion({ messages, model, thinking, signal, onDelta, onDone, onError }) {
+async function streamCompletion({ messages, model, thinking, search, chatUrl, signal, onDelta, onDone, onError }) {
   const payload = {
     model, messages, stream: true,
     stream_options: { include_usage: true },
     thinking: { type: thinking ? "enabled" : "disabled" },
   };
+
+  // Which DeepSeek conversation this belongs to, and whether to search.
+  //
+  // The app reads both: the URL moves its page to the right chat before typing,
+  // and the flag clicks that page's own Search control. Other providers ignore
+  // them, so this is harmless where they mean nothing.
+  if (chatUrl) payload.chat_url = chatUrl;
+  if (search) payload.search = true;
 
   let response;
   try {
@@ -4842,6 +4992,8 @@ async function streamCompletion({ messages, model, thinking, signal, onDelta, on
   let fullText = "";
   let reasoningText = "";
   let usage = null;
+  /** The DeepSeek chat this turn landed on, when the app reports one. */
+  let landedChatUrl = "";
 
   try {
     while (true) {
@@ -4861,6 +5013,11 @@ async function streamCompletion({ messages, model, thinking, signal, onDelta, on
         try { chunk = JSON.parse(raw); } catch { continue; }
         if (chunk.usage) usage = chunk.usage;
         const delta = chunk.choices?.[0]?.delta;
+        if (delta?.chat_url) {
+          // A final frame carrying the conversation the page ended up on.
+          landedChatUrl = delta.chat_url;
+          continue;
+        }
         if (!delta) continue;
         let changed = false;
         if (delta.reasoning_content) { reasoningText += delta.reasoning_content; changed = true; }
@@ -4873,11 +5030,11 @@ async function streamCompletion({ messages, model, thinking, signal, onDelta, on
   } finally {
     reader.releaseLock();
     const aborted = signal?.aborted === true;
-    onDone?.({ content: fullText, reasoning: reasoningText, usage, aborted });
+    onDone?.({ content: fullText, reasoning: reasoningText, usage, chatUrl: landedChatUrl, aborted });
   }
 }
 
-async function streamWithRetry({ messages, model, thinking, onDelta, onRetry, onDone, onError }) {
+async function streamWithRetry({ messages, model, thinking, search, chatUrl, onDelta, onRetry, onDone, onError }) {
   const ctrl = new AbortController();
   streamingAbort = ctrl;
 
@@ -4903,7 +5060,7 @@ async function streamWithRetry({ messages, model, thinking, onDelta, onRetry, on
           ? fullCompletion
           : streamCompletion;
         call({
-          messages, model, thinking,
+          messages, model, thinking, search, chatUrl,
           signal: ctrl.signal,
           onDelta,
           onDone: (r) => resolve({ ok: true, result: r }),
@@ -4961,8 +5118,10 @@ function setSending(sending) {
     btn.disabled = true;
     btn.title = "Stop (available in a moment)";
     btn.innerHTML = STOP_ICON;
-    ta.disabled = true;
-    attach.disabled = true;
+    // The composer stays usable while a reply is generating, so the next request
+    // can be written as the answer arrives. Sending is still blocked by the send
+    // button, which becomes Stop - but typing is never interrupted.
+    attach.disabled = false;
 
     if (stopUnlockTimer) clearTimeout(stopUnlockTimer);
     stopUnlockTimer = setTimeout(() => {
@@ -5203,7 +5362,10 @@ async function runCompletion(conv) {
   await streamWithRetry({
     messages: outgoing,
     model: settings.model,
-    thinking: settings.deepthink,
+    thinking: settings.deepthink, search: settings.search,
+    // The page is the chat, so it must be on this conversation's chat before
+    // anything is typed into it.
+    chatUrl: deepseekTargetFor(conv),
 
     onDelta: ({ content, reasoning }) => {
       assistantMsg.content = content;
@@ -5268,6 +5430,16 @@ async function runCompletion(conv) {
     onDone: (result) => {
       const wasAborted = result?.aborted === true;
 
+      // Remember which DeepSeek chat this turn went into.
+      //
+      // A conversation created from the home page has no URL until the page
+      // creates a chat on the first request, so the app reports it here. Storing
+      // it means the next turn goes to the same chat rather than starting another.
+      if (result?.chatUrl && !conv.chatUrl) {
+        conv.chatUrl = result.chatUrl;
+        saveConversations();
+      }
+
       (async () => {
         if (wasAborted) {
           reasoningTypewriter.flush();
@@ -5279,6 +5451,30 @@ async function runCompletion(conv) {
         }
 
         activeTypewriters = null;
+
+        // Re-read the finished reply from the page rather than trusting the
+        // assembly of fragments.
+        //
+        // Streaming races with the typewriter: a fragment can be lost to a
+        // reconnect, and the assembled string is only as reliable as that. The page
+        // hands back the complete text it captured from the wire, so the final
+        // render is authoritative. A failure is ignored - the streamed text is
+        // already on screen and is usually identical.
+        if (!wasAborted && isAppHost()) {
+          try {
+            const settled = await readLastReplyFromPage();
+            if (
+              settled &&
+              typeof settled.content === "string" &&
+              settled.content.length >= assistantMsg.content.length
+            ) {
+              assistantMsg.content = settled.content;
+              if (settled.reasoning) assistantMsg.reasoning = settled.reasoning;
+            }
+          } catch (e) {
+            /* the page may have moved on; the streamed text stands */
+          }
+        }
 
         const reasoningMs = reasoningStartedAt !== null
           ? performance.now() - reasoningStartedAt : null;
@@ -5437,9 +5633,45 @@ $("sendBtn").addEventListener("click", async () => {
   }
   send();
 });
+/**
+ * Play an icon's animation in one direction.
+ *
+ * Each icon carries two legs: "on" is the timeline played forwards, "off" is the
+ * same timeline backwards. Turning on plays the forward leg, turning off plays the
+ * backward one - exactly what the site does, which is why the toggle reads as a
+ * squash and settle rather than a shape swap.
+ *
+ * The other leg is ended first, so flicking the button faster than the animation
+ * cannot leave two legs running at once.
+ */
+function playIcon(iconId, on) {
+  const root = document.getElementById(iconId);
+  if (!root) return;
+  const svg = root.querySelector("svg");
+  if (!svg) return;
+
+  const wanted = on ? "on" : "off";
+  const other = on ? "off" : "on";
+
+  for (const el of svg.querySelectorAll(`[data-leg="${other}"]`)) {
+    try { el.endElement(); } catch (e) { /* not started */ }
+  }
+  for (const el of svg.querySelectorAll(`[data-leg="${wanted}"]`)) {
+    try { el.beginElement(); } catch (e) { /* SMIL unsupported */ }
+  }
+}
+
 $("deepthinkBtn").addEventListener("click", () => {
   settings.deepthink = !settings.deepthink;
   $("deepthinkBtn").classList.toggle("active", settings.deepthink);
+  playIcon("deepthinkIcon", settings.deepthink);
+  saveSettings();
+});
+
+$("searchBtn").addEventListener("click", () => {
+  settings.search = !settings.search;
+  $("searchBtn").classList.toggle("active", settings.search);
+  playIcon("searchIcon", settings.search);
   saveSettings();
 });
 
@@ -5638,15 +5870,48 @@ function applyAssistantReply(conv, assistantMsg) {
   return fileChanges;
 }
 
+/**
+ * The URL of the provider's fetch-last endpoint, or "" when it has no base.
+ *
+ * Shared with loadLastResponse so the two cannot drift apart.
+ */
+function lastResponseUrl() {
+  const p = activeProvider();
+  const base = (p.baseUrl || "").replace(/\/+$/, "");
+  if (!base) return "";
+  const seg = p.route === "root" ? "" : `/${p.route}`;
+  return `${base}${seg}/chat/completions/last`;
+}
+
+/**
+ * The finished reply, read from the page.
+ *
+ * Called after a streamed answer settles so the render uses the complete text the
+ * page captured from the wire rather than a reassembly of streamed fragments.
+ * Returns null when the endpoint has nothing, so the caller keeps what it has.
+ */
+async function readLastReplyFromPage() {
+  const url = lastResponseUrl();
+  if (!url) return null;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${settings.apiKey}`,
+    },
+    body: "{}",
+  });
+  if (!res.ok) return null;
+  const data = await res.json().catch(() => null);
+  const msg = data?.choices?.[0]?.message ?? data;
+  const content = String(msg?.content ?? "");
+  if (!content) return null;
+  return { content, reasoning: String(msg?.reasoning_content ?? "") };
+}
+
 async function loadLastResponse() {
   const btn = $("fetchLastBtn");
-  const url = (() => {
-    const p = activeProvider();
-    const base = (p.baseUrl || "").replace(/\/+$/, "");
-    if (!base) return "";
-    const seg = p.route === "root" ? "" : `/${p.route}`;
-    return `${base}${seg}/chat/completions/last`;
-  })();
+  const url = lastResponseUrl();
 
   if (!url) {
     flashButton(btn, false, RETRY_ICON);
@@ -7322,10 +7587,21 @@ applyAccent(settings.accentHex);
 syncThemeSegmented();
 renderModelMenu();
 
-$("deepthinkIcon").innerHTML = THINKING_ICON;
+// The toolbar icon is inlined in the markup and animated, so it is no longer
+// replaced here - doing so would overwrite the animation with a static drawing.
+// THINKING_ICON is still used for the reasoning block header.
 
 renderPendingAttachments();
 $("deepthinkBtn").classList.toggle("active", !!settings.deepthink);
+$("searchBtn").classList.toggle("active", !!settings.search);
+
+// Open in the state the setting says, without animating: a stored "on" should
+// present as on from the first frame, and the forward leg ends on that drawing.
+if (settings.deepthink) {
+  for (const el of $("deepthinkIcon").querySelectorAll('[data-leg="on"]')) {
+    try { el.endElement(); } catch (e) { /* SMIL unsupported */ }
+  }
+}
 
 if (activeId && !conversations.find((c) => c.id === activeId)) {
   activeId = conversations[0]?.id ?? null;
