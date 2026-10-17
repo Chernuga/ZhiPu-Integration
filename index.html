@@ -3664,16 +3664,109 @@ function newConversation() {
     messages: [],
     model: settings.model,
     files: {},
-    // Which DeepSeek conversation this maps to. Empty until the first reply,
-    // when the app reports the URL it ended up on. A new conversation therefore
-    // opens the DeepSeek home page, which creates a fresh chat on the first
-    // request - which is what a new chat should mean.
+    // Which DeepSeek conversation this maps to: whatever the page was showing
+    // while this conversation was open. Empty until something is known, which is
+    // why a new chat starts at the entry page.
     chatUrl: "",
   };
 }
 
 /** The page a fresh conversation starts on, in the app. */
 const DEEPSEEK_ENTRY_URL = "https://chat.deepseek.com/";
+
+/**
+ * Remember which DeepSeek chat the page is showing, for the conversation on
+ * screen.
+ *
+ * The page is a single shared view, so the only way to know which chat belongs to
+ * which client conversation is to record what was on screen while each was open.
+ * Polling rather than reading it once means navigating the DeepSeek tab by hand -
+ * picking another chat, pressing New chat, following Continue - is remembered too.
+ *
+ * TWO GUARDS, because a URL must never leak into the wrong conversation:
+ *
+ *  1. The conversation id is captured when the request starts, and the result is
+ *     written to THAT conversation only if it is still open when the answer
+ *     arrives. A slow reply from the old chat therefore cannot land on the new one.
+ *  2. The URL is re-read only after the page has settled, and a navigation in
+ *     flight is skipped entirely - while the page is moving, its URL is either the
+ *     old chat or a blank loading state, and either would be recorded wrongly.
+ */
+let chatUrlTracker = null;
+
+function startChatUrlTracking() {
+  if (!isAppHost()) return;
+  if (chatUrlTracker) return;
+
+  chatUrlTracker = setInterval(async () => {
+    const conv = getActive();
+    if (!conv) return;
+
+    const forConv = conv.id;
+    try {
+      const res = await fetch(`${apiBaseForStatus()}/status`, { cache: "no-store" });
+      if (!res.ok) return;
+      const data = await res.json();
+
+      // Still the same conversation? If the user switched while this was in
+      // flight, the answer describes the previous chat and must be discarded.
+      if (getActive()?.id !== forConv) return;
+
+      const url = typeof data.chat_url === "string" ? data.chat_url : "";
+      if (!isDeepseekChatUrl(url)) return;
+      if (conv.chatUrl === url) return;
+
+      conv.chatUrl = url;
+      saveConversations();
+    } catch (e) {
+      /* the app may be closed or the page mid-reload */
+    }
+  }, 3000);
+}
+
+/** Only a real DeepSeek page URL is worth storing. */
+function isDeepseekChatUrl(url) {
+  return typeof url === "string" && url.startsWith("https://chat.deepseek.com");
+}
+
+/** The local API root, for status polling. */
+function apiBaseForStatus() {
+  const p = activeProvider();
+  return (p.baseUrl || "").replace(/\/+$/, "");
+}
+
+/**
+ * Put the page on the conversation's remembered chat, before anything is typed.
+ *
+ * Called on switch and before a request. Awaited, so the prompt cannot be typed
+ * into the previous chat while the page is still moving - which is how a URL used
+ * to leak between conversations.
+ */
+async function moveDeepseekTo(conv) {
+  if (!isAppHost()) return true;
+  const base = apiBaseForStatus();
+  if (!base) return true;
+
+  const target = deepseekTargetFor(conv);
+  if (!target) return true;
+
+  // A conversation with no remembered chat must start clean: sending it to the
+  // entry page is what creates a new chat on the first request.
+  try {
+    const res = await fetch(`${base}/open`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${settings.apiKey}`,
+      },
+      body: JSON.stringify({ url: target }),
+    });
+    const data = await res.json().catch(() => ({}));
+    return data?.ok !== false;
+  } catch (e) {
+    return false;
+  }
+}
 
 /**
  * Whether a real DeepSeek page is being driven, and so whether a conversation can
@@ -3800,16 +3893,11 @@ function renderSidebar() {
       applyActiveDraft();
       closeSidebarOnMobile();
 
-      // Attach this conversation's folder, then pull it in.
-      //
-      // The attach comes first and is not optional: the bridge keys folders by
-      // link id and knows only the ones it has been told about, so a conversation
-      // other than the one attached at startup would fail every file operation
-      // with "No folder is linked".
-      //
-      // The pull is silent and folder-wins: it runs on every open, so a prompt
-      // would be noise, and the folder is the copy the user edits on disk.
+      // Put the DeepSeek page on this conversation's chat, then pull its folder
+      // in. The switch is awaited so the page is settled before anything else
+      // reads it - a URL arriving late is what used to leak between chats.
       Promise.resolve()
+        .then(() => moveDeepseekTo(conv))
         .then(() => restoreLinkedFolder(conv))
         .then(() => syncLinkedFolder({ announce: false, pull: true }))
         .catch(() => {});
@@ -5185,6 +5273,11 @@ async function send() {
   clearDraft(draftOwner);
   clearDraft(conv.id);
 
+  // Make sure the page is on this conversation's chat before the prompt is
+  // typed. Awaited: typing while a navigation is in flight is how a prompt ends
+  // up in the previous conversation.
+  await moveDeepseekTo(conv);
+
   await sendUserMessage(conv, text, attachmentsForMessage, true);
 }
 
@@ -5215,6 +5308,10 @@ async function sendUserMessage(conv, text, attachments, appendOnly) {
 
 async function runCompletion(conv) {
   const inner = $("messagesInner");
+
+  // The conversation this request belongs to. Captured up front so a late reply
+  // can be told apart from whatever conversation is open when it arrives.
+  const requestConvId = conv.id;
 
   const assistantRow = el("div", { className: "msg msg-assistant" });
   const reasoningSlot = el("div");
@@ -5430,14 +5527,15 @@ async function runCompletion(conv) {
     onDone: (result) => {
       const wasAborted = result?.aborted === true;
 
-      // Remember which DeepSeek chat this turn went into.
-      //
-      // A conversation created from the home page has no URL until the page
-      // creates a chat on the first request, so the app reports it here. Storing
-      // it means the next turn goes to the same chat rather than starting another.
-      if (result?.chatUrl && !conv.chatUrl) {
-        conv.chatUrl = result.chatUrl;
-        saveConversations();
+      // Capture the chat this turn landed on, so the next request goes to the
+      // same one even before the poller next runs. Guarded by the conversation id
+      // the request was made for: a slow reply must not write its URL onto a
+      // conversation the user has since switched to.
+      if (result?.chatUrl && conv.id === requestConvId) {
+        if (conv.chatUrl !== result.chatUrl) {
+          conv.chatUrl = result.chatUrl;
+          saveConversations();
+        }
       }
 
       (async () => {
@@ -5666,6 +5764,7 @@ $("deepthinkBtn").addEventListener("click", () => {
   $("deepthinkBtn").classList.toggle("active", settings.deepthink);
   playIcon("deepthinkIcon", settings.deepthink);
   saveSettings();
+  mirrorTogglesToPage();
 });
 
 $("searchBtn").addEventListener("click", () => {
@@ -5673,7 +5772,29 @@ $("searchBtn").addEventListener("click", () => {
   $("searchBtn").classList.toggle("active", settings.search);
   playIcon("searchIcon", settings.search);
   saveSettings();
+  mirrorTogglesToPage();
 });
+
+/**
+ * Show the current switch state on the DeepSeek page.
+ *
+ * The switches are sent with each request, so they are correct where it matters.
+ * This makes them agree where the user is looking too - a switch that appears to
+ * do nothing is confusing. Best effort: a browser tab has no page to update.
+ */
+function mirrorTogglesToPage() {
+  if (!isAppHost()) return;
+  const base = apiBaseForStatus();
+  if (!base) return;
+  fetch(`${base}/toggles`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${settings.apiKey}`,
+    },
+    body: JSON.stringify({ thinking: !!settings.deepthink, search: !!settings.search }),
+  }).catch(() => {});
+}
 
 $("attachBtn").addEventListener("click", () => $("fileInput").click());
 $("fetchLastBtn").addEventListener("click", () => { loadLastResponse(); });
@@ -7626,6 +7747,13 @@ updateWorkspaceBadge();
 Promise.resolve()
   .then(() => restoreLinkedFolder())
   .catch((e) => console.warn("Could not restore the linked folder:", e));
+
+// Remember which DeepSeek chat the page is showing for whichever conversation is
+// open, and put the page on the right one at startup.
+Promise.resolve()
+  .then(() => moveDeepseekTo(getActive()))
+  .then(() => startChatUrlTracking())
+  .catch((e) => console.warn("Could not link the DeepSeek conversation:", e));
 
 // Arm the immediate-save safety net, then write the state as loaded so the
 // stored copy is known-good from the first moment.
