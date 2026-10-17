@@ -2993,7 +2993,14 @@ function normalizePath(p) {
 }
 
 function parseFileCommands(text) {
-  const lines = text.split('\n');
+  // Normalise line endings first.
+  //
+  // Splitting on "\n" alone leaves a trailing "\r" on every line when the text
+  // uses CRLF, and the command pattern expects the line to end after "create:" -
+  // so a CRLF reply parsed to nothing at all and no files were created. That is
+  // why replies could be turned into files on Android and not on Windows: the same
+  // parser, handed text with different line endings.
+  const lines = String(text || "").replace(/\r\n?/g, "\n").split("\n");
   const ops = [];
   let i = 0;
   while (i < lines.length) {
@@ -3694,6 +3701,23 @@ const DEEPSEEK_ENTRY_URL = "https://chat.deepseek.com/";
  */
 let chatUrlTracker = null;
 
+/**
+ * Conversations whose page has been settled, and may therefore record URLs.
+ *
+ * A conversation must not adopt whatever the page happens to be showing. On
+ * creating a new chat the page is still on the previous URL for a moment, and the
+ * poller used to record it - so the new chat inherited the old chat's URL and sent
+ * its first prompt there.
+ *
+ * Only after the page has been deliberately moved for a conversation does that
+ * conversation start recording. Anything else would be adopting a neighbour's chat.
+ */
+const chatUrlArmed = new Set();
+
+function armChatUrlTracking(convId) {
+  if (convId) chatUrlArmed.add(convId);
+}
+
 function startChatUrlTracking() {
   if (!isAppHost()) return;
   if (chatUrlTracker) return;
@@ -3701,6 +3725,10 @@ function startChatUrlTracking() {
   chatUrlTracker = setInterval(async () => {
     const conv = getActive();
     if (!conv) return;
+
+    // Not armed: the page has not been moved for this conversation yet, so
+    // whatever it is showing belongs to a different one.
+    if (!chatUrlArmed.has(conv.id)) return;
 
     const forConv = conv.id;
     try {
@@ -3711,6 +3739,7 @@ function startChatUrlTracking() {
       // Still the same conversation? If the user switched while this was in
       // flight, the answer describes the previous chat and must be discarded.
       if (getActive()?.id !== forConv) return;
+      if (!chatUrlArmed.has(forConv)) return;
 
       const url = typeof data.chat_url === "string" ? data.chat_url : "";
       if (!isDeepseekChatUrl(url)) return;
@@ -3762,7 +3791,12 @@ async function moveDeepseekTo(conv) {
       body: JSON.stringify({ url: target }),
     });
     const data = await res.json().catch(() => ({}));
-    return data?.ok !== false;
+    const ok = data?.ok !== false;
+
+    // This conversation may now record the page's URL. Deliberately after the
+    // move, so it cannot adopt whatever the page happened to be showing.
+    if (ok) armChatUrlTracking(conv.id);
+    return ok;
   } catch (e) {
     return false;
   }
