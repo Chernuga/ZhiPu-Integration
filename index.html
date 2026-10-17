@@ -3842,6 +3842,9 @@ async function switchToConversation(conv) {
   chatUrlArmed.delete(conv.id);
 
   await moveDeepseekTo(conv).catch(() => false);
+  // The page may have reloaded for the new conversation, taking its own toggle
+  // state with it - so the switches are re-applied to it.
+  syncTogglesToPage();
   await restoreLinkedFolder(conv).catch(() => {});
   await syncLinkedFolder({ announce: false, pull: true }).catch(() => {});
 }
@@ -5489,15 +5492,41 @@ async function runCompletion(conv) {
     adaptive: speedCfg.adaptive,
   });
 
+  // Repaint at most once per frame, with everything that has arrived.
+  //
+  // Every render replaces the message's entire markup - measured at 19ms per delta
+  // on throttled hardware, growing with the reply. Doing that per delta blocks the
+  // event loop, so incoming deltas queue behind it: a 10s stream took 20.5s with
+  // gaps stretching to 187ms, and the reply appeared to arrive in lumps.
+  //
+  // So a delta now only updates the target. A frame is requested, and when it runs
+  // it paints once with everything accumulated. The flag is cleared inside the
+  // callback, so a second render can never start before the first has been
+  // committed - which is the behaviour that was missing.
+  let pendingShown = null;
+  let frameRequested = false;
+
+  const paintContent = (shown) => {
+    // Strip first, then balance: if a command block is mid-stream and still open,
+    // strip removes everything from its marker onwards, so the balanced text never
+    // contains a half-finished fence.
+    const visible = contentForDisplay(shown);
+    const html = visible ? renderMarkdown(balanceCodeFences(visible)) : "";
+    contentEl.innerHTML = html + '<span class="cursor"></span>';
+    decorateToolCalls(contentEl);
+  };
+
   const contentTypewriter = createTypewriter({
     render: (shown) => {
-      // Strip first, then balance: if a command block is mid-stream and still
-      // open, strip removes everything from its marker onwards, so the balanced
-      // text never contains a half-finished fence.
-      const visible = contentForDisplay(shown);
-      const html = visible ? renderMarkdown(balanceCodeFences(visible)) : "";
-      contentEl.innerHTML = html + '<span class="cursor"></span>';
-      decorateToolCalls(contentEl);
+      pendingShown = shown;
+      if (frameRequested) return;
+      frameRequested = true;
+      requestAnimationFrame(() => {
+        frameRequested = false;
+        const text = pendingShown;
+        pendingShown = null;
+        if (text !== null) paintContent(text);
+      });
     },
     speed: speedCfg.delay,
     adaptive: speedCfg.adaptive,
@@ -7782,6 +7811,24 @@ if (settings.deepthink) {
     try { el.endElement(); } catch (e) { /* SMIL unsupported */ }
   }
 }
+
+// Align the DeepSeek page's own switches with the saved state.
+//
+// The web UI remembers DeepThink and Search, but the DeepSeek page keeps its own
+// state per conversation and across reloads, so the two can start out disagreeing -
+// a switch shown as off in the client while the page still has it on.
+//
+// Re-applying the same state is harmless: the toggle only clicks when the page
+// disagrees, so this forces agreement without changing anything that already
+// matches. Delayed because the page's controls only exist once its composer has
+// rendered, and retried once in case it was still coming up.
+function syncTogglesToPage() {
+  mirrorTogglesToPage();
+  setTimeout(mirrorTogglesToPage, 1500);
+  setTimeout(mirrorTogglesToPage, 4000);
+}
+
+syncTogglesToPage();
 
 if (activeId && !conversations.find((c) => c.id === activeId)) {
   activeId = conversations[0]?.id ?? null;
