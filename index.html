@@ -3822,6 +3822,29 @@ function deepseekTargetFor(conv) {
   if (!isAppHost()) return "";
   return conv && conv.chatUrl ? conv.chatUrl : DEEPSEEK_ENTRY_URL;
 }
+
+/**
+ * Switch the app to a conversation, page included.
+ *
+ * Every way of ending up on a conversation goes through here: clicking one in the
+ * sidebar, creating a new one, and landing on another after deleting. Each of
+ * those has to move the DeepSeek page as well, and each has previously been missed
+ * one at a time - a new chat kept the old URL, and deleting one handed the next
+ * conversation the deleted chat's address.
+ *
+ * The move is awaited before anything else touches the page, and only a settled
+ * move lets the conversation record the page's URL.
+ */
+async function switchToConversation(conv) {
+  if (!conv) return;
+
+  // Nothing may be recorded for the conversation being left behind.
+  chatUrlArmed.delete(conv.id);
+
+  await moveDeepseekTo(conv).catch(() => false);
+  await restoreLinkedFolder(conv).catch(() => {});
+  await syncLinkedFolder({ announce: false, pull: true }).catch(() => {});
+}
 function getActive() { return conversations.find((c) => c.id === activeId) || null; }
 function ensureActive() {
   let conv = getActive();
@@ -3909,12 +3932,10 @@ function renderSidebar() {
       renderMessages();
       updateWorkspaceBadge();
 
-      // Deleting the open conversation shows a different one, so its folder has
-      // to be attached to the bridge just as a click would.
-      Promise.resolve()
-        .then(() => restoreLinkedFolder())
-        .then(() => syncLinkedFolder({ announce: false, pull: true }))
-        .catch(() => {});
+      // Deleting the open conversation lands on another, so move the page to its
+      // chat exactly as opening it would. Without this the page stayed on the
+      // deleted conversation, and the new one adopted its URL.
+      switchToConversation(getActive());
     });
     item.append(del);
     item.addEventListener("click", () => {
@@ -3928,13 +3949,9 @@ function renderSidebar() {
       closeSidebarOnMobile();
 
       // Put the DeepSeek page on this conversation's chat, then pull its folder
-      // in. The switch is awaited so the page is settled before anything else
-      // reads it - a URL arriving late is what used to leak between chats.
-      Promise.resolve()
-        .then(() => moveDeepseekTo(conv))
-        .then(() => restoreLinkedFolder(conv))
-        .then(() => syncLinkedFolder({ announce: false, pull: true }))
-        .catch(() => {});
+      // in. One helper, so the sidebar, a new chat and a delete after another all
+      // behave the same way.
+      switchToConversation(conv);
     });
     list.append(item);
   }
@@ -6136,6 +6153,14 @@ $("newChatBtn").addEventListener("click", () => {
     if (text) saveDraft(text, conv.id);
   }
   applyActiveDraft();
+
+  // Open a fresh DeepSeek chat now, not on the first send.
+  //
+  // Without this the page stayed on the previous conversation, so a new chat
+  // looked identical to the old one and its first prompt went to the wrong chat.
+  // The conversation has no URL, so the move targets the entry page, which is
+  // what makes DeepSeek start a new chat on the first request.
+  switchToConversation(conv);
 });
 $("collapseBtn").addEventListener("click", () => {
   $("sidebar").classList.add("collapsed");
