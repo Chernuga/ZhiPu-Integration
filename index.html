@@ -3045,7 +3045,25 @@ function flashButton(btn, ok, originalHtml) {
 // =============================================================================
 // File command parsing / applying
 // =============================================================================
-const FILE_CMD_LINE_RE = /^[ \t]*([^\s`]+)[ \t]+(find|replace|create)[ \t]*:[ \t]*$/i;
+/**
+ * A file-command line: a path, then "create:", "find:" or "replace:".
+ *
+ * Models decorate these freely, and every decoration used to break the match. The
+ * shape seen in practice:
+ *
+ *   index.html create:            plain
+ *   `index.html` create:          filename in backticks
+ *   **index.html** create:        filename in bold
+ *   index.html `create:`          the verb in backticks
+ *   index.html create:```         a stray backtick after the colon
+ *   **`index.html` create:**      both, plus bold around the whole line
+ *
+ * So the leading and trailing decoration is allowed to be any of ` * _ ~ and
+ * whitespace - the characters used for code spans, bold, italics and strikethrough.
+ * Capturing is still strict about the three words and the colon, so a sentence that
+ * merely mentions create: is not mistaken for a command.
+ */
+const FILE_CMD_LINE_RE = /^[\s`*_~]*([^\s`*_~]+)[\s`*_~]+(find|replace|create)[\s`*_~]*:[\s`*_~]*$/i;
 
 /**
  * Canonicalise a workspace path.
@@ -3076,7 +3094,13 @@ function parseFileCommands(text) {
   while (i < lines.length) {
     const m = lines[i].match(FILE_CMD_LINE_RE);
     if (!m) { i++; continue; }
-    const file = m[1];
+    // Strip any decoration that survived, so the key is the bare path.
+    //
+    // The pattern already excludes it from the capture, but a path can still pick
+    // up stray characters when a model mixes styles - "`src/a.js`" inside bold, say -
+    // and a key of "`src/a.js`" would never match the real file.
+    const file = m[1].replace(/^[`*_~]+|[`*_~]+$/g, "");
+    if (!file) { i++; continue; }
     const kind = m[2].toLowerCase();
     i++;
     while (i < lines.length && lines[i].trim() === '') i++;
