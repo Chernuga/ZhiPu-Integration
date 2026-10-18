@@ -2799,9 +2799,21 @@ function migrateProviders(providers) {
   ];
   const renames = {};
 
+  // A built-in provider whose own default is a URL a browser cannot call is kept
+  // as it is.
+  //
+  // This migration rescues providers a USER configured against the dead URL. But
+  // the built-in "zai" (GLM direct) ships pointed at exactly that URL on purpose -
+  // it is documented as only usable where CORS does not apply. It matched too, so
+  // it was renamed to zai-relay on every load, and the built-in merge then added
+  // zai straight back. The result was a duplicate relay entry accumulating in the
+  // provider list every time the page opened.
+  const builtinIds = new Set(DEFAULT_PROVIDERS.map((d) => d.id));
+
   const out = providers.map((p) => {
     const url = (p.baseUrl || "").replace(/\/+$/, "");
     if (!DEAD_GLM_URLS.includes(url)) return p;
+    if (builtinIds.has(p.id)) return p;
 
     // Point it at the relay, which answers the preflight a browser sends.
     const relay = DEFAULT_PROVIDERS.find((d) => d.id === "zai-relay");
@@ -3159,7 +3171,13 @@ function shrinkStoredChanges(conversations) {
 }
 
 function stripFileCommands(text) {
-  const lines = text.split('\n');
+  // Normalise line endings, as parseFileCommands does.
+  //
+  // Splitting on "\n" leaves a trailing "\r" on every CRLF line, and the command
+  // pattern expects the line to end after "create:" - so a CRLF reply was not
+  // stripped at all and the commands and their code stayed visible in the message
+  // even with "show as tool calls" turned off.
+  const lines = String(text || "").replace(/\r\n?/g, "\n").split('\n');
   const out = [];
   let i = 0;
   while (i < lines.length) {
@@ -3384,6 +3402,20 @@ function loadSettings() {
       providers.push(normalizeProvider(d, d.id));
     }
   }
+
+  // Drop duplicate ids, keeping the first.
+  //
+  // The migration above used to rename a built-in on every load, which left a
+  // fresh copy behind each time - so a stored list could hold many entries with
+  // the same id, all of them the relay. Only the first is meaningful; keeping the
+  // rest made the provider menu grow on every visit.
+  const seen = new Set();
+  providers = providers.filter((p) => {
+    if (seen.has(p.id)) return false;
+    seen.add(p.id);
+    return true;
+  });
+
   stored.providers = providers;
   if (!providers.some((p) => p.id === stored.activeProviderId)) {
     stored.activeProviderId = providers[0].id;
