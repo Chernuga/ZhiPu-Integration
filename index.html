@@ -2929,19 +2929,26 @@ function migrateProviders(providers) {
   // zai-relay-direct-direct and so on, each looking like a provider the user had
   // configured. Suffixes from earlier runs are stripped before numbering, so the
   // second run is a no-op.
-  const stripSuffix = (id) => id.replace(/(?:-direct)+(-\d+)?$/, (m, n) => n || "");
+  // A generated suffix is "-direct", a number, or both - in any order, possibly repeated.
+  // Stripping them all back to the base id is what makes this idempotent.
+  const stripSuffix = (id) =>
+    id.replace(/(?:-direct)+/g, "").replace(/-\d+$/g, "");
+  // Keep the FIRST entry for each base id; the rest are copies.
+  //
+  // These accumulate because the GLM migration renames an entry to zai-relay on every load
+  // and the built-in merge then adds zai back. Renumbering made the copies look intentional
+  // and kept them forever; collapsing to one per id is what stops the list growing.
   const seen = new Set();
+  const kept = [];
   for (const p of out) {
-    let id = stripSuffix(p.id);
-    if (seen.has(id)) {
-      // Keep the first as it is; number the rest deterministically.
-      let n = 2;
-      while (seen.has(`${id}-${n}`)) n++;
-      id = `${id}-${n}`;
-    }
-    p.id = id;
-    seen.add(id);
+    const base = stripSuffix(p.id) || p.id;
+    if (seen.has(base)) continue;
+    seen.add(base);
+    p.id = base;
+    kept.push(p);
   }
+  out.length = 0;
+  out.push(...kept);
 
   return { providers: out, renames };
 }
@@ -2966,6 +2973,33 @@ function isAndroidClient() {
  * The app is the authority on what IT can serve - loopback URLs and routes only it knows -
  * so its records win over a stored copy with the same id. Anything else is left alone.
  */
+/**
+ * Ask the app what providers it offers, and merge the answer.
+ *
+ * Asynchronous on purpose: the page must paint before a request completes, and the menu
+ * is rebuilt when the reply arrives. In a browser there is no bridge, so this returns
+ * immediately and nothing changes.
+ */
+async function syncAppProviders() {
+  let base = "";
+  try {
+    base = (typeof AndroidWorkspace !== "undefined" && AndroidWorkspace && AndroidWorkspace.baseUrl)
+      ? AndroidWorkspace.baseUrl()
+      : "";
+  } catch (e) {
+    base = "";
+  }
+  if (!base) return;   // Not in an app; nothing to ask.
+
+  try {
+    const res = await fetch(base + "/config/providers", { cache: "no-store" });
+    if (!res.ok) return;
+    applyProviderConfig(await res.json());
+  } catch (e) {
+    console.warn("Could not read the app's provider configuration:", e);
+  }
+}
+
 function applyProviderConfig(cfg) {
   if (!cfg || !Array.isArray(cfg.providers) || !cfg.providers.length) return false;
 
@@ -2973,28 +3007,33 @@ function applyProviderConfig(cfg) {
   // the desktop app can reach a server on the PC, Android cannot.
   if (typeof cfg.platform === "string") appPlatform = cfg.platform;
 
+  // Work on the live list. An earlier version referenced a bare "providers", which only
+  // exists as a local inside loadSettings - every call threw, silently, so the app's
+  // configuration was never applied.
+  let list = settings.providers || [];
   let changed = false;
+
   for (const raw of cfg.providers) {
     if (!raw || !raw.id) continue;
     const rec = normalizeProvider(raw, raw.id);
-    const at = providers.findIndex((p) => p.id === rec.id);
-    if (at >= 0) providers[at] = rec;
-    else providers.push(rec);
+    const at = list.findIndex((p) => p.id === rec.id);
+    if (at >= 0) list[at] = rec;
+    else list.push(rec);
     changed = true;
   }
 
   // WebAI2API runs on a PC. Offering it on Android means every request fails.
-  if (isAndroidClient()) {
-    const before = providers.length;
-    providers = providers.filter((p) => p.id !== "webai2api");
-    if (providers.length !== before) changed = true;
+  if (appPlatform === "android") {
+    const before = list.length;
+    list = list.filter((p) => p.id !== "webai2api");
+    if (list.length !== before) changed = true;
   }
 
   if (!changed) return false;
 
-  stored.providers = providers;
-  if (!providers.some((p) => p.id === settings.activeProviderId)) {
-    const wanted = cfg.defaultProvider || providers[0]?.id;
+  settings.providers = list;
+  if (!list.some((p) => p.id === settings.activeProviderId)) {
+    const wanted = cfg.defaultProvider || list[0]?.id;
     if (wanted) settings.activeProviderId = wanted;
   }
   saveSettings();
@@ -5234,12 +5273,6 @@ function renderPendingAttachments() {
     rm.addEventListener("click", () => {
       pendingAttachments.splice(i, 1);
       renderPendingAttachments();
-
-// Ask the app which providers it offers, and merge the answer.
-//
-// Not awaited: the page must paint before a request completes, and the menu is rebuilt
-// once the reply arrives. A browser (not an app) returns immediately.
-syncAppProviders();
     });
     box.append(rm);
     wrap.append(box);
@@ -8287,6 +8320,12 @@ renderModelMenu();
 // THINKING_ICON is still used for the reasoning block header.
 
 renderPendingAttachments();
+
+// Ask the app which providers it offers, and merge the answer.
+//
+// Not awaited: the page must paint before a request completes, and the menu is rebuilt
+// when the reply arrives. In a browser there is no bridge, so this returns at once.
+syncAppProviders();
 $("deepthinkBtn").classList.toggle("active", !!settings.deepthink);
 $("searchBtn").classList.toggle("active", !!settings.search);
 
