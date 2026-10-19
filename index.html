@@ -2962,9 +2962,27 @@ function migrateProviders(providers) {
  */
 let appPlatform = "unknown";
 
-/** Whether this is the Android app. */
+/**
+ * Whether this is the Android app.
+ *
+ * Prefers what the app reported, but falls back to a check that needs no request: the
+ * Android app is the only client whose local server is on 8080. That keeps the filter
+ * working when /config/providers has not answered - an older build, or a failed request -
+ * so a provider that cannot work never appears.
+ */
 function isAndroidClient() {
-  return appPlatform === "android";
+  if (appPlatform === "android") return true;
+  if (appPlatform === "desktop") return false;
+
+  // Not yet told. The STORED list is the evidence - not `settings`, which is still being
+  // built when loadSettings calls this, so reading it threw before it was initialised.
+  try {
+    const raw = JSON.parse(localStorage.getItem("deepseek-ui-settings") || "{}");
+    const list = Array.isArray(raw.providers) ? raw.providers : [];
+    return list.some((p) => p && String(p.baseUrl || "").includes("127.0.0.1:8080"));
+  } catch (e) {
+    return false;
+  }
 }
 
 /**
@@ -3681,6 +3699,16 @@ function loadSettings() {
 
   // WebAI2API lives on the PC. Offering it on Android means every request fails,
   // because 127.0.0.1 there is the phone, which runs no such server.
+  if (isAndroidClient()) {
+    providers = providers.filter((p) => p.id !== "webai2api");
+  }
+
+  // Remove providers this app cannot possibly reach.
+  //
+  // Done at load rather than only on a config reply: the config needs a successful request,
+  // and a provider that cannot work should not be offered in the meantime. WebAI2API runs on
+  // a PC, so on Android every request to it fails - and selecting a model there returns
+  // "Unsupported model" from a server the phone is not running.
   if (isAndroidClient()) {
     providers = providers.filter((p) => p.id !== "webai2api");
   }
