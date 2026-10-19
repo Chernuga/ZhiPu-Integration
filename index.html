@@ -2922,10 +2922,25 @@ function migrateProviders(providers) {
   });
 
   // Two entries must not end up sharing an id.
+  //
+  // This must be idempotent: running it twice on the same list has to produce the
+  // same ids. It was not - every load appended another "-direct" to an id that
+  // already had one, so a profile accumulated zai-relay-direct,
+  // zai-relay-direct-direct and so on, each looking like a provider the user had
+  // configured. Suffixes from earlier runs are stripped before numbering, so the
+  // second run is a no-op.
+  const stripSuffix = (id) => id.replace(/(?:-direct)+(-\d+)?$/, (m, n) => n || "");
   const seen = new Set();
   for (const p of out) {
-    if (seen.has(p.id)) p.id = p.id + "-direct";
-    seen.add(p.id);
+    let id = stripSuffix(p.id);
+    if (seen.has(id)) {
+      // Keep the first as it is; number the rest deterministically.
+      let n = 2;
+      while (seen.has(`${id}-${n}`)) n++;
+      id = `${id}-${n}`;
+    }
+    p.id = id;
+    seen.add(id);
   }
 
   return { providers: out, renames };
@@ -6668,15 +6683,14 @@ function renderModelMenu() {
     }
   }
 
-  // The label names the active provider too, since more than one is on offer.
+  // The label names the model only.
+  //
+  // It briefly appended the active provider, so the topbar read
+  // "DeepSeek (Web) · DeepSeek Web (bridge)" on startup, until the first selection
+  // replaced it with the bare model name. Two names for one thing, and inconsistent
+  // between startup and a click. The menu groups by provider already.
   const current = (settings.models || []).find((m) => m.id === settings.model);
-  const currentProvider = (settings.providers || []).find(
-    (p) => p.id === settings.activeProviderId
-  );
-  const modelName = current ? (current.label || current.id) : settings.model;
-  $("modelLabel").textContent = showHeadings && currentProvider
-    ? `${modelName} · ${currentProvider.label || currentProvider.id}`
-    : modelName;
+  $("modelLabel").textContent = current ? (current.label || current.id) : settings.model;
 }
 
 $("modelSelector").addEventListener("click", (e) => {
