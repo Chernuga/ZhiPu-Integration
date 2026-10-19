@@ -2734,6 +2734,34 @@ const DEFAULT_PROVIDERS = [
     ],
   },
   {
+    id: "webai2api",
+    label: "WebAI2API (local)",
+    // A local server that reimplements the DeepSeek web protocol in Node, instead of
+    // driving a browser tab.
+    //
+    // Run it yourself: `pnpm install`, `pnpm auth --launch` once to capture
+    // credentials, then `pnpm run server -p 8787`. It speaks OpenAI chat completions,
+    // so nothing here is special-cased except the model names - see
+    // webai2apiModelName().
+    //
+    // route "root" plus the /v1 suffix gives http://127.0.0.1:8787/v1/chat/completions.
+    baseUrl: "http://127.0.0.1:8787",
+    apiKey: "local",
+    route: "root",
+    pathSuffix: "/v1/chat/completions",
+    responseMode: "stream",
+    modelsPath: "/v1/models",
+    note: "Requires the WebAI2API server running locally on port 8787. Faster than the tab bridge, but a protocol change on DeepSeek's side breaks it.",
+    // The four names encode the two switches, since that server takes them from the
+    // model id rather than from request fields.
+    models: [
+      { id: "deepseek",                     label: "DeepSeek (Web)",              desc: "Reasoning off, search on" },
+      { id: "deepseek-thinking",            label: "DeepSeek (DeepThink)",        desc: "Reasoning on, search on" },
+      { id: "deepseek-nosearch",            label: "DeepSeek (no search)",        desc: "Reasoning off, search off" },
+      { id: "deepseek-thinking-nosearch",   label: "DeepSeek (DeepThink, no search)", desc: "Reasoning on, search off" },
+    ],
+  },
+  {
     id: "zai-relay",
     label: "Z.ai / GLM",
     // Routed through the CORS relay, because this page runs in a browser.
@@ -2893,13 +2921,41 @@ function activeProvider() {
   const list = settings.providers || [];
   return list.find((p) => p.id === settings.activeProviderId) || list[0] || normalizeProvider({}, "none");
 }
+/**
+ * The default prompt finish: the file-command syntax, restated as a reminder.
+ *
+ * The system message already documents these commands, but it is long and competes
+ * with everything else; repeating the exact syntax at the end of the user's message
+ * is what keeps replies in the form the parser expects. Blank by default before, so
+ * a fresh install had only the system message to rely on.
+ */
+const DEFAULT_PROMPT_FINISH = [
+  "*Reminder: Tell me what to edit (find and replace) or create. When giving me the instructions, you must use the following syntax:",
+  "",
+  "1. File creation:",
+  "filename.extension create:",
+  "```",
+  "code",
+  "```",
+  "",
+  "2. File editing:",
+  "filename.extension find:",
+  "```",
+  "code",
+  "```",
+  "filename.extension replace:",
+  "```",
+  "code",
+  "```",
+].join("\n");
+
 const DEFAULT_SETTINGS = {
   apiKey: "", workerUrl: "", plan: "coding", baseOverride: "",
   providers: DEFAULT_PROVIDERS, activeProviderId: DEFAULT_PROVIDER_ID,
   providerModels: {}, // providerId -> models, persisted per provider
   providerModelChoice: {}, // providerId -> last model selected for it
   customInstructions: "", customInstructionsEnabled: true,
-  promptFinish: "",       promptFinishEnabled: true,
+  promptFinish: DEFAULT_PROMPT_FINISH, promptFinishEnabled: true,
   accentHex: "",
   reasoningExpanded: true,
   retryEnabled: true,
@@ -3539,6 +3595,15 @@ function loadSettings() {
     merged.promptFinishEnabled = true;
   }
   if (typeof merged.promptFinish !== "string") merged.promptFinish = "";
+  // Adopt the default finish once, for profiles saved while it was blank.
+  //
+  // A saved empty string would otherwise win over the new default forever, so an
+  // existing user would never see it. The flag records that this has happened; a
+  // user who deliberately clears the box afterwards stays cleared.
+  if (!merged.promptFinishMigrated) {
+    if (!merged.promptFinish.trim()) merged.promptFinish = DEFAULT_PROMPT_FINISH;
+    merged.promptFinishMigrated = true;
+  }
   if (typeof merged.showToolCalls !== "boolean") merged.showToolCalls = true;
   if (typeof merged.sidebarCollapsed !== "boolean") merged.sidebarCollapsed = false;
   if (typeof merged.settingsSection !== "string" || !SECTION_TITLES[merged.settingsSection]) {
@@ -5176,7 +5241,9 @@ async function fullCompletion({ messages, model, thinking, search, chatUrl, sign
 
   // `stream: false` keeps an OpenAI-compatible host from opening an SSE body.
   const payload = {
-    model, messages, stream: false,
+    model: modelForRequest(p, model, thinking, search),
+    messages,
+    stream: false,
     thinking: { type: thinking ? "enabled" : "disabled" },
   };
   if (chatUrl) payload.chat_url = chatUrl;
@@ -5272,9 +5339,45 @@ async function fullCompletion({ messages, model, thinking, search, chatUrl, sign
   });
 }
 
+/**
+ * The model id to send, accounting for providers that encode options in the name.
+ *
+ * WebAI2API reads DeepThink and Search from the model id - "deepseek-thinking" is
+ * reasoning with search, "deepseek-nosearch" is neither - and ignores the
+ * thinking/search fields. So for that provider the two switches are folded into the
+ * name here.
+ *
+ * Whatever name is selected supplies nothing but the stem: the switches decide both
+ * halves. Picking "deepseek-thinking" with search off therefore sends
+ * "deepseek-thinking-nosearch" rather than silently ignoring the switch.
+ *
+ * Every other provider gets its model id back unchanged.
+ */
+function modelForRequest(provider, model, thinking, search) {
+  if (!provider || provider.id !== "webai2api") return model;
+
+  // The server accepts exactly these four names.
+  const known = [
+    "deepseek",
+    "deepseek-thinking",
+    "deepseek-nosearch",
+    "deepseek-thinking-nosearch",
+  ];
+  const base = known.includes(model) ? "deepseek" : model;
+
+  const wantsThinking = thinking === true;
+  // Search defaults to on, matching the server's own default.
+  const wantsSearch = search !== false;
+
+  return base + (wantsThinking ? "-thinking" : "") + (wantsSearch ? "" : "-nosearch");
+}
+
 async function streamCompletion({ messages, model, thinking, search, chatUrl, signal, onDelta, onDone, onError }) {
+  const provider = activeProvider();
   const payload = {
-    model, messages, stream: true,
+    model: modelForRequest(provider, model, thinking, search),
+    messages,
+    stream: true,
     stream_options: { include_usage: true },
     thinking: { type: thinking ? "enabled" : "disabled" },
   };
