@@ -2946,6 +2946,16 @@ function migrateProviders(providers) {
   return { providers: out, renames };
 }
 
+/**
+ * Whether this is the Android app.
+ *
+ * Same check the folder bridge uses. Needed to decide which providers make sense here:
+ * one runs on the PC, the other on the device.
+ */
+function isAndroidClient() {
+  return typeof AndroidWorkspace !== "undefined" && AndroidWorkspace;
+}
+
 /** The provider currently in use, or the first one, or a safe empty stub. */
 function activeProvider() {
   const list = settings.providers || [];
@@ -3564,6 +3574,29 @@ function loadSettings() {
       }
     }
     stored.builtinsSeeded = true;
+  }
+
+  // Add the app's own direct provider, when the app exposes one.
+  //
+  // Android's equivalent of WebAI2API: the same DeepSeek API, on the device, with no
+  // server on the PC needed.
+  try {
+    if (typeof AndroidWorkspace !== "undefined" &&
+        typeof AndroidWorkspace.directProviderJson === "function") {
+      const raw = AndroidWorkspace.directProviderJson();
+      const rec = typeof raw === "string" ? JSON.parse(raw) : raw;
+      if (rec && rec.id && !providers.some((p) => p.id === rec.id)) {
+        providers.push(normalizeProvider(rec, rec.id));
+      }
+    }
+  } catch (e) {
+    console.warn("Could not read the direct provider from the app:", e);
+  }
+
+  // WebAI2API lives on the PC. Offering it on Android means every request fails,
+  // because 127.0.0.1 there is the phone, which runs no such server.
+  if (isAndroidClient()) {
+    providers = providers.filter((p) => p.id !== "webai2api");
   }
 
   // Drop duplicate ids, keeping the first.
@@ -5427,7 +5460,9 @@ async function streamCompletion({ messages, model, thinking, search, chatUrl, si
   // and the flag clicks that page's own Search control. Other providers ignore
   // them, so this is harmless where they mean nothing.
   if (chatUrl) payload.chat_url = chatUrl;
-  if (search) payload.search = true;
+  // Always sent, including false. Omitting it let the server's own default (on) win,
+  // so turning search off had no effect on providers that read this field.
+  payload.search = search === true;
 
   let response;
   try {
