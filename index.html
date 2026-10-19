@@ -2956,6 +2956,72 @@ function isAndroidClient() {
   return typeof AndroidWorkspace !== "undefined" && AndroidWorkspace;
 }
 
+/**
+ * Merge providers reported by the app into the list the page already has.
+ *
+ * The app is the authority on what IT can serve - loopback URLs and routes only it knows -
+ * so its records win over a stored copy with the same id. Anything else in the list is
+ * left alone.
+ */
+function applyProviderConfig(cfg) {
+  if (!cfg || !Array.isArray(cfg.providers) || !cfg.providers.length) return false;
+
+  let changed = false;
+  for (const raw of cfg.providers) {
+    if (!raw || !raw.id) continue;
+    const rec = normalizeProvider(raw, raw.id);
+    const at = providers.findIndex((p) => p.id === rec.id);
+    if (at >= 0) {
+      // The app's own definition replaces a stale stored copy.
+      providers[at] = rec;
+    } else {
+      providers.push(rec);
+    }
+    changed = true;
+  }
+
+  // Providers that this app cannot possibly reach are removed when it tells us it is an
+  // app. WebAI2API runs on a PC, so on Android every request to it would fail.
+  if (isAndroidClient()) {
+    const before = providers.length;
+    providers = providers.filter((p) => p.id !== "webai2api");
+    if (providers.length !== before) changed = true;
+  }
+
+  if (!changed) return false;
+
+  stored.providers = providers;
+  if (!providers.some((p) => p.id === settings.activeProviderId)) {
+    const wanted = cfg.defaultProvider || providers[0]?.id;
+    if (wanted) settings.activeProviderId = wanted;
+  }
+  saveSettings();
+  populateProviderFields();
+  renderModelMenu();
+  return true;
+}
+
+/**
+ * Ask the app what it offers, and merge the answer.
+ *
+ * Runs after load rather than during it: the request is asynchronous, and the page must
+ * be usable even if the app is not there or answers slowly.
+ */
+async function syncAppProviders() {
+  const base = (typeof AndroidWorkspace !== "undefined" && AndroidWorkspace && AndroidWorkspace.baseUrl)
+    ? AndroidWorkspace.baseUrl()
+    : null;
+  if (!base) return;   // Not in an app; nothing to ask.
+
+  try {
+    const res = await fetch(base + "/config/providers", { cache: "no-store" });
+    if (!res.ok) return;
+    applyProviderConfig(await res.json());
+  } catch (e) {
+    console.warn("Could not read the app's provider configuration:", e);
+  }
+}
+
 /** The provider currently in use, or the first one, or a safe empty stub. */
 function activeProvider() {
   const list = settings.providers || [];
@@ -5187,6 +5253,12 @@ function renderPendingAttachments() {
     rm.addEventListener("click", () => {
       pendingAttachments.splice(i, 1);
       renderPendingAttachments();
+
+// Ask the app which providers it offers, and merge the answer.
+//
+// Not awaited: the page must paint before a request completes, and the menu is rebuilt
+// once the reply arrives. A browser (not an app) returns immediately.
+syncAppProviders();
     });
     box.append(rm);
     wrap.append(box);
