@@ -2947,41 +2947,43 @@ function migrateProviders(providers) {
 }
 
 /**
- * Whether this is the Android app.
+ * The platform this page is running on, as reported by the app.
  *
- * Same check the folder bridge uses. Needed to decide which providers make sense here:
- * one runs on the PC, the other on the device.
+ * NOT inferred from the presence of AndroidWorkspace: the desktop app exposes that same
+ * bridge so the page runs unchanged, which made the desktop look like Android and hid the
+ * providers that only work on a PC.
  */
+let appPlatform = "unknown";
+
+/** Whether this is the Android app. */
 function isAndroidClient() {
-  return typeof AndroidWorkspace !== "undefined" && AndroidWorkspace;
+  return appPlatform === "android";
 }
 
 /**
  * Merge providers reported by the app into the list the page already has.
  *
  * The app is the authority on what IT can serve - loopback URLs and routes only it knows -
- * so its records win over a stored copy with the same id. Anything else in the list is
- * left alone.
+ * so its records win over a stored copy with the same id. Anything else is left alone.
  */
 function applyProviderConfig(cfg) {
   if (!cfg || !Array.isArray(cfg.providers) || !cfg.providers.length) return false;
+
+  // The app states its own platform. This is what decides which providers make sense:
+  // the desktop app can reach a server on the PC, Android cannot.
+  if (typeof cfg.platform === "string") appPlatform = cfg.platform;
 
   let changed = false;
   for (const raw of cfg.providers) {
     if (!raw || !raw.id) continue;
     const rec = normalizeProvider(raw, raw.id);
     const at = providers.findIndex((p) => p.id === rec.id);
-    if (at >= 0) {
-      // The app's own definition replaces a stale stored copy.
-      providers[at] = rec;
-    } else {
-      providers.push(rec);
-    }
+    if (at >= 0) providers[at] = rec;
+    else providers.push(rec);
     changed = true;
   }
 
-  // Providers that this app cannot possibly reach are removed when it tells us it is an
-  // app. WebAI2API runs on a PC, so on Android every request to it would fail.
+  // WebAI2API runs on a PC. Offering it on Android means every request fails.
   if (isAndroidClient()) {
     const before = providers.length;
     providers = providers.filter((p) => p.id !== "webai2api");
@@ -2999,27 +3001,6 @@ function applyProviderConfig(cfg) {
   populateProviderFields();
   renderModelMenu();
   return true;
-}
-
-/**
- * Ask the app what it offers, and merge the answer.
- *
- * Runs after load rather than during it: the request is asynchronous, and the page must
- * be usable even if the app is not there or answers slowly.
- */
-async function syncAppProviders() {
-  const base = (typeof AndroidWorkspace !== "undefined" && AndroidWorkspace && AndroidWorkspace.baseUrl)
-    ? AndroidWorkspace.baseUrl()
-    : null;
-  if (!base) return;   // Not in an app; nothing to ask.
-
-  try {
-    const res = await fetch(base + "/config/providers", { cache: "no-store" });
-    if (!res.ok) return;
-    applyProviderConfig(await res.json());
-  } catch (e) {
-    console.warn("Could not read the app's provider configuration:", e);
-  }
 }
 
 /** The provider currently in use, or the first one, or a safe empty stub. */
