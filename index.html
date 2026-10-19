@@ -334,6 +334,21 @@
   .model-menu button.active { background: var(--active); }
   .model-menu .m-desc { color: var(--text-muted); font-size: 11.5px; margin-left: auto; }
   .model-menu .m-empty { padding: 10px 12px; font-size: 13px; color: var(--text-muted); }
+  /* A provider heading, shown only when more than one provider offers models. */
+  .model-menu .m-group {
+    padding: 8px 12px 4px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .model-menu .m-group:not(:first-child) {
+    border-top: 1px solid var(--border);
+    margin-top: 4px;
+  }
+  /* The menu can now hold every provider's models, so it may need to scroll. */
+  .model-menu { max-height: min(70vh, 480px); overflow-y: auto; }
 
   /* ===== Messages ===== */
   /* scroll-behavior was "smooth", which turned every scrollTop assignment into
@@ -6560,42 +6575,101 @@ for (const btn of themeButtons) {
 // Bugfix: previously the label update was the only visual feedback and the
 // active highlight was only set at render time. Now both are updated directly
 // on click, so the change is visible immediately without a reload.
+/**
+ * Every provider's models, grouped by provider, for the model picker.
+ *
+ * The picker used to list settings.models, which is only ever the ACTIVE provider's
+ * list - so with five providers configured and 18 models between them, it showed
+ * the active one's two. Switching provider was a separate step in Settings, and
+ * nothing indicated the others existed.
+ *
+ * Returns entries of { provider, models } in provider order, keeping any provider
+ * with no models out of the menu rather than showing an empty heading.
+ */
+function modelGroups() {
+  const groups = [];
+  for (const p of settings.providers || []) {
+    const models = settings.providerModels?.[p.id]?.length
+      ? settings.providerModels[p.id]
+      : (p.models || []);
+    if (models.length) groups.push({ provider: p, models });
+  }
+  return groups;
+}
+
 function renderModelMenu() {
   const menu = $("modelMenu");
   menu.innerHTML = "";
-  if (!settings.models.length) {
+
+  const groups = modelGroups();
+  if (!groups.length) {
     menu.append(el("div", { className: "m-empty", textContent: "No models configured. Add some in Settings." }));
     $("modelLabel").textContent = "No models";
     return;
   }
-  for (const m of settings.models) {
-    const b = el("button", {
-      type: "button",
-      className: settings.model === m.id ? "active" : "",
-    });
-    b.append(el("span", { textContent: m.label || m.id }));
-    if (m.desc) b.append(el("span", { className: "m-desc", textContent: m.desc }));
-    b.addEventListener("click", (e) => {
-      e.stopPropagation();
-      settings.model = m.id;
-      rememberModelChoice();
-      saveSettings();
 
-      // Update the topbar label immediately.
-      $("modelLabel").textContent = m.label || m.id;
+  // Only one provider? Then a heading per group is noise, and the menu reads as it
+  // always did.
+  const showHeadings = groups.length > 1;
 
-      // Move the .active class without a full re-render.
-      for (const other of menu.querySelectorAll("button")) {
-        other.classList.remove("active");
-      }
-      b.classList.add("active");
+  for (const { provider, models } of groups) {
+    if (showHeadings) {
+      menu.append(el("div", { className: "m-group", textContent: provider.label || provider.id }));
+    }
+    for (const m of models) {
+      // The active entry is the one matching BOTH the provider and the model id;
+      // two providers may offer a model of the same name.
+      const isCurrent =
+        provider.id === settings.activeProviderId && settings.model === m.id;
 
-      menu.classList.remove("open");
-    });
-    menu.append(b);
+      const b = el("button", {
+        type: "button",
+        className: isCurrent ? "active" : "",
+      });
+      b.append(el("span", { textContent: m.label || m.id }));
+      if (m.desc) b.append(el("span", { className: "m-desc", textContent: m.desc }));
+      b.addEventListener("click", (e) => {
+        e.stopPropagation();
+
+        // Choosing a model from another provider switches provider too.
+        if (provider.id !== settings.activeProviderId) {
+          settings.activeProviderId = provider.id;
+          // The flat models list is the active provider's; keep it in step.
+          settings.models = settings.providerModels?.[provider.id]?.length
+            ? settings.providerModels[provider.id]
+            : provider.models || [];
+          $("sProviderSelect").value = provider.id;
+          populateProviderFields();
+        }
+
+        settings.model = m.id;
+        rememberModelChoice();
+        saveSettings();
+
+        // Update the topbar label immediately.
+        $("modelLabel").textContent = m.label || m.id;
+
+        // Move the .active class without a full re-render.
+        for (const other of menu.querySelectorAll("button")) {
+          other.classList.remove("active");
+        }
+        b.classList.add("active");
+
+        menu.classList.remove("open");
+      });
+      menu.append(b);
+    }
   }
-  const current = settings.models.find((m) => m.id === settings.model);
-  $("modelLabel").textContent = current ? (current.label || current.id) : settings.model;
+
+  // The label names the active provider too, since more than one is on offer.
+  const current = (settings.models || []).find((m) => m.id === settings.model);
+  const currentProvider = (settings.providers || []).find(
+    (p) => p.id === settings.activeProviderId
+  );
+  const modelName = current ? (current.label || current.id) : settings.model;
+  $("modelLabel").textContent = showHeadings && currentProvider
+    ? `${modelName} · ${currentProvider.label || currentProvider.id}`
+    : modelName;
 }
 
 $("modelSelector").addEventListener("click", (e) => {
