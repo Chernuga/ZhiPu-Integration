@@ -3529,19 +3529,26 @@ function loadSettings() {
   }
   // Add back any built-in that a stored list has lost.
   //
-  // A stored list was treated as the complete set, so anything written to storage
-  // before the page ran - a native client seeding its own provider, for instance -
-  // could leave the user with that entry alone and no sign of the built-ins.
+  // A stored list used to be treated as the complete set, so anything written to
+  // storage before the page ran - a native client seeding its own provider, for
+  // instance - could leave the user with that entry alone and no sign of the
+  // built-ins.
   //
-  // Only on a first run, though. Re-adding on every load made a built-in the user
-  // had deleted reappear each time the page opened, so deleting one was futile.
-  const firstRun = !Array.isArray(stored.providers) || !stored.providers.length;
-  if (firstRun) {
+  // Re-adding on EVERY load was wrong too: a built-in the user had deleted came
+  // straight back, so deleting one was futile. The signal is not "the list is
+  // empty" - a native client writes its own entry first, so the list is never
+  // empty - but "this page has not seeded this profile yet".
+  //
+  // builtinsSeeded records that. A client seeding a provider does not set it, so
+  // the built-ins still arrive on the first load of a fresh client profile, and
+  // never again afterwards, which is what lets a deletion stick.
+  if (!stored.builtinsSeeded) {
     for (const d of DEFAULT_PROVIDERS) {
       if (!providers.some((p) => p.id === d.id)) {
         providers.push(normalizeProvider(d, d.id));
       }
     }
+    stored.builtinsSeeded = true;
   }
 
   // Drop duplicate ids, keeping the first.
