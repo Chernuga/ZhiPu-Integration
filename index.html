@@ -5409,7 +5409,10 @@ async function fullCompletion({ messages, model, thinking, search, chatUrl, sign
 
   // The app reads this and clicks the DeepSeek page's own Search control. Other
   // providers ignore it.
-  if (search) payload.search = true;
+  //
+  // Sent even when false: omitting it let the app's own default (on) win, so turning
+  // Search off had no effect on this path.
+  payload.search = search === true;
 
   let response;
   try {
@@ -5509,22 +5512,37 @@ async function fullCompletion({ messages, model, thinking, search, chatUrl, sign
  *
  * Every other provider gets its model id back unchanged.
  */
-function modelForRequest(provider, model, thinking, search) {
-  if (!provider || provider.id !== "webai2api") return model;
+/**
+ * Whether a provider is an instance of WebAI2API.
+ *
+ * Recognised by its endpoint, not its id. A provider added by hand gets a generated id, so
+ * checking only the built-in's id meant its switches were ignored and the raw model name
+ * reached the server - which rejected it with "Unsupported model".
+ */
+function isWebAi2ApiProvider(provider) {
+  if (!provider) return false;
+  if (provider.id === "webai2api") return true;
+  const url = String(provider.baseUrl || "") + String(provider.pathSuffix || "");
+  return /\/v1\/chat\/completions/.test(url) && /:\d+/.test(String(provider.baseUrl || ""));
+}
 
-  // The server accepts exactly four names, and each one encodes BOTH switches:
+/**
+ * The model id to send, accounting for providers that encode options in the name.
+ *
+ * WebAI2API reads DeepThink and Search from the model id and ignores the request fields, so
+ * for it the two switches are folded into the name. Every other provider gets its id back
+ * unchanged.
+ */
+function modelForRequest(provider, model, thinking, search) {
+  if (!isWebAi2ApiProvider(provider)) return model;
+
+  // The server accepts exactly four names, and each encodes BOTH switches:
   //
-  //   deepseek       thinking off, search on
-  //   deepseek-thinking   thinking on,  search on
-  //   deepseek-nosearch   thinking off, search off
-  //   deepseek-thinking-nosearch  thinking on, search off
-  //
-  // The name is therefore built from the switches alone. It used to carry the selected
-  // model id as its stem, so picking the tab bridge's "deepseek-web" and turning on
-  // DeepThink sent "deepseek-web-thinking" - "Unsupported model" from the server, which
-  // the app reported as a network error.
+  //   deepseek                    thinking off, search on
+  //   deepseek-thinking           thinking on,  search on
+  //   deepseek-nosearch           thinking off, search off
+  //   deepseek-thinking-nosearch  thinking on,  search off
   const wantsThinking = thinking === true;
-  // Search defaults to on, matching the server's own default.
   const wantsSearch = search !== false;
 
   return "deepseek" + (wantsThinking ? "-thinking" : "") + (wantsSearch ? "" : "-nosearch");
