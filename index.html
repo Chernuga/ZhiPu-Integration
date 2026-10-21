@@ -2748,34 +2748,13 @@ const DEFAULT_PROVIDERS = [
       { id: "deepseek-web-think", label: "DeepSeek (DeepThink)", desc: "Reasoning" },
     ],
   },
-  {
-    id: "webai2api",
-    label: "WebAI2API (local)",
-    // A local server that reimplements the DeepSeek web protocol in Node, instead of
-    // driving a browser tab.
-    //
-    // Run it yourself: `pnpm install`, `pnpm auth --launch` once to capture
-    // credentials, then `pnpm run server -p 8787`. It speaks OpenAI chat completions,
-    // so nothing here is special-cased except the model names - see
-    // webai2apiModelName().
-    //
-    // route "root" plus the /v1 suffix gives http://127.0.0.1:8787/v1/chat/completions.
-    baseUrl: "http://127.0.0.1:8787",
-    apiKey: "local",
-    route: "root",
-    pathSuffix: "/v1/chat/completions",
-    responseMode: "stream",
-    modelsPath: "/v1/models",
-    note: "Requires the WebAI2API server running locally on port 8787. Faster than the tab bridge, but a protocol change on DeepSeek's side breaks it.",
-    // The four names encode the two switches, since that server takes them from the
-    // model id rather than from request fields.
-    models: [
-      { id: "deepseek",                     label: "DeepSeek (Web)",              desc: "Reasoning off, search on" },
-      { id: "deepseek-thinking",            label: "DeepSeek (DeepThink)",        desc: "Reasoning on, search on" },
-      { id: "deepseek-nosearch",            label: "DeepSeek (no search)",        desc: "Reasoning off, search off" },
-      { id: "deepseek-thinking-nosearch",   label: "DeepSeek (DeepThink, no search)", desc: "Reasoning on, search off" },
-    ],
-  },
+  // WebAI2API used to be offered here.
+  //
+  // It drives DeepSeek's web protocol directly - solving their proof-of-work and reusing
+  // a captured session token outside the browser - which is what the account suspension
+  // was for. The implementation is kept in docs/webai2api-direct.md for reference, and
+  // isWebAi2ApiProvider() still recognises such a provider if you add one by hand, but
+  // none is created for you.
   {
     id: "zai-relay",
     label: "Z.ai / GLM",
@@ -3041,6 +3020,78 @@ function applyProviderConfig(cfg) {
   renderModelMenu();
   return true;
 }
+
+/**
+ * Read and change the provider list from outside the page.
+ *
+ * Namespaced so it cannot collide with the site's own globals, and deliberately small:
+ * everything here is a thin wrapper over the functions the UI already calls, so a change made
+ * through the hook is saved and rendered exactly as if it had been made by hand.
+ *
+ *   DscProviders.list()                  every provider, with its models
+ *   DscProviders.get("webai2api")        one provider, or null
+ *   DscProviders.active()                the selected provider id
+ *   DscProviders.add({id, baseUrl, ...}) add or replace one
+ *   DscProviders.remove("zai-relay")     delete one, unless it is the last
+ *   DscProviders.setActive("zai-relay")  select one
+ *   DscProviders.platform()              "android" | "desktop" | "unknown"
+ *
+ * Changes are persisted and the menu is rebuilt, so nothing else needs calling afterwards.
+ */
+window.DscProviders = {
+  list() {
+    return (settings.providers || []).map((p) => ({ ...p }));
+  },
+
+  get(id) {
+    const p = (settings.providers || []).find((x) => x.id === id);
+    return p ? { ...p } : null;
+  },
+
+  active() {
+    return settings.activeProviderId;
+  },
+
+  platform() {
+    return appPlatform;
+  },
+
+  /** Add a provider, or replace the one with the same id. Returns the stored record. */
+  add(record) {
+    if (!record || !record.id) throw new Error("a provider needs an id");
+    applyProviderConfig({ providers: [record] });
+    return this.get(record.id);
+  },
+
+  /** Remove a provider. Refuses to remove the last one, which would leave nothing usable. */
+  remove(id) {
+    const list = settings.providers || [];
+    if (!list.some((p) => p.id === id)) return false;
+    if (list.length <= 1) throw new Error("cannot remove the only provider");
+
+    settings.providers = list.filter((p) => p.id !== id);
+    // Fall back to another provider if the removed one was selected.
+    if (settings.activeProviderId === id) {
+      settings.activeProviderId = settings.providers[0].id;
+      settings.models = settings.providerModels?.[settings.activeProviderId]?.length
+        ? settings.providerModels[settings.activeProviderId]
+        : settings.providers[0].models || [];
+    }
+    saveSettings();
+    populateProviderFields();
+    renderModelMenu();
+    return true;
+  },
+
+  /** Select a provider by id. */
+  setActive(id) {
+    if (!(settings.providers || []).some((p) => p.id === id)) {
+      throw new Error('no such provider: ' + id);
+    }
+    switchProvider(id);
+    return true;
+  },
+};
 
 /** The provider currently in use, or the first one, or a safe empty stub. */
 function activeProvider() {
