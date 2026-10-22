@@ -272,7 +272,12 @@
   }
   .user-avatar {
     width: 28px; height: 28px; border-radius: 50%;
-    background: linear-gradient(135deg, #4d6bfe, #7d8ffb);
+    /* Follows the theme accent. --ds-accent-text sits a few HSL lightness
+       steps above --ds-accent, so the gradient stays within the hue the user
+       picked instead of needing a second hand-tuned literal. Both variables
+       are set by applyAccent(), so the avatar recolours live as the picker
+       changes and reverts on Cancel like everything else. */
+    background: linear-gradient(135deg, var(--ds-accent), var(--ds-accent-text));
     color: var(--ds-text-foreground);
     display: grid; place-items: center;
     font-size: 12px; font-weight: 600; flex-shrink: 0;
@@ -307,6 +312,42 @@
     display: flex;
     gap: 4px;
     align-items: center;
+  }
+
+  /* Export menu - a small popup under the export button. Same shape as
+     .model-menu so the two read as the same kind of control. */
+  .export-wrap { position: relative; display: inline-flex; }
+  .export-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    background: var(--ds-bg-layer-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: var(--ds-shadow-lv3);
+    padding: 4px;
+    min-width: 220px;
+    z-index: 40;
+    display: none;
+  }
+  .export-menu.open { display: block; }
+  .export-menu button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    text-align: left;
+    padding: 8px 10px;
+    border-radius: 8px;
+    font-size: 13.5px;
+    color: var(--text);
+    transition: background var(--ds-dur) var(--ds-ease-in-out);
+  }
+  .export-menu button:hover { background: var(--hover); }
+  .export-menu .em-hint {
+    margin-left: auto;
+    color: var(--text-muted);
+    font-size: 11.5px;
   }
 
   .model-menu {
@@ -408,7 +449,21 @@
   .empty-title { font-size: 26px; font-weight: 600; margin-bottom: 6px; }
   .empty-sub { color: var(--text-muted); font-size: 15px; margin-bottom: 28px; }
 
-  .msg { padding: 22px 0; }
+  .msg {
+    padding: 22px 0;
+    /* Skip layout and paint for messages above or below the viewport. `auto` on
+       the intrinsic size means each message's real height is remembered once it
+       has been rendered, so the scrollbar does not jump back to an estimate. */
+    content-visibility: auto;
+    contain-intrinsic-size: auto 96px;
+  }
+  /* Undoes the skip for one layout pass. renderMessages flips this on before it
+     measures, because a freshly rebuilt transcript is otherwise entirely 96px
+     estimates - scrollHeight comes back far smaller than it really is, and the
+     scroll restore clamps to 0. That is the "jumped to the top" behaviour. */
+  .messages-inner.force-layout .msg {
+    content-visibility: visible;
+  }
   .msg-user { display: flex; justify-content: flex-end; }
   .msg-user-wrap {
     max-width: 78%;
@@ -436,6 +491,12 @@
     max-width: 100%; max-height: 320px;
     border-radius: 10px; display: block;
     background: rgba(0, 0, 0, .15);
+  }
+  /* An image whose data is still being read out of IndexedDB. Reserving the
+     space keeps the transcript from jumping when it arrives. */
+  .bubble-image.pending {
+    width: 160px;
+    height: 110px;
   }
   .bubble-file {
     background: var(--ds-bg-layer-3);
@@ -525,6 +586,87 @@
   .msg-assistant .content li { margin: 3px 0; }
   .msg-assistant .content strong { font-weight: 600; }
 
+  /* ---- Headings, rules, tables, quotes ----------------------------------
+     The renderer emits these now. Nothing styled them before, so an answer
+     that opened with a title, separated sections with ---, or laid out a
+     comparison as a table read as one undifferentiated wall of text. */
+  .msg-assistant .content h1,
+  .msg-assistant .content h2,
+  .msg-assistant .content h3,
+  .msg-assistant .content h4,
+  .msg-assistant .content h5,
+  .msg-assistant .content h6,
+  .reasoning-block .reasoning-text h1,
+  .reasoning-block .reasoning-text h2,
+  .reasoning-block .reasoning-text h3,
+  .reasoning-block .reasoning-text h4 {
+    font-weight: 600;
+    line-height: 1.35;
+    color: var(--text);
+    margin: 1.35em 0 .55em;
+  }
+  .msg-assistant .content > h1:first-child,
+  .msg-assistant .content > h2:first-child,
+  .msg-assistant .content > h3:first-child { margin-top: 0; }
+  .msg-assistant .content h1 { font-size: 1.55em; }
+  .msg-assistant .content h2 { font-size: 1.3em; }
+  .msg-assistant .content h3 { font-size: 1.13em; }
+  .msg-assistant .content h4 { font-size: 1em; }
+  .msg-assistant .content h5,
+  .msg-assistant .content h6 { font-size: .95em; color: var(--text-muted); }
+
+  .msg-assistant .content hr {
+    border: none;
+    border-top: 1px solid var(--ds-border-l2);
+    margin: 1.4em 0;
+  }
+
+  .msg-assistant .content blockquote {
+    margin: 12px 0;
+    padding: 2px 0 2px 14px;
+    border-left: 3px solid var(--ds-border-l3);
+    color: var(--text-muted);
+  }
+  .msg-assistant .content blockquote p:last-child { margin-bottom: 0; }
+
+  /* Tables scroll sideways inside their own rounded frame rather than
+     stretching the message. On a phone a wide table would otherwise push the
+     whole column past the viewport and force the transcript to scroll
+     horizontally. */
+  .md-table-wrap {
+    margin: 14px 0;
+    overflow-x: auto;
+    border: 1px solid var(--ds-border-l2);
+    border-radius: 10px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .md-table-wrap table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .md-table-wrap th,
+  .md-table-wrap td {
+    padding: 8px 12px;
+    text-align: left;
+    vertical-align: top;
+    border-bottom: 1px solid var(--ds-border-l1);
+    border-right: 1px solid var(--ds-border-l1);
+  }
+  .md-table-wrap thead th {
+    background: var(--ds-bg-layer-2);
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+  }
+  [data-theme="light"] .md-table-wrap thead th { background: var(--ds-bg-layer-1); }
+  .md-table-wrap tbody tr:last-child td { border-bottom: none; }
+  .md-table-wrap th:last-child,
+  .md-table-wrap td:last-child { border-right: none; }
+  .md-table-wrap td code,
+  .md-table-wrap th code { white-space: nowrap; }
+
   /* ===== Inline file-command tool calls ===== */
   .tool-call {
     display: flex;
@@ -564,7 +706,9 @@
   }
 
   .code-wrap { position: relative; margin: 12px 0; }
-  .code-wrap pre {
+  .code-wrap pre,
+  .msg-assistant .content pre,
+  .reasoning-block .reasoning-text pre {
     background: var(--code-bg);
     border: 1px solid var(--border);
     border-radius: 8px;
@@ -734,6 +878,16 @@
   */
   .reasoning-block .reasoning-text:empty {
     display: none;
+  }
+  /* While the reasoning text is still streaming it is plain text (see the
+     typewriter in runCompletion). The pane is capped and contained so its
+     growth does not push the entire transcript through layout on every frame -
+     the reason a long think made scrolling stutter on Android. */
+  .reasoning-block[data-streaming="1"] .reasoning-text {
+    max-height: 220px;
+    overflow-y: auto;
+    contain: layout paint;
+    padding-right: 4px;
   }
   .reasoning-block .reasoning-text p { margin: 0 0 8px; }
   .reasoning-block .reasoning-text p:last-child { margin-bottom: 0; }
@@ -2148,6 +2302,25 @@
           </svg>
           <span class="badge-dot" id="workspaceBadge" style="display:none"></span>
         </button>
+        <div class="export-wrap">
+          <button class="icon-btn" id="exportBtn" title="Export conversation">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <path d="M7 10l5 5 5-5"/>
+              <path d="M12 15V3"/>
+            </svg>
+          </button>
+          <div class="export-menu" id="exportMenu">
+            <button type="button" data-fmt="json">
+              <span>Download as JSON</span>
+              <span class="em-hint">full history</span>
+            </button>
+            <button type="button" data-fmt="md">
+              <span>Download as Markdown</span>
+              <span class="em-hint">readable</span>
+            </button>
+          </div>
+        </div>
       </div>
     </header>
 
@@ -2326,6 +2499,14 @@
             <rect x="14" y="14" width="7" height="7" rx="1"/>
           </svg>
           <span>Models</span>
+        </button>
+        <button type="button" class="settings-nav-item" data-section="data">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <ellipse cx="12" cy="5" rx="9" ry="3"/>
+            <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
+            <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+          </svg>
+          <span>Data</span>
         </button>
       </nav>
     </aside>
@@ -2554,6 +2735,34 @@
             <button type="button" class="btn-ghost" id="sModelsDefaults">Load provider defaults</button>
           </div>
           <div class="hint-inline" id="sModelsStatus"></div>
+        </section>
+
+        <section class="settings-panel" data-section="data">
+          <label>Export all conversations</label>
+          <div class="row-actions">
+            <button type="button" class="btn-ghost" id="sExportAllJson">Export all as JSON</button>
+            <button type="button" class="btn-ghost" id="sExportAllMarkdown">Export all as Markdown</button>
+          </div>
+          <div class="hint-inline">
+            <b>JSON</b> is a complete backup: messages, reasoning, workspace files
+            and images, all in one file. <b>Markdown</b> is a readable transcript
+            with images inlined as data URLs.
+          </div>
+          <div class="hint-inline">
+            A single conversation can be exported from the download button in the top bar.
+          </div>
+
+          <label>Import</label>
+          <div class="row-actions">
+            <button type="button" class="btn-ghost" id="sImportBtn">Import from file…</button>
+            <input type="file" id="sImportInput" accept=".json,application/json" hidden />
+          </div>
+          <div class="hint-inline">
+            Reads a JSON file exported from this page. Conversations are <b>added</b>
+            to your existing ones — nothing is overwritten, and images travel with
+            the file and are stored alongside them again on import.
+          </div>
+          <div class="hint-inline" id="sImportStatus"></div>
         </section>
 
       </div>
@@ -3152,6 +3361,7 @@ const SECTION_TITLES = {
   chat:        "Chat behavior",
   reliability: "Reliability",
   models:      "Models",
+  data:        "Data",
 };
 
 const FILE_COMMANDS_INSTRUCTIONS = [
@@ -3380,7 +3590,47 @@ function parseFileCommands(text) {
  * written to storage. persistable() below is what keeps that separation honest.
  */
 function applyFileOps(files, ops) {
-  const changes = [];
+  // Consolidated per file, not per operation.
+  //
+  // A reply that edits one file several times used to produce several entries
+  // in this list, so the change card showed one row per find/replace and its
+  // header counted operations as files - one file edited three times read as
+  // "3 files changed". The reader cares which files changed, not how many
+  // steps it took.
+  //
+  // Each record keeps the strongest SUCCESS kind ('create' > 'overwrite' >
+  // 'edit') plus the attempt count and failure count, so a file that succeeded
+  // once and failed twice still shows as changed rather than failed.
+  const byFile = new Map();
+  const order = [];
+
+  function record(file) {
+    let rec = byFile.get(file);
+    if (!rec) {
+      rec = {
+        file,
+        successKind: null,
+        failedKind: null,
+        attempts: 0,
+        failed: 0,
+      };
+      byFile.set(file, rec);
+      order.push(rec);
+    }
+    rec.attempts++;
+    return rec;
+  }
+
+  function noteSuccess(rec, kind) {
+    const rank = { create: 3, overwrite: 2, edit: 1 };
+    if (!rec.successKind || rank[kind] > rank[rec.successKind]) rec.successKind = kind;
+  }
+
+  function noteFailure(rec, kind) {
+    rec.failed++;
+    if (!rec.failedKind) rec.failedKind = kind;
+  }
+
   let i = 0;
   while (i < ops.length) {
     const op = ops[i];
@@ -3390,13 +3640,10 @@ function applyFileOps(files, ops) {
     if (!file) { i++; continue; }
 
     if (op.kind === 'create') {
+      const rec = record(file);
       const existed = Object.prototype.hasOwnProperty.call(files, file);
       files[file] = op.content;
-      changes.push({
-        file,
-        kind: existed ? 'overwrite' : 'create',
-        after: op.content,
-      });
+      noteSuccess(rec, existed ? 'overwrite' : 'create');
       i++;
       continue;
     }
@@ -3406,17 +3653,17 @@ function applyFileOps(files, ops) {
       // once both paths have been normalised.
       const nextFile = next ? normalizePath(next.file) : null;
       if (next && next.kind === 'replace' && nextFile === file) {
+        const rec = record(file);
         const current = files[file];
         if (current == null) {
-          changes.push({ file, kind: 'missing' });
+          noteFailure(rec, 'missing');
         } else {
           const idx = current.indexOf(op.content);
           if (idx < 0) {
-            changes.push({ file, kind: 'nomatch', find: op.content });
+            noteFailure(rec, 'nomatch');
           } else {
-            const after = current.slice(0, idx) + next.content + current.slice(idx + op.content.length);
-            files[file] = after;
-            changes.push({ file, kind: 'edit', after });
+            files[file] = current.slice(0, idx) + next.content + current.slice(idx + op.content.length);
+            noteSuccess(rec, 'edit');
           }
         }
         i += 2;
@@ -3427,7 +3674,13 @@ function applyFileOps(files, ops) {
     }
     i++;
   }
-  return changes;
+
+  return order.map((rec) => ({
+    file: rec.file,
+    kind: rec.successKind || rec.failedKind || 'missing',
+    attempts: rec.attempts,
+    failed: rec.failed,
+  }));
 }
 
 /**
@@ -3949,6 +4202,13 @@ function saveActiveId(id) {
   else localStorage.removeItem(ACTIVE_KEY);
 }
 
+// Which settings section was last open. Kept apart from SETTINGS_KEY so that
+// switching tabs cannot write the panel's unsaved edits to storage.
+const SECTION_KEY = "deepseek-ui-section";
+function saveSectionId(id) {
+  try { localStorage.setItem(SECTION_KEY, id); } catch { /* best effort */ }
+}
+
 // ---- Composer drafts (one per conversation) --------------------------------
 // Every keystroke is mirrored to localStorage so a reload, an accidental tab
 // close, or a conversation switch never loses what was being written. Each
@@ -4015,6 +4275,12 @@ function applyActiveDraft() {
 }
 
 let settings = loadSettings();
+try {
+  const rememberedSection = localStorage.getItem(SECTION_KEY);
+  if (rememberedSection && SECTION_TITLES[rememberedSection]) {
+    settings.settingsSection = rememberedSection;
+  }
+} catch (e) { /* storage unavailable; the default stands */ }
 let conversations = loadConversations();
 
 // Drop the per-change text that earlier versions stored.
@@ -4036,6 +4302,184 @@ let conversations = loadConversations();
     console.warn("Could not trim stored changes:", e);
   }
 })();
+
+// =============================================================================
+// Attachment store (IndexedDB)
+// =============================================================================
+// Images used to live inline in the message as base64 data URLs, and therefore
+// inside the conversations JSON in localStorage - a 5 MB image became ~6.7 MB of
+// text in a store usually capped at 5 MB. Because the whole history was
+// re-serialised on every save, one screenshot made every keystroke expensive and
+// eventually filled the quota.
+//
+// They now live in IndexedDB, which has no such cap and is not rewritten when
+// the conversation changes. The message keeps only an id.
+const AttachmentStore = (() => {
+  const DB_NAME = "deepseek-attachments";
+  const DB_VERSION = 1;
+  const STORE = "images";
+  let dbPromise = null;
+
+  function openDb() {
+    if (dbPromise) return dbPromise;
+    dbPromise = new Promise((resolve, reject) => {
+      let req;
+      try { req = indexedDB.open(DB_NAME, DB_VERSION); }
+      catch (e) { reject(e); return; }
+
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error || new Error("IndexedDB open failed"));
+      req.onblocked = () => reject(new Error("IndexedDB blocked"));
+    });
+    return dbPromise;
+  }
+
+  function run(mode, fn) {
+    return openDb().then((db) => new Promise((resolve, reject) => {
+      let tx;
+      try { tx = db.transaction(STORE, mode); }
+      catch (e) { reject(e); return; }
+
+      let request;
+      try { request = fn(tx.objectStore(STORE)); }
+      catch (e) { reject(e); return; }
+
+      tx.oncomplete = () => resolve(request ? request.result : undefined);
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error || new Error("IndexedDB transaction aborted"));
+    }));
+  }
+
+  return {
+    put(id, record) { return run("readwrite", (s) => s.put(record, id)); },
+    get(id) { return run("readonly", (s) => s.get(id)); },
+    del(id) { return run("readwrite", (s) => s.delete(id)); },
+  };
+})();
+
+/** id -> data URL, for images already read this session. */
+const attachmentCache = new Map();
+
+function newAttachmentId() {
+  return "att_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+}
+
+/** The image source for an attachment, or "" when it has not been loaded yet. */
+function attachmentSrc(a) {
+  if (!a) return "";
+  if (a.dataUrl) return a.dataUrl;                                 // not yet migrated
+  if (a.id && attachmentCache.has(a.id)) return attachmentCache.get(a.id);
+  return "";
+}
+
+/**
+ * Fill in the src of any image whose data has not been read yet.
+ *
+ * Rendering is synchronous, so an image held in IndexedDB paints as a reserved
+ * empty frame first and swaps its source in when the read lands. Reads are
+ * cached, so re-rendering a transcript costs nothing after the first pass.
+ */
+async function hydrateAttachmentImages(root) {
+  if (!root) return;
+  const imgs = root.querySelectorAll("img[data-att-id]");
+  for (const img of imgs) {
+    const id = img.getAttribute("data-att-id");
+    if (!id) continue;
+
+    let src = attachmentCache.get(id);
+    if (!src) {
+      try {
+        const rec = await AttachmentStore.get(id);
+        if (rec && rec.dataUrl) {
+          src = rec.dataUrl;
+          attachmentCache.set(id, src);
+        }
+      } catch (e) { /* unavailable; the frame stays empty */ }
+    }
+    if (src) {
+      img.src = src;
+      img.classList.remove("pending");
+      img.removeAttribute("data-att-id");
+    }
+  }
+}
+
+/**
+ * Make sure every image in a conversation is in the cache before it is sent.
+ *
+ * The request needs base64 data, and the cache is filled lazily, so a reply
+ * regenerated from an old turn would otherwise send an image with no data.
+ */
+async function ensureAttachmentsLoaded(conv) {
+  if (!conv) return;
+  const ids = new Set();
+  for (const m of conv.messages || []) {
+    for (const a of m.attachments || []) {
+      if (a.type === "image" && a.id && !attachmentCache.has(a.id)) ids.add(a.id);
+    }
+  }
+  for (const id of ids) {
+    try {
+      const rec = await AttachmentStore.get(id);
+      if (rec && rec.dataUrl) attachmentCache.set(id, rec.dataUrl);
+    } catch (e) { /* leave it out rather than fail the whole send */ }
+  }
+}
+
+/** Remove a deleted conversation's images from IndexedDB. */
+function deleteConversationImages(conv) {
+  for (const m of (conv && conv.messages) || []) {
+    for (const a of m.attachments || []) {
+      if (a.type === "image" && a.id) {
+        attachmentCache.delete(a.id);
+        AttachmentStore.del(a.id).catch(() => {});
+      }
+    }
+  }
+}
+
+/**
+ * Move inline image data out of the conversation store.
+ *
+ * Runs once on boot over everything already saved, so an existing history gets
+ * its storage back rather than only new attachments being stored properly. An
+ * image that cannot be written is left inline rather than lost.
+ */
+async function migrateInlineImages(convs) {
+  let moved = 0;
+  for (const conv of convs || []) {
+    for (const m of conv.messages || []) {
+      for (const a of m.attachments || []) {
+        if (a.type !== "image" || !a.dataUrl) continue;
+        const id = a.id || newAttachmentId();
+        try {
+          await AttachmentStore.put(id, { dataUrl: a.dataUrl, mime: a.mime || "" });
+        } catch (e) {
+          continue;
+        }
+        attachmentCache.set(id, a.dataUrl);
+        a.id = id;
+        delete a.dataUrl;
+        moved++;
+      }
+    }
+  }
+  return moved;
+}
+
+// Run the migration, then rewrite storage without the inline data.
+Promise.resolve()
+  .then(() => migrateInlineImages(conversations))
+  .then((moved) => {
+    if (!moved) return;
+    console.info(`Moved ${moved} image(s) out of localStorage into IndexedDB.`);
+    saveConversations();
+  })
+  .catch((e) => console.warn("Could not migrate inline images:", e));
 
 // Seed the write cache with what is already stored.
 //
@@ -4319,6 +4763,9 @@ function renderSidebar() {
         danger: true,
       });
       if (!ok) return;
+      // The images live in IndexedDB, outside the conversation JSON, so dropping
+      // the conversation does not remove them on its own.
+      deleteConversationImages(conv);
       conversations = conversations.filter((c) => c.id !== conv.id);
       if (activeId === conv.id) {
         activeId = conversations[0]?.id ?? null;
@@ -4362,42 +4809,216 @@ function renderSidebar() {
 // Markdown rendering
 // =============================================================================
 function escapeHtml(s) {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
-function renderMarkdown(text) {
-  const parts = text.split(/(```[^\n]*\n[\s\S]*?```)/g);
-  return parts.map((part) => {
-    const codeMatch = part.match(/^```([^\n]*)\n([\s\S]*?)```$/);
-    if (codeMatch) {
-      const code = escapeHtml(codeMatch[2]);
-      return `<pre><code>${code}</code></pre>`;
-    }
-    let p = escapeHtml(part);
-    p = p.replace(/`([^`\n]+)`/g, "<code>$1</code>");
-    p = p.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-    p = p.replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>");
-    p = p.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
 
-    const lines = p.split("\n");
-    const out = [];
-    let inList = false;
-    for (const line of lines) {
-      const bullet = line.match(/^\s*[-*]\s+(.*)$/);
-      if (bullet) {
-        if (!inList) { out.push("<ul>"); inList = true; }
-        out.push(`<li>${bullet[1]}</li>`);
-      } else {
-        if (inList) { out.push("</ul>"); inList = false; }
-        out.push(line);
-      }
-    }
-    if (inList) out.push("</ul>");
+/** Escape a value destined for an attribute rather than for text content. */
+function escapeAttr(s) {
+  return escapeHtml(s).replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
 
-    return out.join("\n")
-      .split(/\n{2,}/)
-      .map((chunk) => chunk.trim() ? `<p>${chunk.replace(/\n/g, "<br>")}</p>` : "")
-      .join("");
+/**
+ * Inline markdown: code spans, links, bold, italic, strikethrough.
+ *
+ * Code spans are split out first so nothing inside them is read as emphasis.
+ * Without that, a path like `a_b_c` came out as a_b<em>c</em>.
+ */
+function renderInline(raw) {
+  const pieces = String(raw ?? "").split(/(`+[^`]*`+)/g);
+  return pieces.map((piece, i) => {
+    // Odd indices are the captured code spans.
+    if (i % 2 === 1) {
+      const m = piece.match(/^(`+)([\s\S]*?)\1$/);
+      return `<code>${escapeHtml(m ? m[2] : piece)}</code>`;
+    }
+    let s = escapeHtml(piece);
+    s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (whole, label, href) => {
+      // Only schemes that cannot execute script are allowed through.
+      const safe = /^(https?:\/\/|mailto:|\/|#)/i.test(href) ? href : "#";
+      return `<a href="${escapeAttr(safe)}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+    });
+    s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    s = s.replace(/__([^_]+)__/g, "<strong>$1</strong>");
+    s = s.replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>");
+    // The guard excludes word characters so snake_case_names survive.
+    s = s.replace(/(^|[^_\w])_([^_\n]+)_/g, "$1<em>$2</em>");
+    s = s.replace(/~~([^~]+)~~/g, "<del>$1</del>");
+    return s;
   }).join("");
+}
+
+const MD_FENCE_RE   = /^\s{0,3}(`{3,})([^\n]*)$/;
+const MD_HEADING_RE = /^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/;
+const MD_HR_RE      = /^\s{0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
+const MD_UL_RE      = /^\s{0,3}[-*+]\s+(.*)$/;
+const MD_OL_RE      = /^\s{0,3}(\d{1,9})[.)]\s+(.*)$/;
+const MD_QUOTE_RE   = /^\s{0,3}>\s?(.*)$/;
+
+function splitTableRow(line) {
+  let s = String(line).trim();
+  if (s.startsWith("|")) s = s.slice(1);
+  if (s.endsWith("|")) s = s.slice(0, -1);
+  return s.split("|").map((c) => c.trim());
+}
+
+/** The row of dashes under a table header: |---|:---:|---:| */
+function isTableSeparator(line) {
+  if (!line || line.indexOf("|") < 0 || line.indexOf("-") < 0) return false;
+  const cells = splitTableRow(line);
+  if (!cells.length) return false;
+  return cells.every((c) => /^:?-{1,}:?$/.test(c));
+}
+
+function tableAlignment(cell) {
+  const left = cell.startsWith(":");
+  const right = cell.endsWith(":");
+  if (left && right) return "center";
+  if (right) return "right";
+  if (left) return "left";
+  return "";
+}
+
+/**
+ * Parse markdown into one HTML string per top-level block.
+ *
+ * Blocks rather than one blob, because the streaming renderer diffs them: a
+ * paragraph that is finished is written to the DOM once and never touched
+ * again, so only the block still being typed is re-rendered per frame.
+ *
+ * Handles fenced code, ATX headings, horizontal rules, tables, blockquotes,
+ * ordered and unordered lists, and paragraphs. Everything else falls through
+ * to a paragraph, so no input is dropped.
+ */
+function renderMarkdownBlocks(text) {
+  const lines = String(text ?? "").replace(/\r\n?/g, "\n").split("\n");
+  const blocks = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    if (!line.trim()) { i++; continue; }
+
+    // ---- fenced code -------------------------------------------------------
+    const fence = line.match(MD_FENCE_RE);
+    if (fence) {
+      const ticks = fence[1];
+      const lang = fence[2].trim();
+      const closeRe = new RegExp("^\\s{0,3}`{" + ticks.length + ",}\\s*$");
+      i++;
+      const buf = [];
+      while (i < lines.length && !closeRe.test(lines[i])) {
+        buf.push(lines[i]);
+        i++;
+      }
+      if (i < lines.length) i++;
+      const cls = lang ? ` class="language-${escapeAttr(lang.split(/\s+/)[0])}"` : "";
+      blocks.push(`<pre><code${cls}>${escapeHtml(buf.join("\n"))}</code></pre>`);
+      continue;
+    }
+
+    // ---- heading -----------------------------------------------------------
+    const heading = line.match(MD_HEADING_RE);
+    if (heading) {
+      const level = heading[1].length;
+      blocks.push(`<h${level}>${renderInline(heading[2])}</h${level}>`);
+      i++;
+      continue;
+    }
+
+    // ---- horizontal rule ---------------------------------------------------
+    if (MD_HR_RE.test(line)) { blocks.push("<hr>"); i++; continue; }
+
+    // ---- table -------------------------------------------------------------
+    // A table is only recognised once its second row is present, so a header
+    // row that arrives before its separator renders as text for one frame and
+    // then snaps into a table. That is better than guessing at the columns.
+    if (line.indexOf("|") >= 0 && i + 1 < lines.length && isTableSeparator(lines[i + 1])) {
+      const header = splitTableRow(line);
+      const align = splitTableRow(lines[i + 1]).map(tableAlignment);
+      i += 2;
+
+      const rows = [];
+      while (i < lines.length && lines[i].trim() && lines[i].indexOf("|") >= 0) {
+        rows.push(splitTableRow(lines[i]));
+        i++;
+      }
+
+      const head = header.map((c, n) =>
+        `<th${align[n] ? ` style="text-align:${align[n]}"` : ""}>${renderInline(c)}</th>`
+      ).join("");
+
+      const body = rows.map((r) => "<tr>" + header.map((_, n) =>
+        `<td${align[n] ? ` style="text-align:${align[n]}"` : ""}>${renderInline(r[n] ?? "")}</td>`
+      ).join("") + "</tr>").join("");
+
+      blocks.push(
+        `<div class="md-table-wrap"><table><thead><tr>${head}</tr></thead>` +
+        (body ? `<tbody>${body}</tbody>` : "") +
+        `</table></div>`
+      );
+      continue;
+    }
+
+    // ---- blockquote --------------------------------------------------------
+    if (MD_QUOTE_RE.test(line)) {
+      const buf = [];
+      while (i < lines.length && MD_QUOTE_RE.test(lines[i])) {
+        buf.push(lines[i].match(MD_QUOTE_RE)[1]);
+        i++;
+      }
+      blocks.push(`<blockquote>${renderMarkdownBlocks(buf.join("\n")).join("")}</blockquote>`);
+      continue;
+    }
+
+    // ---- unordered list ----------------------------------------------------
+    if (MD_UL_RE.test(line)) {
+      const items = [];
+      while (i < lines.length && MD_UL_RE.test(lines[i])) {
+        items.push(lines[i].match(MD_UL_RE)[1]);
+        i++;
+      }
+      blocks.push("<ul>" + items.map((t) => `<li>${renderInline(t)}</li>`).join("") + "</ul>");
+      continue;
+    }
+
+    // ---- ordered list ------------------------------------------------------
+    if (MD_OL_RE.test(line)) {
+      const first = lines[i].match(MD_OL_RE);
+      const start = Number(first[1]) || 1;
+      const items = [];
+      while (i < lines.length && MD_OL_RE.test(lines[i])) {
+        items.push(lines[i].match(MD_OL_RE)[2]);
+        i++;
+      }
+      const attr = start !== 1 ? ` start="${start}"` : "";
+      blocks.push(`<ol${attr}>` + items.map((t) => `<li>${renderInline(t)}</li>`).join("") + "</ol>");
+      continue;
+    }
+
+    // ---- paragraph ---------------------------------------------------------
+    const buf = [];
+    while (i < lines.length) {
+      const l = lines[i];
+      if (!l.trim()) break;
+      if (MD_FENCE_RE.test(l) || MD_HEADING_RE.test(l) || MD_HR_RE.test(l) ||
+          MD_UL_RE.test(l) || MD_OL_RE.test(l) || MD_QUOTE_RE.test(l)) break;
+      if (l.indexOf("|") >= 0 && i + 1 < lines.length && isTableSeparator(lines[i + 1])) break;
+      buf.push(l);
+      i++;
+    }
+    if (!buf.length) { i++; continue; }   // never stall on an unmatched line
+    blocks.push(`<p>${renderInline(buf.join("\n")).replace(/\n/g, "<br>")}</p>`);
+  }
+
+  return blocks;
+}
+
+function renderMarkdown(text) {
+  return renderMarkdownBlocks(text).join("");
 }
 
 function balanceCodeFences(text) {
@@ -4553,40 +5174,43 @@ function createTypewriter({ render, speed = 12, adaptive = false }) {
 // =============================================================================
 // Code block decoration
 // =============================================================================
+/** Wrap one <pre> in the copy-button frame. Idempotent. */
+function decorateCodeBlock(pre) {
+  if (!pre) return;
+  if (pre.parentElement && pre.parentElement.classList.contains("code-wrap")) return;
+
+  const wrap = document.createElement("div");
+  wrap.className = "code-wrap";
+  pre.parentNode.insertBefore(wrap, pre);
+  wrap.appendChild(pre);
+
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "code-copy";
+  btn.title = "Copy code";
+  btn.innerHTML = COPY_ICON + `<span>Copy</span>`;
+
+  btn.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    const codeEl = pre.querySelector("code");
+    const text = codeEl ? codeEl.textContent : pre.textContent;
+    const ok = await copyText(text);
+    const prevHtml = btn.innerHTML;
+    btn.classList.add("copied");
+    btn.innerHTML = ok
+      ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg><span>Copied</span>`
+      : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg><span>Failed</span>`;
+    setTimeout(() => {
+      btn.innerHTML = prevHtml;
+      btn.classList.remove("copied");
+    }, 1400);
+  });
+
+  wrap.appendChild(btn);
+}
+
 function decorateCodeBlocks(container) {
-  const pres = container.querySelectorAll("pre");
-  for (const pre of pres) {
-    if (pre.parentElement && pre.parentElement.classList.contains("code-wrap")) continue;
-
-    const wrap = document.createElement("div");
-    wrap.className = "code-wrap";
-    pre.parentNode.insertBefore(wrap, pre);
-    wrap.appendChild(pre);
-
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "code-copy";
-    btn.title = "Copy code";
-    btn.innerHTML = COPY_ICON + `<span>Copy</span>`;
-
-    btn.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      const codeEl = pre.querySelector("code");
-      const text = codeEl ? codeEl.textContent : pre.textContent;
-      const ok = await copyText(text);
-      const prevHtml = btn.innerHTML;
-      btn.classList.add("copied");
-      btn.innerHTML = ok
-        ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg><span>Copied</span>`
-        : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg><span>Failed</span>`;
-      setTimeout(() => {
-        btn.innerHTML = prevHtml;
-        btn.classList.remove("copied");
-      }, 1400);
-    });
-
-    wrap.appendChild(btn);
-  }
+  for (const pre of container.querySelectorAll("pre")) decorateCodeBlock(pre);
 }
 
 // =============================================================================
@@ -4595,37 +5219,55 @@ function decorateCodeBlocks(container) {
 // A standalone paragraph whose text is exactly a file command marker (e.g.
 // "index.html find:") becomes a styled tool-call row with an icon and an
 // accent-coloured file name. Everything else is left untouched.
-function decorateToolCalls(container) {
+/** Turn one paragraph that is exactly a file-command marker into a tool row. */
+function decorateToolCall(p) {
   // Honor the "Show file commands as tool calls" preference: when disabled the
   // raw marker lines are left in place as ordinary paragraphs.
   if (settings.showToolCalls === false) return;
-  const paras = container.querySelectorAll("p");
-  for (const p of paras) {
-    const m = p.textContent.trim().match(FILE_CMD_LINE_RE);
-    if (!m) continue;
-    const file = m[1];
-    const kind = m[2].toLowerCase();
+  if (!p || p.tagName !== "P") return;
 
-    const div = document.createElement("div");
-    div.className = "tool-call";
+  const m = p.textContent.trim().match(FILE_CMD_LINE_RE);
+  if (!m) return;
+  const file = m[1];
+  const kind = m[2].toLowerCase();
 
-    const icon = document.createElement("span");
-    icon.className = "tc-icon";
-    icon.innerHTML = TOOL_CALL_ICONS[kind] || TOOL_CALL_ICONS.find;
-    div.appendChild(icon);
+  const div = document.createElement("div");
+  div.className = "tool-call";
 
-    const fileSpan = document.createElement("span");
-    fileSpan.className = "tc-file";
-    fileSpan.textContent = file;
-    div.appendChild(fileSpan);
+  const icon = document.createElement("span");
+  icon.className = "tc-icon";
+  icon.innerHTML = TOOL_CALL_ICONS[kind] || TOOL_CALL_ICONS.find;
+  div.appendChild(icon);
 
-    const kindSpan = document.createElement("span");
-    kindSpan.className = "tc-kind";
-    kindSpan.textContent = kind;
-    div.appendChild(kindSpan);
+  const fileSpan = document.createElement("span");
+  fileSpan.className = "tc-file";
+  fileSpan.textContent = file;
+  div.appendChild(fileSpan);
 
-    p.replaceWith(div);
-  }
+  const kindSpan = document.createElement("span");
+  kindSpan.className = "tc-kind";
+  kindSpan.textContent = kind;
+  div.appendChild(kindSpan);
+
+  p.replaceWith(div);
+}
+
+function decorateToolCalls(container) {
+  if (settings.showToolCalls === false) return;
+  for (const p of container.querySelectorAll("p")) decorateToolCall(p);
+}
+
+/**
+ * Decorate one freshly rendered block, once.
+ *
+ * Called as each block is appended during streaming, so the cost is paid per
+ * block instead of per frame. The container-wide scan used to run on every
+ * repaint, which is why a long answer got progressively slower to arrive.
+ */
+function decorateBlock(node) {
+  if (!node || node.nodeType !== 1) return;
+  if (node.tagName === "PRE") decorateCodeBlock(node);
+  else if (node.tagName === "P") decorateToolCall(node);
 }
 
 // =============================================================================
@@ -4768,6 +5410,15 @@ function renderFileChangeItem(c) {
     summary.append(el("span", { className: "fc-note", textContent: "find text not found" }));
   } else if (c.kind === "missing") {
     summary.append(el("span", { className: "fc-note", textContent: "file not in workspace" }));
+  } else if (c.attempts > 1) {
+    // Several operations landed on this file in one reply. Say so, rather than
+    // letting a single row imply exactly one edit happened. `attempts` is only
+    // present in memory; after a reload the row still renders, just without
+    // the count.
+    const note = c.failed > 0
+      ? `${c.attempts} changes · ${c.failed} failed`
+      : `${c.attempts} changes`;
+    summary.append(el("span", { className: "fc-note", textContent: note }));
   }
 
   if (c.kind !== "nomatch" && c.kind !== "missing") {
@@ -4857,6 +5508,30 @@ function renderMessages({ toBottom = false, anchor = null } = {}) {
     inner.append(renderMessage(conv.messages[i], i));
   }
 
+  // Any image held in IndexedDB paints as a reserved frame first and swaps its
+  // source in when the read lands.
+  hydrateAttachmentImages(inner);
+
+  // Lay every message out once, so the restore below measures real heights.
+  //
+  // content-visibility: auto keeps a long transcript cheap to scroll and to
+  // stream into, but it also means a freshly appended message has not been
+  // rendered yet and therefore reports its 96px intrinsic size instead of its
+  // real height. box.scrollHeight is then far smaller than it was before the
+  // rebuild, and the delta restore clamps scrollTop to 0 - the "jumped to the
+  // top" case.
+  //
+  // Reading offsetHeight with the property overridden forces the layout, and
+  // afterwards each message's real size is remembered (contain-intrinsic-size
+  // uses `auto`), so subsequent measurements - including the streaming follow -
+  // are accurate while the property keeps doing its job for scrolling.
+  //
+  // This runs only on a deliberate rebuild - send, delete, edit, regenerate,
+  // settings save - never during streaming, so the one-off cost is acceptable.
+  inner.classList.add("force-layout");
+  void inner.offsetHeight;                             // force a synchronous layout
+  inner.classList.remove("force-layout");
+
   // Restore position, before paint so there is no visible jump.
   if (toBottom || (anchor == null && wasAtBottom)) {
     // Following the newest message. Staying pinned to the bottom is right when
@@ -4927,13 +5602,16 @@ function renderMessage(msg, index) {
     if (attachments.length) {
       const attWrap = el("div", { className: "bubble-attachments" });
       for (const a of attachments) {
-        if (a.type === "image" && a.dataUrl) {
-          attWrap.append(el("img", { className: "bubble-image", src: a.dataUrl, alt: a.name }));
-        } else if (a.type === "image") {
-          const chip = el("div", { className: "bubble-file" });
-          chip.innerHTML = FILE_ICON;
-          chip.append(el("span", { textContent: `${a.name} (image not saved)` }));
-          attWrap.append(chip);
+        if (a.type === "image") {
+          const src = attachmentSrc(a);
+          if (src) {
+            attWrap.append(el("img", { className: "bubble-image", src, alt: a.name }));
+          } else {
+            // Not read yet: reserve the frame and let hydration fill it in.
+            const pending = el("img", { className: "bubble-image pending", alt: a.name });
+            pending.setAttribute("data-att-id", a.id || "");
+            attWrap.append(pending);
+          }
         } else {
           const chip = el("div", { className: "bubble-file" });
           chip.innerHTML = FILE_ICON;
@@ -5172,13 +5850,39 @@ function isNearBottom(el) {
  * away.
  */
 function followIfPinned() {
-  if (!followOutput) {
-    updateJumpButton();
+  const m = $("messages");
+  const btn = $("jumpToBottomBtn");
+
+  // One measurement, then only writes. Reading scrollHeight after setting
+  // scrollTop forces a synchronous layout on every streamed frame; the distance
+  // is computed once and reused for both the scroll and the button state.
+  const distance = m.scrollHeight - m.scrollTop - m.clientHeight;
+
+  if (followOutput) {
+    m.scrollTop += distance;
+    if (btn) btn.classList.remove("show");
     return;
   }
-  const m = $("messages");
-  m.scrollTop = m.scrollHeight;
-  updateJumpButton();
+  if (btn) btn.classList.toggle("show", distance > FOLLOW_THRESHOLD_PX);
+}
+
+let followFrameQueued = false;
+
+/**
+ * Coalesce every follow request into one per frame.
+ *
+ * During streaming, deltas arrive in bursts - a single read can hand over ten
+ * at once. Reading scrollHeight once per delta forced a synchronous layout
+ * each time, which is what made scrolling stutter on Android. This collapses
+ * any number of calls within one frame into a single read.
+ */
+function scheduleFollow() {
+  if (followFrameQueued) return;
+  followFrameQueued = true;
+  requestAnimationFrame(() => {
+    followFrameQueued = false;
+    followIfPinned();
+  });
 }
 
 function scrollToBottom() {
@@ -5280,8 +5984,15 @@ async function addAttachmentFromFile(file) {
     }
     try {
       const dataUrl = await compressImage(file);
+      const id = newAttachmentId();
+      // The data goes to IndexedDB from the start; the message references it by
+      // id, so the conversation payload stays small no matter how many images it
+      // holds. The cache is primed so the preview and the request both have the
+      // data without waiting for a read.
+      attachmentCache.set(id, dataUrl);
+      AttachmentStore.put(id, { dataUrl, mime: file.type || "" }).catch(() => {});
       pendingAttachments.push({
-        type: "image", name: file.name, mime: file.type, dataUrl, size: file.size,
+        type: "image", name: file.name, mime: file.type, id, size: file.size,
       });
     } catch {
       alert(`Could not read "${file.name}".`);
@@ -5313,7 +6024,7 @@ function renderPendingAttachments() {
     });
 
     if (a.type === "image") {
-      box.append(el("img", { src: a.dataUrl, alt: a.name }));
+      box.append(el("img", { src: attachmentSrc(a), alt: a.name }));
     } else {
       box.innerHTML = FILE_ICON;
       box.append(el("span", { className: "filename", textContent: a.name }));
@@ -5339,7 +6050,10 @@ function messageToApi(m) {
   }
 
   const attachments = m.attachments ?? [];
-  const images = attachments.filter((a) => a.type === "image" && a.dataUrl);
+  const images = attachments
+    .filter((a) => a.type === "image")
+    .map((a) => ({ name: a.name, src: attachmentSrc(a) }))
+    .filter((a) => a.src);
   const texts  = attachments.filter((a) => a.type === "text");
 
   let text = m.content || "";
@@ -5355,7 +6069,7 @@ function messageToApi(m) {
     role: "user",
     content: [
       { type: "text", text: text || "(image attached)" },
-      ...images.map((img) => ({ type: "image_url", image_url: { url: img.dataUrl } })),
+      ...images.map((img) => ({ type: "image_url", image_url: { url: img.src } })),
     ],
   };
 }
@@ -5936,6 +6650,10 @@ async function runCompletion(conv) {
   // is harmless on a full OpenAI-compatible one, where the instructions simply
   // arrive inline instead of in a system role.
   // ---------------------------------------------------------------------------
+  // The request needs base64 data, and the cache is filled lazily, so a reply
+  // regenerated from an old turn would otherwise send an image with no data.
+  await ensureAttachmentsLoaded(conv);
+
   const outgoing = [];
 
   const sysParts = [];
@@ -6011,15 +6729,58 @@ async function runCompletion(conv) {
     ? 0
     : Math.max(1, Math.round(speedCfg.delay / 2));
 
+  /**
+   * Reasoning streams as plain text.
+   *
+   * Rendering it as markdown on every tick re-parsed the entire accumulated
+   * text and rebuilt every element in the pane - the single largest cost during
+   * a DeepThink reply, and the reason thinking visibly stutters while the
+   * answer afterwards does not. Markdown is not append-friendly, so the cheap
+   * path is textContent while streaming, with one markdown pass when reasoning
+   * stops growing. That is the same trade the DeepSeek site makes: the pane
+   * shows running prose, and formatting settles once the reasoner finishes.
+   */
+  let reasoningStreaming = false;
+  let reasoningPending = null;
+  let reasoningFrameQueued = false;
+  /** Once the reasoning pane has been formatted, it must not be touched again. */
+  let reasoningFrozen = false;
+
   const reasoningTypewriter = createTypewriter({
     render: (shown) => {
-      if (!reasoningTextEl) return;
-      reasoningTextEl.innerHTML = renderMarkdown(balanceCodeFences(shown));
-      decorateCodeBlocks(reasoningTextEl);
+      if (!reasoningTextEl || reasoningFrozen) return;
+      reasoningPending = shown;
+      if (reasoningFrameQueued) return;
+      reasoningFrameQueued = true;
+      requestAnimationFrame(() => {
+        reasoningFrameQueued = false;
+        const text = reasoningPending;
+        reasoningPending = null;
+        if (text === null || !reasoningTextEl || reasoningFrozen) return;
+        reasoningStreaming = true;
+        if (reasoningBlockEl) reasoningBlockEl.dataset.streaming = "1";
+        reasoningTextEl.textContent = text;
+        scheduleFollow();
+        // If the answer has started before this paint landed, finalize now.
+        if (assistantMsg.content) finalizeReasoning();
+      });
     },
     speed: reasoningDelay,
     adaptive: speedCfg.adaptive,
   });
+
+  /** Swap the plain-text reasoning for its formatted form, once. */
+  const finalizeReasoning = () => {
+    if (!reasoningStreaming || reasoningFrozen || !reasoningTextEl) return;
+    reasoningStreaming = false;
+    reasoningFrozen = true;
+    if (reasoningBlockEl) delete reasoningBlockEl.dataset.streaming;
+    const text = reasoningTextEl.textContent || "";
+    if (!text) return;
+    reasoningTextEl.innerHTML = renderMarkdown(balanceCodeFences(text));
+    decorateCodeBlocks(reasoningTextEl);
+    scheduleFollow();
+  };
 
   // Repaint at most once per frame, with everything that has arrived.
   //
@@ -6032,17 +6793,67 @@ async function runCompletion(conv) {
   // it paints once with everything accumulated. The flag is cleared inside the
   // callback, so a second render can never start before the first has been
   // committed - which is the behaviour that was missing.
+  let renderedBlocks = [];
   let pendingShown = null;
   let frameRequested = false;
+  let lastPaintAt = 0;
 
+  /** Cap the paint rate. Nobody reads faster than this, and it halves the work. */
+  const MIN_PAINT_MS = 32;
+
+  const resetStreamRender = () => {
+    renderedBlocks = [];
+    pendingShown = null;
+    contentEl.innerHTML = "";
+  };
+
+  /**
+   * Repaint only the blocks that changed.
+   *
+   * The reply is parsed into blocks; a finished paragraph is written to the DOM
+   * once and never touched again, and only the final block, still being typed,
+   * is replaced each frame. Appending a block also decorates it, once, so the
+   * copy buttons and tool rows are paid for per block rather than per frame.
+   */
   const paintContent = (shown) => {
     // Strip first, then balance: if a command block is mid-stream and still open,
     // strip removes everything from its marker onwards, so the balanced text never
     // contains a half-finished fence.
     const visible = contentForDisplay(shown);
-    const html = visible ? renderMarkdown(balanceCodeFences(visible)) : "";
-    contentEl.innerHTML = html;
-    decorateToolCalls(contentEl);
+    const blocks = visible ? renderMarkdownBlocks(balanceCodeFences(visible)) : [];
+
+    let start = 0;
+    while (
+      start < renderedBlocks.length &&
+      start < blocks.length &&
+      renderedBlocks[start] === blocks[start]
+    ) start++;
+
+    if (start === renderedBlocks.length && renderedBlocks.length === blocks.length) return;
+
+    // Trimming by index relies on one top-level node per block. A decoration
+    // that ever broke that would silently splice into the wrong place, so check
+    // and fall back to a clean rebuild instead.
+    if (contentEl.childNodes.length !== renderedBlocks.length) {
+      contentEl.innerHTML = blocks.join("");
+      for (const node of contentEl.children) decorateBlock(node);
+      renderedBlocks = blocks;
+      return;
+    }
+
+    while (contentEl.childNodes.length > start) {
+      contentEl.removeChild(contentEl.lastChild);
+    }
+
+    const template = document.createElement("template");
+    for (let k = start; k < blocks.length; k++) {
+      template.innerHTML = blocks[k];
+      const node = template.content.firstElementChild;
+      if (!node) continue;
+      decorateBlock(contentEl.appendChild(node));
+    }
+
+    renderedBlocks = blocks;
   };
 
   const contentTypewriter = createTypewriter({
@@ -6050,12 +6861,26 @@ async function runCompletion(conv) {
       pendingShown = shown;
       if (frameRequested) return;
       frameRequested = true;
-      requestAnimationFrame(() => {
+
+      const run = (ts) => {
+        const now = typeof ts === "number" ? ts : performance.now();
+        if (now - lastPaintAt < MIN_PAINT_MS) {
+          // Too soon after the last paint. Defer and re-enter rather than
+          // dropping the frame - the newest text must still reach the screen.
+          const wait = MIN_PAINT_MS - (now - lastPaintAt);
+          setTimeout(() => {
+            if (frameRequested) requestAnimationFrame(run);
+          }, wait);
+          return;
+        }
         frameRequested = false;
+        lastPaintAt = now;
         const text = pendingShown;
         pendingShown = null;
         if (text !== null) paintContent(text);
-      });
+      };
+
+      requestAnimationFrame(run);
     },
     speed: speedCfg.delay,
     adaptive: speedCfg.adaptive,
@@ -6083,25 +6908,33 @@ async function runCompletion(conv) {
         reasoningStartedAt = performance.now();
       }
 
-      if (reasoning) {
+      if (reasoning && !reasoningFrozen) {
         ensureReasoningBlock();
         reasoningTypewriter.set(reasoning);
-
-        if (!contentPaused) {
+        // Suspend the answer's typewriter only while the reasoning is still
+        // arriving and the answer has not started. It used to stay paused for
+        // the rest of the reply, so the answer only appeared when the whole
+        // stream finished.
+        if (!contentPaused && !content) {
           contentTypewriter.pause();
           contentPaused = true;
         }
+      }
 
-        if (content) {
-          reasoningBlockEl.classList.remove("active");
-        } else {
-          reasoningBlockEl.classList.add("active");
-        }
+      if (content) {
+        // Reasoning has stopped growing. Snap its formatting in once, and
+        // start showing the answer immediately instead of waiting for it to
+        // finish buffering.
+        finalizeReasoning();
+        if (contentPaused) { contentTypewriter.resume(); contentPaused = false; }
+        if (reasoningBlockEl) reasoningBlockEl.classList.remove("active");
+      } else if (reasoningBlockEl) {
+        reasoningBlockEl.classList.add("active");
       }
 
       contentTypewriter.set(content);
-      // Follow the output only while the reader is at the bottom.
-      followIfPinned();
+      // Coalesced to one read per frame.
+      scheduleFollow();
 
       // Persist the partial reply as it grows, throttled.
       //
@@ -6109,8 +6942,15 @@ async function runCompletion(conv) {
       // interrupted turn (reload, tab close, crash) stored an empty assistant
       // message. Throttling keeps the write rate sane while still bounding how
       // much can be lost to a few hundred milliseconds of typing.
+      // Every save stringifies the whole conversation list, so this is a
+      // trade-off between how much an interrupted turn can lose and how often
+      // the main thread stalls. 2.5s bounds the loss to a sentence or two.
+      // Persist the partial reply - but only once the ANSWER has started.
+      // Reasoning is transient and never shown after the reply, and each save
+      // stringifies the whole history, so skipping it during the think avoids
+      // most of the writes on a long DeepThink turn.
       const now = Date.now();
-      if (now - lastStreamSaveAt > 700) {
+      if (assistantMsg.content && now - lastStreamSaveAt > 3000) {
         lastStreamSaveAt = now;
         conv.updatedAt = now;
         saveConversations();
@@ -6124,11 +6964,17 @@ async function runCompletion(conv) {
       reasoningBlockEl = null;
       reasoningTextEl = null;
       contentPaused = false;
+      reasoningStreaming = false;
+      reasoningPending = null;
+      reasoningFrozen = false;
       reasoningTypewriter.reset();
       contentTypewriter.reset();
 
       reasoningSlot.innerHTML = "";
       contentEl.innerHTML = "";
+      // The block cache now holds nothing that is on screen, so the next delta
+      // must rebuild from scratch rather than diffing against stale entries.
+      resetStreamRender();
 
       showSpinner(`Connection failed. Retrying (attempt ${attempt} of ${max})…`);
       scrollToBottom();
@@ -6535,14 +7381,32 @@ function showStorageWarning(key, size) {
  * property read, including the large string reads on the render path, which
  * costs more than it saves.
  */
-let pendingSaveQueued = false;
+/** A burst of changes is written once, this long after the last one. */
+const SAVE_DEBOUNCE_MS = 900;
+let saveTimer = null;
+
+/**
+ * Persist soon, but not once per keystroke.
+ *
+ * This used to fire on a microtask, which coalesced a burst inside one handler
+ * but not two keystrokes 10 ms apart - each of those still ran a full
+ * JSON.stringify of every conversation plus settings. With an image in the
+ * history that is megabytes of text per character typed.
+ */
 function scheduleSave() {
-  if (pendingSaveQueued) return;
-  pendingSaveQueued = true;
-  queueMicrotask(() => {
-    pendingSaveQueued = false;
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
     saveAllNow();
-  });
+  }, SAVE_DEBOUNCE_MS);
+}
+
+/** Write immediately if a debounced write is still pending. */
+function flushScheduledSave() {
+  if (!saveTimer) return;
+  clearTimeout(saveTimer);
+  saveTimer = null;
+  saveAllNow();
 }
 
 /**
@@ -6552,20 +7416,389 @@ function scheduleSave() {
  * have changed; anything that mutates outside them still saves explicitly.
  */
 function installSaveSafetyNet() {
-  // Any click may have changed something (send, delete, revert, link, rename).
-  document.addEventListener("click", () => scheduleSave(), true);
+  // Only the two exit paths are hooked.
+  //
+  // A document-wide "click" and "input" listener used to sit here as a catch-all
+  // for mutations that forgot to save themselves. Every mutation site does save
+  // explicitly, so the only thing the net caught was every tap in the app - each
+  // one a full serialise of the history. Anything genuinely unsaved now reaches
+  // storage through scheduleSave() or one of these two.
 
-  // Typing in the composer changes the draft, which is saved on its own, but a
-  // workspace edit also lands here.
-  document.addEventListener("input", () => scheduleSave(), true);
-
-  // Leaving the page is the last chance to write.
-  window.addEventListener("beforeunload", () => saveAllNow());
+  window.addEventListener("beforeunload", () => {
+    flushScheduledSave();
+    saveAllNow();
+  });
 
   // Backgrounding the app on mobile can kill the page without a beforeunload.
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "hidden") saveAllNow();
+    if (document.visibilityState === "hidden") {
+      flushScheduledSave();
+      saveAllNow();
+    }
   });
+}
+
+// =============================================================================
+// Export
+// =============================================================================
+// Two formats, because they serve different purposes: JSON is the same shape
+// stored under CONV_KEY, so a future import - and the user's own scripts - read
+// it directly; Markdown is a readable transcript with no image data, intended
+// for reading or sharing rather than round-tripping.
+//
+// Workspace files are inlined in both. Images are referenced by name only: their
+// data lives in IndexedDB, and embedding megabytes of base64 would make the
+// download slow and the file unopenable in some editors.
+
+/**
+ * Trigger a download of `content` as `filename`.
+ *
+ * The anchor-and-click dance is the standard way to save a file from a page
+ * with no server behind it. The blob URL is revoked on a delay rather than
+ * immediately, because a synchronous revoke in some browsers aborts the
+ * download before it starts. The window.open fallback catches WebViews that
+ * refuse to honour a programmatic click.
+ */
+function downloadFile(filename, mime, content) {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.rel = "noopener";
+  a.style.display = "none";
+  document.body.appendChild(a);
+  try {
+    a.click();
+  } catch (e) {
+    try { window.open(url, "_blank", "noopener"); } catch (_) { /* give up */ }
+  }
+  setTimeout(() => {
+    a.remove();
+    URL.revokeObjectURL(url);
+  }, 30_000);
+}
+
+/** A filename-safe slug of `conv.title`. */
+function conversationSlug(conv) {
+  const base = String(conv?.title || "conversation")
+    .toLowerCase()
+    .replace(/[^a-z0-9\u0400-\u04ff]+/gi, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+  return base || "conversation";
+}
+
+/** YYYY-MM-DD, for filename prefixes. */
+function todayForFilename() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/**
+ * Read every image referenced by a conversation out of IndexedDB.
+ *
+ * Returns a Map of attachment id -> data URL. An image whose data cannot be
+ * read yields nothing, so the export stays valid and simply names it as
+ * unavailable, rather than failing the whole download.
+ */
+async function loadConversationImages(conv) {
+  const out = new Map();
+  if (!conv) return out;
+  const ids = new Set();
+  for (const m of conv.messages || []) {
+    for (const a of m.attachments || []) {
+      if (a.type === "image" && a.id) ids.add(a.id);
+    }
+  }
+  for (const id of ids) {
+    const cached = attachmentCache.get(id);
+    if (cached) { out.set(id, cached); continue; }
+    try {
+      const rec = await AttachmentStore.get(id);
+      if (rec && rec.dataUrl) {
+        attachmentCache.set(id, rec.dataUrl);
+        out.set(id, rec.dataUrl);
+      }
+    } catch (e) { /* unreadable; the export names it instead */ }
+  }
+  return out;
+}
+
+/**
+ * A copy of a conversation with its image data inlined.
+ *
+ * The stored form keeps only an id, because the data lives in IndexedDB. An
+ * export carrying bare ids would be unopenable anywhere else - the ids mean
+ * nothing outside this device. Attaching the data here gives the exported
+ * JSON the shape the migration expects (an attachment with dataUrl and no
+ * id), so an import can adopt it by running the same migration.
+ *
+ * A clone is used so the live conversation is not modified: an exported chat
+ * must not lose its ids, or the next render would be unable to find its
+ * images again.
+ */
+function conversationWithImages(conv, images) {
+  const clone = JSON.parse(JSON.stringify(conv));
+  for (const m of clone.messages || []) {
+    for (const a of m.attachments || []) {
+      if (a.type !== "image" || !a.id) continue;
+      const dataUrl = images.get(a.id);
+      if (dataUrl) {
+        a.dataUrl = dataUrl;
+        delete a.id;
+      }
+    }
+  }
+  return clone;
+}
+
+/**
+ * One conversation as Markdown text.
+ *
+ * Images are inlined as data URLs. That makes the file large, but it is the
+ * only way a Markdown export can be self-contained: a plain name refers to
+ * nothing a reader can open. Viewers that support data URLs (most markdown
+ * renderers, and every browser) will show the picture; anything else will
+ * still have the alt text.
+ */
+function conversationToMarkdown(conv, images = new Map()) {
+  const lines = [];
+  lines.push(`# ${conv.title || "Conversation"}`);
+  lines.push("");
+  lines.push(`_Exported ${new Date().toLocaleString()}_`);
+  if (conv.model) lines.push(`Model: \`${conv.model}\``);
+  lines.push("");
+
+  for (const m of conv.messages || []) {
+    if (m.role === "user") {
+      lines.push("---");
+      lines.push("");
+      lines.push("### User");
+      lines.push("");
+      for (const a of m.attachments || []) {
+        if (a.type === "image") {
+          const dataUrl = a.id ? images.get(a.id) : "";
+          if (dataUrl) lines.push(`![${a.name}](${dataUrl})`);
+          else lines.push(`_Image: ${a.name} (data unavailable)_`);
+        } else {
+          lines.push(`_Attachment: ${a.name}_`);
+        }
+      }
+      if (m.content) lines.push(m.content);
+      lines.push("");
+    } else if (m.role === "assistant") {
+      lines.push("### Assistant");
+      lines.push("");
+      if (m.reasoning) {
+        // Reasoning is included, but as a blockquote. Buried below the answer
+        // would hide it; unquoted would let it read as part of the reply.
+        const secs = Math.max(1, Math.round((m.reasoningMs || 0) / 1000));
+        lines.push(`> **Reasoning** (${secs}s)`);
+        lines.push(">");
+        for (const ln of String(m.reasoning).split("\n")) lines.push(`> ${ln}`);
+        lines.push("");
+      }
+      if (m.content) {
+        lines.push(m.content);
+        lines.push("");
+      }
+    }
+  }
+
+  const files = conv.files || {};
+  const paths = Object.keys(files);
+  if (paths.length) {
+    lines.push("---");
+    lines.push("");
+    lines.push("## Workspace files");
+    lines.push("");
+    for (const path of paths) {
+      const ext = path.split(".").pop().toLowerCase();
+      lines.push(`### \`${path}\``);
+      lines.push("");
+      lines.push("```" + ext);
+      lines.push(files[path]);
+      lines.push("```");
+      lines.push("");
+    }
+  }
+  if (conv.linkedFolder) {
+    lines.push(`_Linked folder at time of export: ${conv.linkedFolder.name}_`);
+    lines.push("");
+  }
+  return lines.join("\n");
+}
+
+/**
+ * Download one conversation as JSON, with images inlined.
+ *
+ * Asynchronous because image data has to be read from IndexedDB first. The
+ * schema number is bumped to 2, marking the file as self-contained: a reader
+ * can tell the difference between this and the earlier id-only export.
+ */
+async function exportConversationJson(conv) {
+  if (!conv) return;
+  const images = await loadConversationImages(conv);
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    schema: 2,
+    conversation: conversationWithImages(conv, images),
+  };
+  downloadFile(
+    `${todayForFilename()}-${conversationSlug(conv)}.json`,
+    "application/json",
+    JSON.stringify(payload, null, 2)
+  );
+}
+
+/** Download one conversation as Markdown, with images inlined. */
+async function exportConversationMarkdown(conv) {
+  if (!conv) return;
+  const images = await loadConversationImages(conv);
+  downloadFile(
+    `${todayForFilename()}-${conversationSlug(conv)}.md`,
+    "text/markdown",
+    conversationToMarkdown(conv, images)
+  );
+}
+
+/**
+ * Download every conversation in one self-contained file.
+ *
+ * Images are loaded conversation by conversation rather than all at once, so
+ * the peak memory is one chat's worth of data instead of the whole history.
+ */
+async function exportAllJson() {
+  if (!conversations.length) {
+    alert("Nothing to export yet.");
+    return;
+  }
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    schema: 2,
+    conversations: [],
+  };
+  for (const conv of conversations) {
+    const images = await loadConversationImages(conv);
+    payload.conversations.push(conversationWithImages(conv, images));
+  }
+  downloadFile(
+    `${todayForFilename()}-deepseek-all.json`,
+    "application/json",
+    JSON.stringify(payload, null, 2)
+  );
+}
+
+async function exportAllMarkdown() {
+  if (!conversations.length) {
+    alert("Nothing to export yet.");
+    return;
+  }
+  const parts = [];
+  for (const conv of conversations) {
+    const images = await loadConversationImages(conv);
+    parts.push(conversationToMarkdown(conv, images));
+    parts.push("\n\n---\n\n");
+  }
+  downloadFile(
+    `${todayForFilename()}-deepseek-all.md`,
+    "text/markdown",
+    parts.join("")
+  );
+}
+
+// ---- Import -----------------------------------------------------------------
+
+/**
+ * Pull the conversation array out of any shape this page has ever produced.
+ *
+ * Accepted, because a user restoring from an old backup cannot be asked which
+ * version they have:
+ *
+ *   [ {...}, ... ]                        raw CONV_KEY array
+ *   { schema, conversations: [...] }      export-all
+ *   { schema, conversation: {...} }       export-one
+ *   { id, messages: [...] }               a bare conversation object
+ */
+function conversationsFromImport(parsed) {
+  if (Array.isArray(parsed)) return parsed;
+  if (parsed && Array.isArray(parsed.conversations)) return parsed.conversations;
+  if (parsed && parsed.conversation && typeof parsed.conversation === "object") {
+    return [parsed.conversation];
+  }
+  if (parsed && parsed.id && Array.isArray(parsed.messages)) return [parsed];
+  return null;
+}
+
+/**
+ * Import one or more conversations from an already-parsed export.
+ *
+ * Additive: incoming conversations are prepended to the sidebar and existing
+ * chats are left alone. A clash on id - which can only happen when importing
+ * next to a copy of the same chat - resolves to a fresh id, so importing twice
+ * makes a duplicate rather than a silent overwrite.
+ */
+async function importConversationsFromData(parsed) {
+  const list = conversationsFromImport(parsed);
+  if (!list) throw new Error("No conversations found in this file.");
+
+  const candidates = list.filter((c) => c && Array.isArray(c.messages));
+  if (!candidates.length) throw new Error("No usable conversations in this file.");
+
+  // Assign ids defensively. A clash with an existing conversation gets a fresh
+  // id so the import is purely additive; the same id appearing twice in the
+  // file gets the same treatment on the second pass.
+  const known = new Set(conversations.map((c) => c.id));
+  const imported = candidates.map((c) => {
+    let id = String(c.id || "");
+    if (!id || known.has(id)) {
+      id = "c_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+    }
+    known.add(id);
+    return {
+      id,
+      title: String(c.title || "Imported chat"),
+      createdAt: Number(c.createdAt) || Date.now(),
+      updatedAt: Number(c.updatedAt) || Date.now(),
+      messages: c.messages,
+      model: String(c.model || ""),
+      files: (c.files && typeof c.files === "object") ? c.files : {},
+      // Dropped deliberately:
+      //
+      //   linkedFolder  names a Storage Access Framework grant, which is
+      //                 per-device. Keeping it would show the chat as linked
+      //                 while every read and write reports "No folder is linked".
+      //   chatUrl       names a chat on the DeepSeek side. After a round trip
+      //                 it may point at nothing, or at a different account's
+      //                 chat. Starting on a fresh one is safer: the next prompt
+      //                 opens a new DeepSeek chat.
+      chatUrl: "",
+    };
+  });
+
+  // Images: the schema-2 export inlined them as dataUrl, so move them into
+  // IndexedDB now. This is the same pass that runs on boot over a freshly
+  // loaded history, so imported and bootstrapped images end up identical.
+  const imagesMoved = await migrateInlineImages(imported);
+
+  // A conversation id that was in a previous draft would otherwise surface
+  // that draft in the composer. Clearing is cheap and prevents the imported
+  // conversation from inheriting text it never owned.
+  for (const c of imported) clearDraft(c.id);
+
+  conversations.unshift(...imported);
+  activeId = imported[0].id;
+  saveConversations();
+  saveActiveId(activeId);
+  renderSidebar();
+  renderMessages({ toBottom: true });
+  updateWorkspaceBadge();
+  applyActiveDraft();
+  switchToConversation(getActive());
+
+  return { count: imported.length, images: imagesMoved };
 }
 
 // =============================================================================
@@ -6776,12 +8009,11 @@ function syncThemeSegmented() {
 }
 for (const btn of themeButtons) {
   btn.addEventListener("click", () => {
+    // Applied immediately so the preview is honest, but not stored: Save is the
+    // only write, and Cancel puts the previous theme back.
     settings.theme = btn.dataset.themeValue;
     applyTheme();
     syncThemeSegmented();
-    // Persist at once. This only reached storage via Save, so closing the panel
-    // any other way dropped the choice.
-    saveSettings();
   });
 }
 
@@ -6893,6 +8125,42 @@ document.addEventListener("click", (e) => {
   if (!e.target.closest("#modelSelector")) $("modelMenu").classList.remove("open");
 });
 
+// ---- Export menu ------------------------------------------------------------
+$("exportBtn").addEventListener("click", (e) => {
+  e.stopPropagation();
+  $("exportMenu").classList.toggle("open");
+});
+document.addEventListener("click", (e) => {
+  if (!e.target.closest(".export-wrap")) $("exportMenu").classList.remove("open");
+});
+$("exportMenu").addEventListener("click", async (e) => {
+  const btn = e.target.closest("button[data-fmt]");
+  if (!btn) return;
+  const fmt = btn.dataset.fmt;
+  $("exportMenu").classList.remove("open");
+
+  const conv = getActive();
+  if (!conv || !conv.messages.length) {
+    alert("Nothing to export — this chat is empty.");
+    return;
+  }
+
+  // Reading images out of IndexedDB is asynchronous, so the export is too.
+  // The button is disabled for the duration: a second tap on an already-running
+  // export would start a duplicate download to the same filename.
+  const exportBtn = $("exportBtn");
+  exportBtn.disabled = true;
+  try {
+    if (fmt === "json") await exportConversationJson(conv);
+    else if (fmt === "md") await exportConversationMarkdown(conv);
+  } catch (err) {
+    console.error("Export failed:", err);
+    alert(`Could not export: ${err.message}`);
+  } finally {
+    exportBtn.disabled = false;
+  }
+});
+
 // ---- Accent input handling --------------------------------------------------
 const accentInput = $("sAccentHex");
 const accentSwatch = $("accentSwatch");
@@ -6961,7 +8229,14 @@ document.addEventListener("keydown", (e) => {
 // =============================================================================
 // Settings shell
 // =============================================================================
-let themeAtOpen = null;
+/**
+ * The settings as they were when the panel opened.
+ *
+ * Edits go to the live object so the page previews them, but nothing reaches
+ * storage until Save. Cancel restores this, so a change that was not saved
+ * genuinely does not survive the panel closing.
+ */
+let settingsSnapshot = null;
 let currentSection = settings.settingsSection || "appearance";
 
 function syncCustomInstructionsDisabledState() {
@@ -7095,7 +8370,6 @@ function switchProvider(id) {
   commitModelsToProvider();
   settings.activeProviderId = id;
   syncActiveProvider();
-  saveSettings();
   populateProviderFields();
   $("sModels").value = serializeModels(settings.models);
   renderModelMenu();
@@ -7111,23 +8385,18 @@ $("sProviderLabel").addEventListener("input", () => {
   const opt = Array.from(sel.options).find((o) => o.value === settings.activeProviderId);
   if (opt) opt.textContent = $("sProviderLabel").value.trim() || settings.activeProviderId;
   $("sModelsProvider").textContent = $("sProviderLabel").value.trim() || settings.activeProviderId;
-  // Persist as you type. These fields only used to reach storage on Save or on
-  // switching providers, so an edit followed by a reload was silently lost.
-  saveSettings();
 });
 for (const id of ["sProviderBaseUrl", "sProviderKey", "sProviderRoute",
                   "sProviderPathSuffix", "sProviderResponseMode"]) {
-  // Both events save: "input" fires while typing, "change" when a select closes
-  // or a text field loses focus, so nothing depends on pressing Save.
+  // "input" fires while typing, "change" when a select closes or a field loses
+  // focus. Both write into the live settings object - neither reaches storage.
   $(id).addEventListener("input", () => {
     collectProviderFields();
     updateResolvedUrlPreview();
-    saveSettings();
   });
   $(id).addEventListener("change", () => {
     collectProviderFields();
     updateResolvedUrlPreview();
-    saveSettings();
   });
 }
 
@@ -7147,7 +8416,6 @@ $("sProviderAdd").addEventListener("click", () => {
   settings.providerModels[p.id] = [];
   settings.activeProviderId = p.id;
   syncActiveProvider();
-  saveSettings();
   populateProviderFields();
   $("sModels").value = "";
   renderModelMenu();
@@ -7163,7 +8431,6 @@ $("sProviderDelete").addEventListener("click", () => {
   delete settings.providerModels[id];
   settings.activeProviderId = list[Math.max(0, idx - 1)].id;
   syncActiveProvider();
-  saveSettings();
   populateProviderFields();
   $("sModels").value = serializeModels(settings.models);
   renderModelMenu();
@@ -7175,7 +8442,6 @@ $("sProviderReset").addEventListener("click", () => {
   for (const p of settings.providers) settings.providerModels[p.id] = p.models.slice();
   settings.activeProviderId = DEFAULT_PROVIDER_ID;
   syncActiveProvider();
-  saveSettings();
   populateProviderFields();
   $("sModels").value = serializeModels(settings.models);
   renderModelMenu();
@@ -7210,7 +8476,6 @@ $("sModelsFetch").addEventListener("click", async () => {
     commitModelsToProvider();
     $("sModels").value = serializeModels(models);
     if (!models.some((m) => m.id === settings.model)) settings.model = models[0].id;
-    saveSettings();
     renderModelMenu();
     status.textContent = `Loaded ${models.length} models.`;
   } catch (err) {
@@ -7230,19 +8495,137 @@ $("sModelsDefaults").addEventListener("click", () => {
   commitModelsToProvider();
   $("sModels").value = serializeModels(settings.models);
   if (!settings.models.some((m) => m.id === settings.model)) settings.model = settings.models[0]?.id ?? "";
-  saveSettings();
   renderModelMenu();
   $("sModelsStatus").textContent = "Restored the built-in list.";
+});
+
+// ---- Data section -----------------------------------------------------------
+// Both are async because images have to be read out of IndexedDB first, and
+// both disable their button while running so a second click cannot start a
+// parallel export of the same history.
+$("sExportAllJson").addEventListener("click", async (e) => {
+  const btn = e.currentTarget;
+  btn.disabled = true;
+  try { await exportAllJson(); }
+  catch (err) { console.error("Export failed:", err); alert(`Could not export: ${err.message}`); }
+  finally { btn.disabled = false; }
+});
+$("sExportAllMarkdown").addEventListener("click", async (e) => {
+  const btn = e.currentTarget;
+  btn.disabled = true;
+  try { await exportAllMarkdown(); }
+  catch (err) { console.error("Export failed:", err); alert(`Could not export: ${err.message}`); }
+  finally { btn.disabled = false; }
+});
+
+$("sImportBtn").addEventListener("click", () => $("sImportInput").click());
+$("sImportInput").addEventListener("change", async (e) => {
+  const file = e.target.files && e.target.files[0];
+  // Reset at once so picking the same file again re-fires "change", which it
+  // will not do while the input still holds that value.
+  e.target.value = "";
+  if (!file) return;
+
+  const status = $("sImportStatus");
+  const btn = $("sImportBtn");
+  status.textContent = "";
+  status.style.color = "";
+
+  // Reading, then parsing, then writing the whole history is three passes over
+  // the same bytes. On a phone, an unbounded file is enough to hit the tab's
+  // memory limit, so this bounds the failure mode to a message.
+  const MAX_IMPORT_BYTES = 100 * 1024 * 1024;
+  if (file.size > MAX_IMPORT_BYTES) {
+    status.style.color = "var(--ds-error)";
+    status.textContent =
+      `That file is ${Math.round(file.size / 1024 / 1024)} MB, over the ` +
+      `${Math.round(MAX_IMPORT_BYTES / 1024 / 1024)} MB import limit.`;
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = "Reading…";
+  try {
+    const text = await file.text();
+    let parsed;
+    try { parsed = JSON.parse(text); }
+    catch { throw new Error("That file is not valid JSON."); }
+
+    const list = conversationsFromImport(parsed);
+    if (!list) throw new Error("No conversations found in this file.");
+    const usable = list.filter((c) => c && Array.isArray(c.messages));
+    if (!usable.length) throw new Error("No usable conversations in this file.");
+
+    // Count images the file can actually restore, and separately count any that
+    // are references only (an older export that stored ids but not data).
+    let embeddedImages = 0;
+    let orphanImages = 0;
+    for (const c of usable) {
+      for (const m of c.messages) {
+        for (const a of m.attachments || []) {
+          if (a.type !== "image") continue;
+          if (a.dataUrl) embeddedImages++;
+          else if (a.id) orphanImages++;
+        }
+      }
+    }
+
+    const parts = [
+      `${usable.length} conversation${usable.length === 1 ? "" : "s"}`,
+    ];
+    if (embeddedImages) {
+      parts.push(`${embeddedImages} image${embeddedImages === 1 ? "" : "s"}`);
+    }
+    let message = `${parts.join(" and ")} will be added to your existing chats. Nothing is overwritten.`;
+    if (orphanImages) {
+      message +=
+        ` ${orphanImages} image${orphanImages === 1 ? "" : "s"} in this file are ` +
+        `references only - they were exported before image data was embedded, ` +
+        `so they may show as empty frames.`;
+    }
+
+    const ok = await showConfirm({
+      title: "Import conversations?",
+      message,
+      confirmLabel: "Import",
+      cancelLabel: "Cancel",
+    });
+    if (!ok) {
+      status.textContent = "Import cancelled.";
+      return;
+    }
+
+    const result = await importConversationsFromData(parsed);
+    status.style.color = "var(--ds-success)";
+    status.textContent =
+      `Imported ${result.count} conversation${result.count === 1 ? "" : "s"}` +
+      (result.images
+        ? ` · ${result.images} image${result.images === 1 ? "" : "s"} restored.`
+        : ".");
+    // The imported conversation is now the active one and is visible behind the
+    // panel; closing the panel shows it rather than leaving the user staring
+    // at the status text.
+    closeSettings();
+  } catch (err) {
+    console.error("Import failed:", err);
+    status.style.color = "var(--ds-error)";
+    status.textContent = `Could not import: ${err.message}`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Import from file…";
+  }
 });
 
 function selectSection(section) {
   if (!SECTION_TITLES[section]) section = "appearance";
   currentSection = section;
 
-  // Remember which panel was open, so reopening Settings lands on it.
+  // Remember which panel was open, so reopening Settings lands on it. Stored
+  // under its own key: routing this through saveSettings() wrote the whole
+  // settings object - including any unsaved edits in the panel - on every tab.
   if (settings.settingsSection !== section) {
     settings.settingsSection = section;
-    saveSettings();
+    saveSectionId(section);
   }
 
   for (const btn of document.querySelectorAll(".settings-nav-item")) {
@@ -7268,8 +8651,11 @@ function showCategoryList() {
 }
 
 function openSettings() {
+  // Snapshot before anything is populated, so Cancel can restore exactly.
+  try { settingsSnapshot = JSON.parse(JSON.stringify(settings)); }
+  catch (e) { settingsSnapshot = null; }
+
   populateSettingsFields();
-  themeAtOpen = settings.theme;
   syncThemeSegmented();
   // Always open on a section with its panel visible: the tabs sit above it, so
   // there is nothing to drill into first. Prefer the section last viewed.
@@ -7285,12 +8671,26 @@ function closeSettings() {
 }
 
 function cancelSettings() {
-  if (themeAtOpen !== null && settings.theme !== themeAtOpen) {
-    settings.theme = themeAtOpen;
+  if (settingsSnapshot) {
+    // Navigation state and the two composer switches are not part of this
+    // panel, so they survive a Cancel even though everything else is rolled back.
+    const keep = {
+      settingsSection: settings.settingsSection,
+      sidebarCollapsed: settings.sidebarCollapsed,
+      workspaceCollapsedFolders: settings.workspaceCollapsedFolders,
+      deepthink: settings.deepthink,
+      search: settings.search,
+    };
+    settings = settingsSnapshot;
+    Object.assign(settings, keep);
+    settingsSnapshot = null;
+
     applyTheme();
+    applyAccent(settings.accentHex);
     syncThemeSegmented();
+    renderModelMenu();
+    renderMessages();
   }
-  themeAtOpen = null;
   closeSettings();
 }
 
@@ -7351,8 +8751,6 @@ function collectAllSettings() {
   commitModelsToProvider();
   rememberModelChoice();
   syncActiveProvider();
-
-  saveSettings();
 }
 
 $("settingsSave").addEventListener("click", () => {
@@ -7365,30 +8763,28 @@ $("settingsSave").addEventListener("click", () => {
   renderModelMenu();
   // Re-render so the tool-call toggle takes effect on already-drawn messages.
   renderMessages();
-  themeAtOpen = null;
+
+  // The one place the panel's contents reach storage.
+  settingsSnapshot = null;
+  saveSettings();
   closeSettings();
 });
 
-// Save on every edit, not just on Save.
+// Settings are read once, on Save.
 //
-// "input" covers typing (text areas, the hex field, the retry count) and
-// "change" covers selects, checkboxes and radio groups. Registering both means
-// no control depends on the user remembering to press Save.
-for (const id of ["sCustomInstructions", "sPromptFinish", "sAccentHex",
-                  "sRetryMax", "sModels"]) {
-  $(id).addEventListener("input", collectAllSettings);
-  $(id).addEventListener("change", collectAllSettings);
-  // Losing focus is the last chance to capture a value, so it also writes.
-  $(id).addEventListener("blur", collectAllSettings);
-}
-for (const id of ["sCustomInstructionsEnabled", "sPromptFinishEnabled",
-                  "sReasoningExpanded", "sShowToolCalls", "sRetryEnabled", "sTypingSpeed"]) {
-  $(id).addEventListener("change", collectAllSettings);
-}
+// They used to be collected on every "input", "change" and "blur" - each one a
+// full JSON.stringify of the settings object, and each one a write to storage
+// for a value the user had not committed to yet. Nothing depends on this now:
+// the Save button calls collectAllSettings(), and Cancel restores the snapshot
+// taken when the panel opened.
+//
+// The two controls that must preview live are wired separately below: the accent
+// hex field (so the swatch and the page follow the typing) and the theme buttons.
 
 // A theme/accent change is applied live as well as stored, so the page and the
 // saved state cannot drift apart while the panel is open.
 $("sAccentHex").addEventListener("input", () => {
+  // Preview only. The value reaches `settings` and storage on Save.
   applyAccent(normalizeHexInput($("sAccentHex").value) || "");
 });
 
@@ -8189,7 +9585,9 @@ $("workspaceFileContent").addEventListener("input", () => {
   if (!conv.files) conv.files = {};
   conv.files[workspaceActiveFile] = $("workspaceFileContent").value;
   conv.updatedAt = Date.now();
-  saveConversations();
+  // The value is already in memory; storage can follow shortly. Typing a
+  // paragraph used to serialise the whole history on every character.
+  scheduleSave();
   // Mirror the edit to the linked folder, debounced: writing on every keystroke
   // would hammer the storage provider for no benefit.
   scheduleLinkedWrite(workspaceActiveFile, $("workspaceFileContent").value);
