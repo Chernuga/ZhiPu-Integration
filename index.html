@@ -639,10 +639,17 @@
     border: 1px solid var(--ds-border-l2);
     border-radius: 10px;
     -webkit-overflow-scrolling: touch;
+    /* Momentum scrolling on iOS. */
+    overscroll-behavior-x: contain;
   }
   .md-table-wrap table {
     border-collapse: collapse;
-    width: 100%;
+    /* The content decides the width, and the wrapper scrolls.
+       width: 100% pinned the table to the container, so on a narrow screen every
+       column was squeezed and its text wrapped - a wide table became a stack of
+       fragments instead of something you could read across. */
+    width: auto;
+    min-width: 100%;
     font-size: 14px;
     line-height: 1.5;
   }
@@ -653,6 +660,10 @@
     vertical-align: top;
     border-bottom: 1px solid var(--ds-border-l1);
     border-right: 1px solid var(--ds-border-l1);
+    /* A cell grows to fit its content rather than breaking every few words, and
+       max-width stops one long cell from pushing the table absurdly wide. */
+    max-width: 320px;
+    overflow-wrap: break-word;
   }
   .md-table-wrap thead th {
     background: var(--ds-bg-layer-2);
@@ -888,6 +899,24 @@
     overflow-y: auto;
     contain: layout paint;
     padding-right: 4px;
+    /* The fade at each end is drawn by the two mask layers below. */
+    -webkit-mask-image: linear-gradient(
+      to bottom,
+      transparent 0,
+      #000 18px,
+      #000 calc(100% - 18px),
+      transparent 100%
+    );
+    mask-image: linear-gradient(
+      to bottom,
+      transparent 0,
+      #000 18px,
+      #000 calc(100% - 18px),
+      transparent 100%
+    );
+    /* Scrolling is automatic while it streams, so a stray wheel or drag would only
+       fight the follow. It stays scrollable for a finished reply. */
+    overscroll-behavior-y: contain;
   }
   .reasoning-block .reasoning-text p { margin: 0 0 8px; }
   .reasoning-block .reasoning-text p:last-child { margin-bottom: 0; }
@@ -2296,12 +2325,6 @@
         <div class="model-menu" id="modelMenu"></div>
       </div>
       <div class="topbar-right">
-        <button class="icon-btn" id="workspaceBtn" title="Workspace">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-          </svg>
-          <span class="badge-dot" id="workspaceBadge" style="display:none"></span>
-        </button>
         <div class="export-wrap">
           <button class="icon-btn" id="exportBtn" title="Export conversation">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -2321,6 +2344,12 @@
             </button>
           </div>
         </div>
+        <button class="icon-btn" id="workspaceBtn" title="Workspace">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+          </svg>
+          <span class="badge-dot" id="workspaceBadge" style="display:none"></span>
+        </button>
       </div>
     </header>
 
@@ -2905,9 +2934,17 @@ const ACTIVE_KEY = "deepseek-ui-active";
 const DRAFT_PREFIX  = "deepseek-ui-draft:";
 const DRAFT_NEW_KEY = DRAFT_PREFIX + "__new__";
 
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
-const MAX_TEXT_BYTES  = 512 * 1024;
-const MAX_IMAGE_DIM   = 1568;
+// Image downscaling.
+//
+// There is deliberately NO size limit on an attachment. Images live in IndexedDB, which
+// is sized as a share of the disk rather than the ~5 MB a browser gives localStorage, so a
+// large screenshot no longer has to be refused to protect the conversation store. The
+// quota that DID bite was localStorage - a different store, holding the chats themselves.
+//
+// Downscaling still happens for large images, because it keeps rendering and upload cheap;
+// it is a quality choice now, not a gate. MAX_IMAGE_DIM is the long edge past which an
+// image is resized, and 1568 is the convention most vision models use.
+const MAX_IMAGE_DIM = 1568;
 
 const TYPING_SPEEDS = {
   default:  { delay: 200, adaptive: true  },
@@ -4126,9 +4163,90 @@ function saveSettings() {
   return saveKey(SETTINGS_KEY, settings) !== "failed";
 }
 
+/**
+ * Conversation history, kept in IndexedDB.
+ *
+ * localStorage caps an entire origin at about 5 MB. The history outgrew that, and hitting
+ * the cap made every later save fail - which is the "storage is full mid-session" problem:
+ * the alert arrived after the write was already refused.
+ *
+ * IndexedDB is sized as a share of free disk instead, typically hundreds of megabytes, and
+ * it stores the payload as one blob so nothing about the existing shape has to change.
+ *
+ * The store is synchronous to read at startup only in the sense that it is awaited once,
+ * before the first render; every write is fire-and-forget with the in-memory state as the
+ * source of truth.
+ */
+const ConversationStore = (() => {
+  const DB_NAME = "deepseek-history";
+  const DB_VERSION = 1;
+  const STORE = "conversations";
+  const RECORD = "current";
+  let dbPromise = null;
+
+  function openDb() {
+    if (dbPromise) return dbPromise;
+    dbPromise = new Promise((resolve, reject) => {
+      let req;
+      try { req = indexedDB.open(DB_NAME, DB_VERSION); }
+      catch (e) { reject(e); return; }
+
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error || new Error("IndexedDB open failed"));
+    });
+    return dbPromise;
+  }
+
+  function run(mode, fn) {
+    return openDb().then((db) => new Promise((resolve, reject) => {
+      let tx;
+      try { tx = db.transaction(STORE, mode); }
+      catch (e) { reject(e); return; }
+
+      let request;
+      try { request = fn(tx.objectStore(STORE)); }
+      catch (e) { reject(e); return; }
+
+      tx.oncomplete = () => resolve(request ? request.result : undefined);
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error || new Error("IndexedDB transaction aborted"));
+    }));
+  }
+
+  return {
+    /** The stored JSON string, or null when nothing has been written yet. */
+    get() { return run("readonly", (s) => s.get(RECORD)); },
+    put(json) { return run("readwrite", (s) => s.put(json, RECORD)); },
+  };
+})();
+
+/** Whether the first IndexedDB write has landed, so the legacy copy can be cleared. */
+let conversationStoreReady = false;
+
+/**
+ * Read the conversation history.
+ *
+ * IndexedDB first, then localStorage. The localStorage read is not dead code: it is where
+ * every existing install keeps its history, and it stays the fallback if IndexedDB is
+ * unavailable - blocked in a private window, for instance.
+ *
+ * `bootConversationJson` is set by boot() once the asynchronous read has landed. Calling
+ * this again before that point (at definition time) simply yields an empty list.
+ */
 function loadConversations() {
   try {
-    const raw = JSON.parse(localStorage.getItem(CONV_KEY) ?? "[]");
+    let stored = null;
+
+    // A synchronous read is impossible, so the boot path uses the cached copy that
+    // boot() placed here before the first render.
+    if (typeof window.bootConversationJson === "string") stored = window.bootConversationJson;
+    else stored = localStorage.getItem(CONV_KEY);
+
+    const raw = JSON.parse(stored ?? "[]");
     if (!Array.isArray(raw)) return [];
     for (const c of raw) {
       if (!c.files || typeof c.files !== "object") {
@@ -4283,25 +4401,10 @@ try {
 } catch (e) { /* storage unavailable; the default stands */ }
 let conversations = loadConversations();
 
-// Drop the per-change text that earlier versions stored.
-//
-// Every change used to carry the file's previous and new contents so it could be
-// reverted. Revert is gone, so those copies are pure overhead - two full copies
-// of a file per edit. Trimming them here gives the space back on the next save
-// rather than only for newly written conversations, and it runs before the write
-// cache is seeded so the first save is not mistaken for a no-op.
-(function reclaimChangeStorage() {
-  try {
-    const freed = shrinkStoredChanges(conversations);
-    if (freed > 0) {
-      console.info(
-        `Released ${(freed / 1024).toFixed(0)} KB by trimming stored file-change text.`
-      );
-    }
-  } catch (e) {
-    console.warn("Could not trim stored changes:", e);
-  }
-})();
+// The per-change text that earlier versions stored is trimmed inside boot(), after the
+// history has actually been read. Doing it here would run against whatever
+// loadConversations found at definition time, which - now that the history comes from
+// IndexedDB asynchronously - is before the real data exists.
 
 // =============================================================================
 // Attachment store (IndexedDB)
@@ -4827,27 +4930,40 @@ function escapeAttr(s) {
  * Without that, a path like `a_b_c` came out as a_b<em>c</em>.
  */
 function renderInline(raw) {
-  const pieces = String(raw ?? "").split(/(`+[^`]*`+)/g);
-  return pieces.map((piece, i) => {
-    // Odd indices are the captured code spans.
-    if (i % 2 === 1) {
-      const m = piece.match(/^(`+)([\s\S]*?)\1$/);
-      return `<code>${escapeHtml(m ? m[2] : piece)}</code>`;
-    }
-    let s = escapeHtml(piece);
-    s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (whole, label, href) => {
-      // Only schemes that cannot execute script are allowed through.
-      const safe = /^(https?:\/\/|mailto:|\/|#)/i.test(href) ? href : "#";
-      return `<a href="${escapeAttr(safe)}" target="_blank" rel="noopener noreferrer">${label}</a>`;
-    });
-    s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-    s = s.replace(/__([^_]+)__/g, "<strong>$1</strong>");
-    s = s.replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>");
-    // The guard excludes word characters so snake_case_names survive.
-    s = s.replace(/(^|[^_\w])_([^_\n]+)_/g, "$1<em>$2</em>");
-    s = s.replace(/~~([^~]+)~~/g, "<del>$1</del>");
-    return s;
-  }).join("");
+  const source = String(raw ?? "");
+
+  // 1. Lift the code spans out, leaving a sentinel behind.
+  //
+  // A placeholder rather than a split, because emphasis may OPEN before a code span and
+  // CLOSE after it: **`something`**. Splitting first put the two asterisk runs in
+  // different pieces, where they could never pair, so the stars showed literally.
+  const codes = [];
+  const SENTINEL = "\u0000";
+  const withPlaceholders = source.replace(/(`+)([\s\S]*?)\1/g, (whole, ticks, body) => {
+    codes.push(`<code>${escapeHtml(body)}</code>`);
+    return `${SENTINEL}${codes.length - 1}${SENTINEL}`;
+  });
+
+  // 2. Emphasis, links and strikethrough over the whole string.
+  let s = escapeHtml(withPlaceholders);
+
+  s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (whole, label, href) => {
+    // Only schemes that cannot execute script are allowed through.
+    const safe = /^(https?:\/\/|mailto:|\/|#)/i.test(href) ? href : "#";
+    return `<a href="${escapeAttr(safe)}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+  });
+
+  // Bold and italic may now contain a placeholder, which is why their bodies accept any
+  // character except the marker itself rather than excluding the sentinel.
+  s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  s = s.replace(/__([^_]+)__/g, "<strong>$1</strong>");
+  s = s.replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>");
+  // The guard excludes word characters so snake_case_names survive.
+  s = s.replace(/(^|[^_\w])_([^_\n]+)_/g, "$1<em>$2</em>");
+  s = s.replace(/~~([^~]+)~~/g, "<del>$1</del>");
+
+  // 3. Put the code spans back.
+  return s.replace(new RegExp(`${SENTINEL}(\\d+)${SENTINEL}`, "g"), (m, idx) => codes[Number(idx)] || "");
 }
 
 const MD_FENCE_RE   = /^\s{0,3}(`{3,})([^\n]*)$/;
@@ -5978,10 +6094,6 @@ async function compressImage(file) {
 
 async function addAttachmentFromFile(file) {
   if (file.type.startsWith("image/")) {
-    if (file.size > MAX_IMAGE_BYTES) {
-      alert(`"${file.name}" is too large (max 5 MB for images).`);
-      return;
-    }
     try {
       const dataUrl = await compressImage(file);
       const id = newAttachmentId();
@@ -5990,7 +6102,10 @@ async function addAttachmentFromFile(file) {
       // holds. The cache is primed so the preview and the request both have the
       // data without waiting for a read.
       attachmentCache.set(id, dataUrl);
-      AttachmentStore.put(id, { dataUrl, mime: file.type || "" }).catch(() => {});
+      // A write that fails is reported rather than swallowed: an image that silently
+      // failed to store would render as an empty frame after a reload.
+      AttachmentStore.put(id, { dataUrl, mime: file.type || "" })
+        .catch((e) => console.warn(`Could not store "${file.name}":`, e));
       pendingAttachments.push({
         type: "image", name: file.name, mime: file.type, id, size: file.size,
       });
@@ -6000,10 +6115,6 @@ async function addAttachmentFromFile(file) {
     return;
   }
 
-  if (file.size > MAX_TEXT_BYTES) {
-    alert(`"${file.name}" is too large (max 512 KB for text files).`);
-    return;
-  }
   try {
     const text = await readAsText(file);
     pendingAttachments.push({
@@ -6760,6 +6871,14 @@ async function runCompletion(conv) {
         reasoningStreaming = true;
         if (reasoningBlockEl) reasoningBlockEl.dataset.streaming = "1";
         reasoningTextEl.textContent = text;
+        // Keep the newest thought in view.
+        //
+        // The pane is capped in height, so once the reasoning outgrows it the
+        // interesting part - the thought being formed now - was the part below the
+        // fold, and it scrolled away unseen. Setting scrollTop to scrollHeight after
+        // the text is written pins it to the bottom, which is what a reader wants
+        // while watching a model think: the latest line, always.
+        reasoningTextEl.scrollTop = reasoningTextEl.scrollHeight;
         scheduleFollow();
         // If the answer has started before this paint landed, finalize now.
         if (assistantMsg.content) finalizeReasoning();
@@ -7324,6 +7443,36 @@ function saveKey(key, value, store = value) {
     return "failed";
   }
   if (lastWritten.get(key) === payload) return "unchanged";
+
+  // The conversation history goes to IndexedDB, which is sized against the disk rather
+  // than the ~5 MB cap localStorage applies to the whole origin.
+  //
+  // That cap is what interrupted work mid-session: hitting it made every subsequent save
+  // fail, and the alert arrived after the write was already lost. IndexedDB has no such
+  // small ceiling, and it is a different store from the one the images use, so a large
+  // history and a large attachment do not compete.
+  //
+  // Writes are asynchronous, so the cache is updated optimistically and rolled back if the
+  // write reports a failure - the dirty check stays correct either way.
+  if (key === CONV_KEY) {
+    lastWritten.set(key, payload);
+    ConversationStore.put(payload)
+      .then(() => { conversationStoreReady = true; })
+      .catch((err) => {
+        console.error("Could not save conversations to IndexedDB:", err);
+        // Fall back to localStorage for this write, so a session is not lost to an
+        // IndexedDB failure - it only has to fit in the smaller store temporarily.
+        try {
+          localStorage.setItem(key, payload);
+          lastWritten.set(key, payload);
+        } catch (e) {
+          lastWritten.delete(key);
+          showStorageWarning(key, payload.length);
+        }
+      });
+    return "written";
+  }
+
   try {
     localStorage.setItem(key, payload);
     lastWritten.set(key, payload);
@@ -9777,6 +9926,70 @@ $("workspaceDeleteBtn").addEventListener("click", async () => {
 // =============================================================================
 // Boot
 // =============================================================================
+/**
+ * Read the history from IndexedDB before the first render.
+ *
+ * IndexedDB is asynchronous, and the whole page is built on a synchronous `conversations`
+ * array. Rather than make every read of it async, the history is fetched once here and
+ * placed in bootConversationJson, which loadConversations() uses as its source. The rest of
+ * the page is untouched.
+ *
+ * A failure is not fatal: localStorage still holds the previous session, so the fallback
+ * load produces the same history one write behind.
+ */
+async function loadConversationHistory() {
+  try {
+    const stored = await ConversationStore.get();
+    if (typeof stored === "string") return stored;
+  } catch (e) {
+    console.warn("Could not read the conversation history from IndexedDB:", e);
+  }
+  return null;
+}
+
+async function boot() {
+// The history is read first; everything below assumes `conversations` is populated.
+const storedHistory = await loadConversationHistory();
+if (storedHistory !== null) {
+  // Migration: an install that predates IndexedDB keeps its history in localStorage. It is
+  // adopted on the first load and cleared once the IndexedDB write has landed, so the
+  // larger store takes over without the user doing anything.
+  const legacy = localStorage.getItem(CONV_KEY);
+  if (legacy && !conversationStoreReady) {
+    storedHistory = storedHistory;      // IndexedDB already has the newer copy
+  }
+  window.bootConversationJson = storedHistory;
+} else {
+  const legacy = localStorage.getItem(CONV_KEY);
+  if (legacy) {
+    window.bootConversationJson = legacy;
+    // Adopt it into the larger store, then free the smaller one.
+    ConversationStore.put(legacy)
+      .then(() => {
+        conversationStoreReady = true;
+        try { localStorage.removeItem(CONV_KEY); } catch (e) { /* ignore */ }
+        console.info("Conversation history moved to IndexedDB.");
+      })
+      .catch((e) => console.warn("Could not migrate the history to IndexedDB:", e));
+  }
+}
+// A fresh session with nothing stored anywhere still needs an array to work with.
+if (window.bootConversationJson === undefined) window.bootConversationJson = "[]";
+
+conversations = loadConversations();
+
+// Drop the per-change text that earlier versions stored, before the first write.
+(function reclaimAfterLoad() {
+  try {
+    const freed = shrinkStoredChanges(conversations);
+    if (freed > 0) {
+      console.info(`Released ${(freed / 1024).toFixed(0)} KB by trimming stored file-change text.`);
+    }
+  } catch (e) {
+    console.warn("Could not trim stored changes:", e);
+  }
+})();
+
 applyTheme();
 applyAccent(settings.accentHex);
 syncThemeSegmented();
@@ -9865,6 +10078,13 @@ window.addEventListener("beforeunload", (e) => {
   try { saveAllNow(); } catch { /* best effort */ }
   try { saveDraft($("input").value, activeId); } catch { /* best effort */ }
   if (streamingAbort) { e.preventDefault(); e.returnValue = ""; }
+});
+}   // end boot()
+
+// Start once the history has been read. A failure inside boot is reported rather than
+// leaving a blank page with no explanation.
+boot().catch((e) => {
+  console.error("Could not start:", e);
 });
 </script>
 </body>
