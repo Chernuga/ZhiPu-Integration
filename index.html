@@ -3704,7 +3704,74 @@ const FILE_COMMANDS_INSTRUCTIONS = [
   "```",
   "part to replace the found content goes in this code block",
   "```",
+  "3. Reading a file:",
+  "path/to/file/filename.extension read:",
+  "",
+  "Ask for one at a time, and do not guess at a file's contents - read it first. To change",
+  "part of a file, read it, then quote the exact text you want to replace in the find block.",
 ].join("\n");
+
+/**
+ * The workspace's file list, as the model sees it.
+ *
+ * Without this the model edits blind: it can only find text it has already written in this
+ * conversation, and a file it has never seen - or one edited since - cannot be changed
+ * safely. Listing the paths, with sizes, is cheap and tells it what it can read.
+ *
+ * Paths only, never contents. Contents would arrive with every request, whether relevant or
+ * not, and the list grows with the workspace; a `read:` command fetches just the one file
+ * that is needed.
+ */
+function workspaceListingFor(conv) {
+  const files = (conv && conv.files) || {};
+  const paths = Object.keys(files).sort();
+  if (!paths.length) return "";
+
+  const lines = paths.map((p) => {
+    const size = (files[p] || "").length;
+    const kb = size < 1024 ? `${size} B` : `${(size / 1024).toFixed(1)} KB`;
+    return `- ${p} (${kb})`;
+  });
+
+  return [
+    "Files currently in the workspace:",
+    ...lines,
+    "",
+    "Use `path read:` to see one before editing it.",
+  ].join("\n");
+}
+
+/**
+ * Text a `read:` command asked for.
+ *
+ * Returns "" when nothing was requested, so the caller can append nothing at all rather
+ * than an empty section that would only puzzle the model.
+ */
+function readRequestedFiles(conv, text) {
+  const files = (conv && conv.files) || {};
+  const segments = parseReplySegments(text);
+  const wanted = [];
+  for (const seg of segments) {
+    if (seg.type === "command" && seg.kind === "read" && seg.file) wanted.push(seg.file);
+  }
+  if (!wanted.length) return "";
+
+  const parts = [];
+  const missing = [];
+  for (const path of wanted) {
+    const content = files[path];
+    if (content == null) { missing.push(path); continue; }
+    const ext = (path.split(".").pop() || "").toLowerCase();
+    // dropEnding: a file stored with a trailing newline would otherwise put a blank line
+    // inside the fence, which reads as content that is not there.
+    const body = String(content).replace(/\n$/, "");
+    parts.push(`--- ${path} ---\n\`\`\`${ext}\n${body}\n\`\`\``);
+  }
+  if (missing.length) {
+    parts.push(`Not in the workspace: ${missing.join(", ")}`);
+  }
+  return parts.join("\n\n");
+}
 
 // Detect touch devices once. We keep this as a live MediaQueryList so it
 // responds to input-method changes (e.g. detaching a keyboard).
@@ -3770,6 +3837,7 @@ const TOOL_CALL_ICONS = {
   create: `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2h7l3 3v9a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z"/><path d="M10 2v3h3"/><path d="M7.5 8v3M6 9.5h3"/></svg>`,
   find: `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="7" r="4.5"/><path d="M13.5 13.5l-4-4"/></svg>`,
   replace: `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h7"/><path d="M8.5 2.5L11 5 8.5 7.5"/><path d="M12 11H5"/><path d="M7.5 8.5L5 11l2.5 2.5"/></svg>`,
+  read: `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 8s2.5-4.5 6.5-4.5S14.5 8 14.5 8s-2.5 4.5-6.5 4.5S1.5 8 1.5 8z"/><circle cx="8" cy="8" r="1.8"/></svg>`,
 };
 
 // =============================================================================
@@ -3830,7 +3898,7 @@ function flashButton(btn, ok, originalHtml) {
  * Capturing is still strict about the three words and the colon, so a sentence that
  * merely mentions create: is not mistaken for a command.
  */
-const FILE_CMD_LINE_RE = /^[\s`*_~]*([^\s`*_~]+)[\s`*_~]+(find|replace|create)[\s`*_~]*:[\s`*_~]*$/i;
+const FILE_CMD_LINE_RE = /^[\s`*_~]*([^\s`*_~]+)[\s`*_~]+(find|replace|create|read)[\s`*_~]*:[\s`*_~]*$/i;
 
 /**
  * Canonicalise a workspace path.
@@ -3869,6 +3937,15 @@ function parseFileCommands(text) {
     const file = m[1].replace(/^[`*_~]+|[`*_~]+$/g, "");
     if (!file) { i++; continue; }
     const kind = m[2].toLowerCase();
+
+    // A read takes no payload. Without this it would swallow whatever prose followed it,
+    // since the no-fence branch below reads until the next command.
+    if (kind === "read") {
+      ops.push({ file, kind, content: "" });
+      i++;                       // advance past the command line, or this loops forever
+      continue;
+    }
+
     i++;
     while (i < lines.length && lines[i].trim() === '') i++;
     let content;
@@ -4150,6 +4227,14 @@ function parseReplySegments(text) {
 
     const file = normalizePath(m[1].replace(/^[`*_~]+|[`*_~]+$/g, ""));
     const kind = m[2].toLowerCase();
+
+    // A read has no payload, so it must not consume the prose that follows it.
+    if (kind === "read") {
+      if (file) segments.push({ type: "command", kind, file, body: "", closed: true });
+      i++;                       // advance past the command line, or this loops forever
+      continue;
+    }
+
     i++;
 
     while (i < lines.length && lines[i].trim() === "") i++;
@@ -4196,6 +4281,11 @@ function parseReplySegments(text) {
  */
 function commandStatusLabel(kind, file, state) {
   const name = file.split("/").pop() || file;
+  if (kind === "read") {
+    // A read completes the moment it is acted on, so there is no failure wording: an
+    // unreadable file comes back to the model as "not in the workspace" instead.
+    return state === "done" ? `Read ${name}.` : `Reading ${name}...`;
+  }
   if (kind === "create") {
     if (state === "failed") return `Failed to create ${name}.`;
     return state === "done" ? `Created ${name}.` : `Creating ${name}...`;
@@ -4217,10 +4307,10 @@ function commandStatusLabel(kind, file, state) {
 function fileCommandStatusHtml(kind, file, state) {
   const label = commandStatusLabel(kind, file, state);
   const icon = state === "done"
-    ? TOOL_CALL_ICONS.replace
+    ? TOOL_CALL_ICONS[kind] || TOOL_CALL_ICONS.replace
     : state === "failed"
       ? `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M8 4.5v4.5M8 11.2v.3"/><circle cx="8" cy="8" r="6"/></svg>`
-      : TOOL_CALL_ICONS.create;
+      : TOOL_CALL_ICONS[kind] || TOOL_CALL_ICONS.create;
 
   return `<div class="file-op file-op-${state}" data-file="${escapeAttr(file)}">` +
     `<span class="fo-icon">${icon}</span>` +
@@ -4265,6 +4355,10 @@ function statesFromFileChanges(msg) {
   const states = [];
   for (const seg of segments) {
     if (seg.type !== "command") continue;
+    // A read edits nothing, so it never appears in fileChanges - but it did happen, and a
+    // reloaded reply should say "Read foo.js." rather than leaving it mid-sentence as if
+    // it were still running.
+    if (seg.kind === "read") { states.push("done"); continue; }
     const tally = byFile.get(seg.file);
     if (!tally) { states.push("running"); continue; }
     // Failures are consumed first: a file that was retried shows the failure, then the
@@ -7373,6 +7467,21 @@ async function runCompletion(conv) {
     sysParts.push(settings.customInstructions.trim());
   }
   sysParts.push(FILE_COMMANDS_INSTRUCTIONS);
+
+  // What the model can read, so it does not have to guess at a file it has never seen.
+  const listing = workspaceListingFor(conv);
+  if (listing) sysParts.push(listing);
+
+  // Contents for any `read:` the previous reply asked for.
+  //
+  // The read runs as a tool call would: the last assistant turn requested a file, and the
+  // answer is attached to the request that follows. It is looked up in the workspace, so a
+  // file created earlier in the same conversation can be read back and edited precisely
+  // rather than re-guessed.
+  const lastAssistant = [...conv.messages].reverse().find((m) => m.role === "assistant");
+  const requested = lastAssistant ? readRequestedFiles(conv, lastAssistant.content) : "";
+  if (requested) sysParts.push(`Contents requested in the last reply:\n\n${requested}`);
+
   outgoing.push({ role: "system", content: sysParts.join("\n\n") });
 
   for (const m of conv.messages) outgoing.push(messageToApi(m));
