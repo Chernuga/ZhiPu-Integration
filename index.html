@@ -1126,17 +1126,36 @@
   .fc-list { display: flex; flex-direction: column; }
   .fc-item { border-bottom: 1px solid var(--border); }
   .fc-item:last-child { border-bottom: none; }
-  .fc-item > summary {
+
+  /* The row is static now - no disclosure to find. The edit list sits under it, always
+     visible, and the only interactive things are Copy and Open. */
+  .fc-row {
     display: flex; align-items: center; gap: 10px;
     padding: 9px 14px;
-    cursor: pointer;
-    list-style: none;
     font-size: 13px;
     color: var(--text);
-    transition: background var(--ds-dur) var(--ds-ease-in-out);
   }
-  .fc-item > summary::-webkit-details-marker { display: none; }
-  .fc-item > summary:hover { background: var(--hover); }
+
+  /* The direct route to the file, which is what someone reading the row usually wants. */
+  .fc-open {
+    display: inline-flex; align-items: center; gap: 2px;
+    flex-shrink: 0;
+    padding: 3px 8px 3px 10px;
+    border-radius: 6px;
+    font-size: 11.5px;
+    font-weight: 500;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    background: transparent;
+    transition: background var(--ds-dur) var(--ds-ease-in-out),
+                color var(--ds-dur) var(--ds-ease-in-out);
+  }
+  .fc-open:hover { background: var(--hover); color: var(--text); }
+  .fc-open svg {
+    width: 11px; height: 11px;
+    display: block;
+    color: var(--text-dim);
+  }
 
   .fc-chev {
     width: 12px; height: 12px;
@@ -1144,7 +1163,6 @@
     transition: transform var(--ds-dur) var(--ds-ease-in-out);
     flex-shrink: 0;
   }
-  .fc-item[open] .fc-chev { transform: rotate(90deg); }
 
   .fc-status {
     display: inline-grid; place-items: center;
@@ -1207,7 +1225,7 @@
   .fc-copy-one.failure { color: var(--ds-error); border-color: var(--ds-error); }
 
   .fc-body {
-    padding: 0 14px 12px;
+    padding: 0 14px 10px;
   }
   .fc-body pre {
     margin: 0;
@@ -3944,19 +3962,20 @@ const RETRY_ICON = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" 
 /**
  * The icons for file operations, on one 16 grid so the set reads as a family.
  *
- * `read` and `search` are the supplied DeepSeek glyphs. `create` is DeepSeek's own "new
- * file" - a circular outline with a plus - taken from the client's icon set. There is no
- * pencil in that set, so `edit` is drawn to match: same stroke weight, same rounded joins,
- * same visual mass.
+ * `read` and `search` are the supplied DeepSeek glyphs. The other two follow the
+ * screenshots: a rounded square whose top-right corner is opened up, with a pencil in the
+ * gap for an edit and a plus for a create. The outline is one shared path, so the pair
+ * cannot drift apart.
  *
  * Every one uses currentColor, so the accent/grey states below control them without a
  * second copy of each drawing.
  */
 const TOOL_CALL_ICONS = {
-  create: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2.37091 11.2501C1.58745 9.89288 1.32067 8.29835 1.61969 6.76006C1.91872 5.22177 2.76342 3.8433 3.99826 2.87846C5.2331 1.91362 6.77494 1.42737 8.33988 1.50925C9.90482 1.59113 11.3875 2.23562 12.5149 3.32406C13.6425 4.41269 14.3387 5.87206 14.4754 7.4334C14.612 8.99474 14.18 10.5529 13.2587 11.8209C12.3375 13.0888 10.9891 13.9813 9.46194 14.3337C8.18691 14.628 6.85895 14.5294 5.64989 14.0605C5.1712 13.8748 4.76962 13.4932 4.26534 13.3967C3.67413 13.2835 2.95257 13.5598 2.03794 14.3337" /><path d="M8 5V11"/><path d="M5 8H11"/></svg>`,
+  create: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9.6 2H4.5A2.5 2.5 0 0 0 2 4.5v7A2.5 2.5 0 0 0 4.5 14h7a2.5 2.5 0 0 0 2.5-2.5V6.4"/><path d="M11.7 1.9v4.6"/><path d="M9.4 4.2h4.6"/></svg>`,
   // A find and a replace are both edits, so both use the pencil.
-  find: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M10.9 2.1a1.8 1.8 0 0 1 2.55 0l.45.45a1.8 1.8 0 0 1 0 2.55l-7.3 7.3-3.4 1.05a.55.55 0 0 1-.7-.7l1.05-3.4z"/><path d="M9.6 3.4l3 3"/></svg>`,
-  replace: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M10.9 2.1a1.8 1.8 0 0 1 2.55 0l.45.45a1.8 1.8 0 0 1 0 2.55l-7.3 7.3-3.4 1.05a.55.55 0 0 1-.7-.7l1.05-3.4z"/><path d="M9.6 3.4l3 3"/></svg>`,
+  // A find and a replace are both edits, so both use the pencil.
+  find: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9.6 2H4.5A2.5 2.5 0 0 0 2 4.5v7A2.5 2.5 0 0 0 4.5 14h7a2.5 2.5 0 0 0 2.5-2.5V6.4"/><path d="M13.1 3.2a1.45 1.45 0 0 0-2.05-2.05L6.5 5.7l-.55 2.35 2.35-.55z"/><path d="M10.4 1.8l1.8 1.8"/></svg>`,
+  replace: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9.6 2H4.5A2.5 2.5 0 0 0 2 4.5v7A2.5 2.5 0 0 0 4.5 14h7a2.5 2.5 0 0 0 2.5-2.5V6.4"/><path d="M13.1 3.2a1.45 1.45 0 0 0-2.05-2.05L6.5 5.7l-.55 2.35 2.35-.55z"/><path d="M10.4 1.8l1.8 1.8"/></svg>`,
   read: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M11.2426 4.80473V6.10551H4.75819V4.80473H11.2426Z" fill="currentColor"></path><path d="M9.40858 7.84478V9.14557H4.75819V7.84478H9.40858Z" fill="currentColor"></path><path d="M9.23438 0.546389C10.1941 0.546389 10.9683 0.544914 11.5859 0.611819C12.2161 0.680096 12.7634 0.825745 13.2393 1.17139C13.5172 1.3733 13.7619 1.61812 13.9639 1.896C14.3096 2.37183 14.4551 2.91922 14.5234 3.54932C14.5903 4.16686 14.5889 4.94133 14.5889 5.90088V10.0981C14.5889 11.0576 14.5903 11.8321 14.5234 12.4497C14.4552 13.0798 14.3094 13.6272 13.9639 14.103C13.7619 14.381 13.5172 14.6257 13.2393 14.8276C12.7633 15.1734 12.2163 15.3189 11.5859 15.3872C10.9683 15.4541 10.1942 15.4536 9.23438 15.4536H6.76563C5.80591 15.4536 5.03168 15.4541 4.41407 15.3872C3.78385 15.3189 3.23665 15.1734 2.76074 14.8276C2.48291 14.6257 2.23802 14.3809 2.03614 14.103C1.69066 13.6272 1.54483 13.0798 1.47657 12.4497C1.40973 11.8321 1.41114 11.0576 1.41114 10.0981V5.90088C1.41113 4.94132 1.40966 4.16686 1.47657 3.54932C1.54488 2.91921 1.69042 2.37184 2.03614 1.896C2.2381 1.61807 2.4828 1.37333 2.76074 1.17139C3.23665 0.825682 3.78386 0.680109 4.41407 0.611819C5.03168 0.544905 5.80591 0.546389 6.76563 0.546389H9.23438ZM6.76563 1.896C5.77586 1.896 5.0876 1.89738 4.55957 1.95459C4.0443 2.01043 3.76214 2.11349 3.55469 2.26416C3.39135 2.38284 3.24761 2.52662 3.12891 2.68994C2.97821 2.89736 2.8752 3.17967 2.81934 3.69483C2.76214 4.22279 2.76075 4.91131 2.76074 5.90088V10.0981C2.76074 11.0876 2.76221 11.7762 2.81934 12.3042C2.87516 12.8194 2.97829 13.1026 3.12891 13.3101C3.24754 13.4733 3.39147 13.6172 3.55469 13.7358C3.76213 13.8865 4.04438 13.9896 4.55957 14.0454C5.0876 14.1026 5.77586 14.103 6.76563 14.103H9.23438C10.2242 14.103 10.9124 14.1026 11.4404 14.0454C11.9556 13.9896 12.2379 13.8865 12.4453 13.7358C12.6086 13.6172 12.7525 13.4733 12.8711 13.3101C13.0217 13.1026 13.1248 12.8195 13.1807 12.3042C13.2378 11.7762 13.2393 11.0876 13.2393 10.0981V5.90088C13.2393 4.91131 13.2379 4.22279 13.1807 3.69483C13.1248 3.17969 13.0218 2.89736 12.8711 2.68994C12.7524 2.52667 12.6086 2.38281 12.4453 2.26416C12.2379 2.11355 11.9556 2.01041 11.4404 1.95459C10.9124 1.8974 10.2241 1.896 9.23438 1.896H6.76563Z" fill="currentColor"></path></svg>`,
 };
 
@@ -6235,72 +6254,65 @@ function renderFileChangesCard(changes, messageIndex) {
 }
 
 function renderFileChangeItem(c) {
-  const details = el("details", { className: `fc-item fc-${c.kind}` });
-  const summary = el("summary");
+  // A plain row, not a <details>.
+  //
+  // The row used to expand into the list of edits this file received. That list is
+  // always shown now - it is the clearest thing about the row - and the action people
+  // actually want is opening the file, which gets a button of its own.
+  const item = el("div", { className: `fc-item fc-${c.kind}` });
+  const row = el("div", { className: "fc-row" });
 
   const status = el("span", { className: "fc-status" });
   if (c.kind === "edit" || c.kind === "overwrite") status.textContent = "M";
   else if (c.kind === "create") status.textContent = "A";
   else if (c.kind === "nomatch") status.textContent = "!";
   else if (c.kind === "missing") status.textContent = "?";
-  summary.append(status);
+  row.append(status);
 
   const nameBtn = el("button", { className: "fc-name-btn", type: "button", textContent: c.file, title: c.file });
-  nameBtn.addEventListener("click", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    openWorkspaceToFile(c.file);
-  });
-  summary.append(nameBtn);
+  nameBtn.addEventListener("click", () => openWorkspaceToFile(c.file));
+  row.append(nameBtn);
 
   if (c.kind === "nomatch") {
-    summary.append(el("span", { className: "fc-note", textContent: "find text not found" }));
+    row.append(el("span", { className: "fc-note", textContent: "find text not found" }));
   } else if (c.kind === "missing") {
-    summary.append(el("span", { className: "fc-note", textContent: "file not in workspace" }));
+    row.append(el("span", { className: "fc-note", textContent: "file not in workspace" }));
   } else if (c.attempts > 1) {
-    // Several operations landed on this file in one reply. Say so, rather than
-    // letting a single row imply exactly one edit happened. `attempts` is only
-    // present in memory; after a reload the row still renders, just without
-    // the count.
+    // Several operations landed on this file in one reply. Say so, rather than letting a
+    // single row imply exactly one edit happened.
     const note = c.failed > 0
       ? `${c.attempts} changes · ${c.failed} failed`
       : `${c.attempts} changes`;
-    summary.append(el("span", { className: "fc-note", textContent: note }));
+    row.append(el("span", { className: "fc-note", textContent: note }));
   }
 
   if (c.kind !== "nomatch" && c.kind !== "missing") {
     const copyBtn = el("button", { className: "fc-copy-one", type: "button", textContent: "Copy" });
     copyBtn.addEventListener("click", async (e) => {
-      e.preventDefault();
       e.stopPropagation();
-      // Copy the file's current content rather than a snapshot from when the
-      // change was recorded: later replies may have edited it since, and the
-      // snapshot is no longer stored.
+      // Copy the file's current content rather than a snapshot from when the change was
+      // recorded: later replies may have edited it since.
       const conv = getActive();
-      const text = (conv && conv.files && conv.files[c.file] != null)
-        ? conv.files[c.file]
-        : "";
+      const text = (conv && conv.files && conv.files[c.file] != null) ? conv.files[c.file] : "";
       const ok = await copyText(text);
       flashButton(copyBtn, ok, "Copy");
     });
-    summary.append(copyBtn);
+    row.append(copyBtn);
   }
 
-  // No per-file revert control.
-  //
-  // Undoing a single file could leave the workspace in a state it never had - a
-  // later reply's edit still applied on top of an earlier one that was rolled
-  // back. Reverting is offered per reply, where the cascade is well defined.
+  // Open: the direct way to the file, in the workspace editor.
+  const openBtn = el("button", {
+    className: "fc-open",
+    type: "button",
+    title: "Open this file in the workspace",
+  });
+  openBtn.innerHTML = `<span>Open</span>` + CHEVRON_ICON;
+  openBtn.addEventListener("click", () => openWorkspaceToFile(c.file));
+  row.append(openBtn);
 
-  summary.insertAdjacentHTML("beforeend", FC_CHEVRON_ICON);
-  details.append(summary);
+  item.append(row);
 
-  // The expandable body is a list of the EDITS this file received, not its code.
-  //
-  // It used to show the file's full current content, which answered a question nobody
-  // asked - the content is in the workspace a click away - and left the one that
-  // matters unanswered: which of the edits in this reply actually applied. A file edited
-  // three times now lists three edits, each with its own outcome.
+  // The edit list, always visible.
   const edits = Array.isArray(c.edits) && c.edits.length
     ? c.edits
     : [{ kind: c.kind === "nomatch" ? "nomatch" : c.kind === "missing" ? "missing" : "edit",
@@ -6310,41 +6322,39 @@ function renderFileChangeItem(c) {
   const editList = el("div", { className: "fc-edit-list" });
 
   for (const edit of edits) {
-    const row = el("div", { className: `fc-edit fc-edit-${edit.status}` });
+    const editRow = el("div", { className: `fc-edit fc-edit-${edit.status}` });
 
     const mark = el("span", { className: "fc-edit-mark" });
     mark.innerHTML = edit.status === "failed" ? FAILURE_ICON : CHECK_ICON;
-    row.append(mark);
+    editRow.append(mark);
 
-    row.append(el("span", {
+    editRow.append(el("span", {
       className: "fc-edit-kind",
       textContent: EDIT_KIND_LABEL[edit.kind] || "Edited",
     }));
 
-    // The find text is what makes one edit distinguishable from another on the same
-    // file, so it is shown when there is one - trimmed to a single readable line.
+    // The find text is what distinguishes one edit from another on the same file.
     if (edit.find) {
       const snippet = String(edit.find).replace(/\s+/g, " ").trim().slice(0, 90);
-      if (snippet) row.append(el("span", { className: "fc-edit-find", textContent: snippet }));
+      if (snippet) editRow.append(el("span", { className: "fc-edit-find", textContent: snippet }));
     }
 
     if (edit.status === "failed") {
-      row.append(el("span", {
+      editRow.append(el("span", {
         className: "fc-edit-note",
         // The two failures are different problems: the file is not there at all, versus
-        // the find text not appearing in it. Saying which one sends the user to the right
-        // place.
+        // the find text not appearing in it.
         textContent: edit.kind === "missing" ? "file not in workspace" : "text not found",
       }));
     }
 
-    editList.append(row);
+    editList.append(editRow);
   }
 
   body.append(editList);
-  details.append(body);
+  item.append(body);
 
-  return details;
+  return item;
 }
 
 // =============================================================================
