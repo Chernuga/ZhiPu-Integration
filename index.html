@@ -1829,10 +1829,25 @@
      lines rather than shrinking the inputs to unusable widths. */
   .model-row {
     display: grid;
-    grid-template-columns: 1fr 1fr 1fr 30px;
+    grid-template-columns: 1fr 1fr 1fr 96px 30px;
     gap: 6px;
     align-items: center;
   }
+  .model-row select {
+    width: 100%;
+    min-width: 0;
+    padding: 7px 6px;
+    font: inherit;
+    font-size: 12.5px;
+    background: var(--ds-bg-layer-1);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    color: var(--text);
+    outline: none;
+    cursor: pointer;
+    transition: border-color var(--ds-dur) var(--ds-ease-in-out);
+  }
+  .model-row select:focus { border-color: var(--ds-accent); }
   .model-row input {
     width: 100%;
     min-width: 0;
@@ -1867,15 +1882,16 @@
   .model-row-remove svg { width: 14px; height: 14px; }
 
   @media (max-width: 720px) {
-    /* Two rows: id and name side by side, note below and full width. */
+    /* Two rows: id, name and effort across the top, note below and full width. */
     .model-row {
-      grid-template-columns: 1fr 1fr 28px;
+      grid-template-columns: 1fr 1fr 84px 28px;
       grid-template-areas:
-        "id   label remove"
-        "desc desc  desc";
+        "id   label effort remove"
+        "desc desc  desc   desc";
     }
     .model-row .model-row-id { grid-area: id; }
     .model-row .model-row-label { grid-area: label; }
+    .model-row .model-row-effort { grid-area: effort; }
     .model-row .model-row-desc { grid-area: desc; }
     .model-row .model-row-remove { grid-area: remove; }
   }
@@ -2965,6 +2981,11 @@
               The id is what the provider is asked for. The name is what you see in the
               picker, and the note is the short hint beside it.
             </div>
+            <div class="hint-inline">
+              <b>Effort</b> sets how hard a model should think, sent as
+              <code>reasoning_effort</code>. <b>Default</b> sends nothing and lets the model
+              decide; a provider that does not understand the field ignores it.
+            </div>
           </div>
         </section>
 
@@ -3364,11 +3385,17 @@ function normalizeProvider(p, fallbackId) {
     modelsPath: String(p?.modelsPath || "/models"),
     note: String(p?.note || ""),
     models: Array.isArray(p?.models) && p.models.length
-      ? p.models.map((m) => ({
-          id: String(m.id || "").trim(),
-          label: String(m.label || m.id || "").trim(),
-          desc: String(m.desc || ""),
-        })).filter((m) => m.id)
+      ? p.models.map((m) => {
+          const rec = {
+            id: String(m.id || "").trim(),
+            label: String(m.label || m.id || "").trim(),
+            desc: String(m.desc || ""),
+          };
+          // Kept through normalisation, or a saved effort choice would be silently
+          // dropped every time settings were loaded.
+          if (m.effort) rec.effort = String(m.effort);
+          return rec;
+        }).filter((m) => m.id)
       : [],
   };
 }
@@ -6978,6 +7005,10 @@ async function fullCompletion({ messages, model, thinking, search, chatUrl, sign
   // two modes showing the same thing.
   payload.include_reasoning = true;
 
+  // See the note in streamCompletion: sent only when this model has a preference.
+  const effortFull = effortForModel(p, model);
+  if (effortFull) payload.reasoning_effort = effortFull;
+
   // The app reads this and clicks the DeepSeek page's own Search control. Other
   // providers ignore it.
   //
@@ -7128,6 +7159,14 @@ async function streamCompletion({ messages, model, thinking, search, chatUrl, si
     stream_options: { include_usage: true },
     thinking: { type: thinking ? "enabled" : "disabled" },
   };
+
+  // How hard the model should think, when this model was given an effort setting.
+  //
+  // `reasoning_effort` is the OpenAI-style field and is what Gemini's compatible endpoint
+  // and Kimi both accept; providers that ignore it simply drop it. Sent only when set, so
+  // a model with no preference behaves exactly as it did before.
+  const effort = effortForModel(provider, model);
+  if (effort) payload.reasoning_effort = effort;
 
   // Which DeepSeek conversation this belongs to, and whether to search.
   //
@@ -9187,6 +9226,31 @@ function populateProviderFields() {
  * Rows are rebuilt from `settings.models`, which stays the single source of truth: every
  * edit writes back to it immediately, so switching provider or saving cannot lose a change.
  */
+/** The effort setting for the selected model, or "" when it has none. */
+function effortForModel(provider, modelId) {
+  const list = (provider && settings.providerModels && settings.providerModels[provider.id])
+    || (provider && provider.models)
+    || [];
+  const m = list.find((x) => x.id === modelId);
+  return (m && m.effort) || "";
+}
+
+/**
+ * The effort levels offered, and what each means.
+ *
+ * Providers name these differently - OpenAI and Kimi both take low/medium/high, while
+ * Gemini's compatible endpoint also accepts "minimal" - so the value sent is the OpenAI
+ * spelling and each provider is left to interpret it. An empty value means "do not send
+ * anything", which keeps a model that was never configured behaving exactly as before.
+ */
+const EFFORT_LEVELS = [
+  { value: "",          label: "Default",  hint: "Send nothing - the model decides" },
+  { value: "minimal",   label: "Minimal",  hint: "Fastest, least reasoning" },
+  { value: "low",       label: "Low",      hint: "Quick answers" },
+  { value: "medium",    label: "Medium",   hint: "Balanced" },
+  { value: "high",      label: "High",     hint: "Thinks hardest, slowest" },
+];
+
 function renderModelRows() {
   const box = $("sModelRows");
   if (!box) return;
@@ -9238,6 +9302,22 @@ function renderModelRows() {
       commitModelsToProvider();
     });
 
+    // Effort: how hard this model should think. Per model, because a cheap model and a
+    // reasoning model want different answers - and because the setting belongs to the
+    // endpoint that understands it.
+    const effortSelect = el("select", { className: "model-row-effort", title: "Thinking effort" });
+    for (const level of EFFORT_LEVELS) {
+      const opt = el("option", { value: level.value, textContent: level.label });
+      opt.title = level.hint;
+      effortSelect.append(opt);
+    }
+    effortSelect.value = m.effort || "";
+    effortSelect.addEventListener("change", () => {
+      if (effortSelect.value) settings.models[i].effort = effortSelect.value;
+      else delete settings.models[i].effort;
+      commitModelsToProvider();
+    });
+
     const remove = el("button", {
       type: "button",
       className: "model-row-remove",
@@ -9257,7 +9337,7 @@ function renderModelRows() {
       renderModelMenu();
     });
 
-    row.append(idInput, labelInput, descInput, remove);
+    row.append(idInput, labelInput, descInput, effortSelect, remove);
     box.append(row);
   });
 }
@@ -9268,11 +9348,16 @@ function readModelRows() {
   for (const row of document.querySelectorAll("#sModelRows .model-row")) {
     const id = row.querySelector(".model-row-id").value.trim();
     if (!id) continue;
-    out.push({
+    const rec = {
       id,
       label: row.querySelector(".model-row-label").value.trim() || id,
       desc: row.querySelector(".model-row-desc").value.trim(),
-    });
+    };
+    // Carried through the save: the select is read here so an effort choice cannot be
+    // dropped just because it was not typed into a text field.
+    const effort = row.querySelector(".model-row-effort")?.value || "";
+    if (effort) rec.effort = effort;
+    out.push(rec);
   }
   return out;
 }
