@@ -678,6 +678,57 @@
   .md-table-wrap td code,
   .md-table-wrap th code { white-space: nowrap; }
 
+  /* ===== Inline file-operation status lines =====
+     A reply that edits files says so in prose: "Editing foo.js...", then
+     "Edited foo.js." or "Failed to edit foo.js.". The code that follows each command
+     never reaches the transcript - it is what the workspace stores, and the live window
+     shows it while it is being applied.
+
+     Three states, three colours: running is muted, success is the accent, failure is red.
+     That is what makes the outcome readable at a glance, which the old file card could
+     not do because it listed files rather than edits. */
+  .file-op {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 12px 0;
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--text-muted);
+  }
+  .file-op .fo-icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    display: inline-flex;
+  }
+  .file-op .fo-icon svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  .file-op .fo-text {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .file-op-running {
+    color: var(--text-muted);
+  }
+  /* A pulsing icon reads as "still working" without another spinner in the transcript. */
+  .file-op-running .fo-icon {
+    animation: file-op-pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes file-op-pulse {
+    0%, 100% { opacity: .45; }
+    50%      { opacity: 1; }
+  }
+  .file-op-done {
+    color: var(--ds-accent-text);
+  }
+  .file-op-failed {
+    color: var(--ds-error);
+  }
+
   /* ===== Inline file-command tool calls ===== */
   .tool-call {
     display: flex;
@@ -1138,6 +1189,66 @@
   .fc-body pre code {
     font-family: var(--ds-font-code);
     font-size: inherit;
+  }
+
+  /* The expanded body: one row per edit, each with its own outcome.
+     This is what replaced the file preview - the content is a click away in the
+     workspace, but which of several edits to one file actually applied is only
+     knowable here. */
+  .fc-edit-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 2px 0 6px;
+  }
+  .fc-edit {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 5px 8px;
+    border-radius: 6px;
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--text-muted);
+  }
+  .fc-edit .fc-edit-mark {
+    width: 13px;
+    height: 13px;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-self: center;
+  }
+  .fc-edit .fc-edit-mark svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  .fc-edit-done .fc-edit-mark { color: var(--ds-success); }
+  .fc-edit-failed .fc-edit-mark { color: var(--ds-error); }
+  .fc-edit-failed { background: var(--ds-error-bg); }
+
+  .fc-edit-kind {
+    flex-shrink: 0;
+    font-weight: 500;
+    color: var(--text);
+  }
+  .fc-edit-failed .fc-edit-kind { color: var(--ds-error); }
+
+  /* The find text, on one line, monospaced because it is usually code. */
+  .fc-edit-find {
+    flex: 1;
+    min-width: 0;
+    font-family: var(--ds-font-code);
+    font-size: 11.5px;
+    color: var(--text-dim);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .fc-edit-note {
+    flex-shrink: 0;
+    font-size: 11.5px;
+    color: var(--text-dim);
   }
 
   /* ===== Input area ===== */
@@ -2713,15 +2824,6 @@
             </span>
           </label>
 
-          <label>Workspace commands</label>
-          <label class="checkrow" for="sShowToolCalls">
-            <input type="checkbox" id="sShowToolCalls">
-            <span class="check-body">
-              Show file commands as tool calls
-              <div class="check-desc">When checked, lines like <code>path/to/file.js create:</code> render as styled tool-call rows. When unchecked, the raw command text is shown instead.</div>
-            </span>
-          </label>
-
           <label for="sTypingSpeed">Typing animation speed</label>
           <select id="sTypingSpeed">
             <option value="default" selected>Default (adaptive)</option>
@@ -3385,7 +3487,6 @@ const DEFAULT_SETTINGS = {
   retryMax: 2,
   typingSpeed: "default",
   model: "glm-5.3", models: DEFAULT_MODELS, theme: "dark", deepthink: false, search: false,
-  showToolCalls: true,
   // UI state that should survive a reload.
   sidebarCollapsed: false,
   settingsSection: "appearance",
@@ -3650,6 +3751,10 @@ function applyFileOps(files, ops) {
         failedKind: null,
         attempts: 0,
         failed: 0,
+        // One entry per edit, in the order they were attempted. This is what the card's
+        // expanded body lists, so each find/replace can be told apart from its neighbours
+        // and shown with its own outcome.
+        edits: [],
       };
       byFile.set(file, rec);
       order.push(rec);
@@ -3658,14 +3763,16 @@ function applyFileOps(files, ops) {
     return rec;
   }
 
-  function noteSuccess(rec, kind) {
+  function noteSuccess(rec, kind, find) {
     const rank = { create: 3, overwrite: 2, edit: 1 };
     if (!rec.successKind || rank[kind] > rank[rec.successKind]) rec.successKind = kind;
+    rec.edits.push({ kind, status: "done", find: find || "" });
   }
 
-  function noteFailure(rec, kind) {
+  function noteFailure(rec, kind, find) {
     rec.failed++;
     if (!rec.failedKind) rec.failedKind = kind;
+    rec.edits.push({ kind, status: "failed", find: find || "" });
   }
 
   let i = 0;
@@ -3692,15 +3799,17 @@ function applyFileOps(files, ops) {
       if (next && next.kind === 'replace' && nextFile === file) {
         const rec = record(file);
         const current = files[file];
+        // The find text identifies this edit in the card, so it is carried through.
+        const findText = op.content;
         if (current == null) {
-          noteFailure(rec, 'missing');
+          noteFailure(rec, 'missing', findText);
         } else {
           const idx = current.indexOf(op.content);
           if (idx < 0) {
-            noteFailure(rec, 'nomatch');
+            noteFailure(rec, 'nomatch', findText);
           } else {
             files[file] = current.slice(0, idx) + next.content + current.slice(idx + op.content.length);
-            noteSuccess(rec, 'edit');
+            noteSuccess(rec, 'edit', findText);
           }
         }
         i += 2;
@@ -3717,6 +3826,7 @@ function applyFileOps(files, ops) {
     kind: rec.successKind || rec.failedKind || 'missing',
     attempts: rec.attempts,
     failed: rec.failed,
+    edits: rec.edits,
   }));
 }
 
@@ -3732,6 +3842,16 @@ function persistableChanges(changes) {
   return (changes || []).map((c) => {
     const out = { file: c.file, kind: c.kind };
     if (c.find != null) out.find = c.find;
+    // The per-edit list is small - a kind, an outcome and the find text - and it is what
+    // the card shows when expanded, so it is kept. A failure that vanished on reload
+    // would be worse than the few bytes it costs.
+    if (Array.isArray(c.edits) && c.edits.length) {
+      out.edits = c.edits.map((e) => ({
+        kind: e.kind,
+        status: e.status,
+        find: String(e.find || "").slice(0, 200),
+      }));
+    }
     return out;
   });
 }
@@ -3804,9 +3924,210 @@ function stripFileCommands(text) {
  * closing fence has not yet arrived, so a create/update block stays hidden for
  * the whole duration it is being streamed in.
  */
-function contentForDisplay(text) {
-  const src = text || "";
-  return settings.showToolCalls === false ? stripFileCommands(src) : src;
+/**
+ * Split a reply into prose segments and file commands, in the order they appear.
+ *
+ * Returns an array of:
+ *   { type: "text",    text }                  prose between commands
+ *   { type: "command", kind, file, body, closed }
+ *
+ * This is the single source of truth for both the live view and the finished one: the
+ * transcript renders a status line where each command occurs, and the same parse decides
+ * what was written to the workspace.
+ *
+ * Mid-stream a command may have no body yet and its closing fence may not have arrived.
+ * Both are handled - the body is whatever has been received so far - so a status line
+ * appears as soon as the command line itself is complete.
+ */
+function parseReplySegments(text) {
+  const src = String(text || "").replace(/\r\n?/g, "\n");
+  const lines = src.split("\n");
+  const segments = [];
+  let prose = [];
+  let i = 0;
+
+  const flushProse = () => {
+    const joined = prose.join("\n");
+    if (joined.trim()) segments.push({ type: "text", text: joined });
+    prose = [];
+  };
+
+  while (i < lines.length) {
+    const m = lines[i].match(FILE_CMD_LINE_RE);
+    if (!m) {
+      prose.push(lines[i]);
+      i++;
+      continue;
+    }
+
+    flushProse();
+
+    const file = normalizePath(m[1].replace(/^[`*_~]+|[`*_~]+$/g, ""));
+    const kind = m[2].toLowerCase();
+    i++;
+
+    while (i < lines.length && lines[i].trim() === "") i++;
+
+    let body = "";
+    let closed = true;
+    const openMatch = i < lines.length ? lines[i].match(/^\s*(`{3,})/) : null;
+
+    if (openMatch) {
+      const openLen = openMatch[1].length;
+      const closeRe = new RegExp("^\\s*`{" + openLen + ",}\\s*$");
+      i++;
+      const buf = [];
+      while (i < lines.length && !closeRe.test(lines[i])) {
+        buf.push(lines[i]);
+        i++;
+      }
+      if (i < lines.length) i++;
+      else closed = false;          // the closing fence has not arrived yet
+      body = buf.join("\n");
+    } else {
+      // No fence: the payload runs to the next command or a blank line.
+      const buf = [];
+      while (i < lines.length && lines[i].trim() !== "" && !FILE_CMD_LINE_RE.test(lines[i])) {
+        buf.push(lines[i]);
+        i++;
+      }
+      body = buf.join("\n");
+    }
+
+    if (file) segments.push({ type: "command", kind, file, body, closed });
+  }
+
+  flushProse();
+  return segments;
+}
+
+/**
+ * The status wording for a command.
+ *
+ * A find/replace pair is one edit from the reader's point of view: "find" announces that an
+ * edit is starting, "replace" carries the outcome. A find with no replace after it is what
+ * a failed lookup looks like.
+ */
+function commandStatusLabel(kind, file, state) {
+  const name = file.split("/").pop() || file;
+  if (kind === "create") {
+    if (state === "failed") return `Failed to create ${name}.`;
+    return state === "done" ? `Created ${name}.` : `Creating ${name}...`;
+  }
+  if (kind === "find") {
+    if (state === "failed") return `Failed to edit ${name}.`;
+    return state === "done" ? `Edited ${name}.` : `Editing ${name}...`;
+  }
+  return state === "failed" ? `Failed to edit ${name}.` : `Edited ${name}.`;
+}
+
+/**
+ * One status line, as HTML.
+ *
+ * `state` is "running", "done" or "failed". The three read differently on purpose: a
+ * running command is muted, a success carries the accent colour, and a failure is red - so
+ * a glance down the transcript says which edits landed without opening anything.
+ */
+function fileCommandStatusHtml(kind, file, state) {
+  const label = commandStatusLabel(kind, file, state);
+  const icon = state === "done"
+    ? TOOL_CALL_ICONS.replace
+    : state === "failed"
+      ? `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M8 4.5v4.5M8 11.2v.3"/><circle cx="8" cy="8" r="6"/></svg>`
+      : TOOL_CALL_ICONS.create;
+
+  return `<div class="file-op file-op-${state}" data-file="${escapeAttr(file)}">` +
+    `<span class="fo-icon">${icon}</span>` +
+    `<span class="fo-text">${escapeHtml(label)}</span>` +
+    `</div>`;
+}
+
+/**
+ * Render a reply as HTML blocks, with each file command turned into a status line.
+ *
+ * `states` maps a command index to "running", "done" or "failed". Without it every command
+ * is shown as running, which is what a reply being streamed should look like.
+ *
+ * The code block that belongs to a command is never rendered. It is the payload that goes
+ * into the workspace, and showing it in the transcript was the thing that made a reply
+ * look like a wall of diffs. While it streams it is shown in the live window instead.
+ */
+/**
+ * Turn a stored change list into per-command states.
+ *
+ * `fileChanges` records each file once, with the strongest outcome it reached and a count
+ * of attempts and failures. The parser, though, produces one command per occurrence - so
+ * this walks the commands in order and hands out states from the matching file's tally:
+ * "failed" while the failures last, then "done".
+ *
+ * A command with no recorded change stays "running", which is also what a reply that never
+ * finished looks like.
+ */
+function statesFromFileChanges(msg) {
+  const changes = Array.isArray(msg && msg.fileChanges) ? msg.fileChanges : [];
+  if (!changes.length) return null;
+
+  const byFile = new Map();
+  for (const c of changes) {
+    const rec = byFile.get(c.file) || { failed: 0, done: 0 };
+    if (c.kind === "nomatch" || c.kind === "missing") rec.failed++;
+    else rec.done++;
+    byFile.set(c.file, rec);
+  }
+
+  const segments = parseReplySegments(msg.content);
+  const states = [];
+  for (const seg of segments) {
+    if (seg.type !== "command") continue;
+    const tally = byFile.get(seg.file);
+    if (!tally) { states.push("running"); continue; }
+    // Failures are consumed first: a file that was retried shows the failure, then the
+    // success, which is the order they happened in.
+    if (tally.failed > 0) { tally.failed--; states.push("failed"); }
+    else if (tally.done > 0) { tally.done--; states.push("done"); }
+    else states.push("running");
+  }
+  return states;
+}
+
+function renderContentWithStatuses(text, states = null) {
+  const segments = parseReplySegments(text);
+  const out = [];
+  let cmdIndex = 0;
+
+  for (let k = 0; k < segments.length; k++) {
+    const seg = segments[k];
+
+    if (seg.type === "text") {
+      out.push(...renderMarkdownBlocks(seg.text));
+      continue;
+    }
+
+    // A find is followed by its replace. The pair reads as one edit - "Editing x.js..."
+    // then "Edited x.js." - rather than two unrelated lines about the same file.
+    const next = segments[k + 1];
+    const isPairedFind =
+      seg.kind === "find" &&
+      next && next.type === "command" && next.kind === "replace" && next.file === seg.file;
+
+    const st = states ? (states[cmdIndex] || "running") : "running";
+    out.push(fileCommandStatusHtml(seg.kind, seg.file, st));
+
+    if (isPairedFind) {
+      // The replace carries the outcome of this find; it gets the second line and the
+      // loop skips it below.
+      const repState = states ? (states[cmdIndex + 1] || "running") : "running";
+      if (repState !== "running") {
+        out.push(fileCommandStatusHtml("replace", next.file, repState));
+      }
+      k++;                       // consume the replace
+    }
+
+    cmdIndex++;
+    if (isPairedFind) cmdIndex++;
+  }
+
+  return out;
 }
 
 // =============================================================================
@@ -4101,7 +4422,6 @@ function loadSettings() {
     if (!merged.promptFinish.trim()) merged.promptFinish = DEFAULT_PROMPT_FINISH;
     merged.promptFinishMigrated = true;
   }
-  if (typeof merged.showToolCalls !== "boolean") merged.showToolCalls = true;
   if (typeof merged.sidebarCollapsed !== "boolean") merged.sidebarCollapsed = false;
   if (typeof merged.settingsSection !== "string" || !SECTION_TITLES[merged.settingsSection]) {
     merged.settingsSection = "appearance";
@@ -5339,7 +5659,6 @@ function decorateCodeBlocks(container) {
 function decorateToolCall(p) {
   // Honor the "Show file commands as tool calls" preference: when disabled the
   // raw marker lines are left in place as ordinary paragraphs.
-  if (settings.showToolCalls === false) return;
   if (!p || p.tagName !== "P") return;
 
   const m = p.textContent.trim().match(FILE_CMD_LINE_RE);
@@ -5369,7 +5688,6 @@ function decorateToolCall(p) {
 }
 
 function decorateToolCalls(container) {
-  if (settings.showToolCalls === false) return;
   for (const p of container.querySelectorAll("p")) decorateToolCall(p);
 }
 
@@ -5383,7 +5701,9 @@ function decorateToolCalls(container) {
 function decorateBlock(node) {
   if (!node || node.nodeType !== 1) return;
   if (node.tagName === "PRE") decorateCodeBlock(node);
-  else if (node.tagName === "P") decorateToolCall(node);
+  // File commands are no longer plain paragraphs - renderContentWithStatuses emits their
+  // status lines as .file-op elements before the markdown ever sees them - so there is
+  // nothing left for a paragraph pass to find.
 }
 
 // =============================================================================
@@ -5432,6 +5752,26 @@ function buildReasoningBlock(reasoning, opts = {}) {
 // =============================================================================
 // File changes card
 // =============================================================================
+/** Small tick and cross, shared by the edit list rows. */
+const CHECK_ICON = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 4.5L6.5 11 3 7.5"/></svg>`;
+const FAILURE_ICON = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/></svg>`;
+
+/** How an edit kind reads in the list. */
+const EDIT_KIND_LABEL = {
+  create: "Created",
+  overwrite: "Created",
+  edit: "Edited",
+  find: "Edited",
+  replace: "Edited",
+  nomatch: "Failed to edit",
+  missing: "Failed to edit",
+};
+
+/** Whether a stored per-file outcome means success or failure. */
+function outcomeOf(kind) {
+  return kind === "nomatch" || kind === "missing" ? "failed" : "done";
+}
+
 /** Remove a file from the linked folder, if one is linked. */
 function deleteLinkedFile(path) {
   const conv = getActive();
@@ -5564,18 +5904,54 @@ function renderFileChangeItem(c) {
   summary.insertAdjacentHTML("beforeend", FC_CHEVRON_ICON);
   details.append(summary);
 
-  // The expandable body shows the file's current content, read at render time
-  // rather than from a snapshot stored with the change.
-  const currentConv = getActive();
-  const currentText = (currentConv && currentConv.files) ? currentConv.files[c.file] : null;
-  if (currentText != null) {
-    const body = el("div", { className: "fc-body" });
-    const pre = el("pre");
-    const code = el("code", { textContent: currentText });
-    pre.append(code);
-    body.append(pre);
-    details.append(body);
+  // The expandable body is a list of the EDITS this file received, not its code.
+  //
+  // It used to show the file's full current content, which answered a question nobody
+  // asked - the content is in the workspace a click away - and left the one that
+  // matters unanswered: which of the edits in this reply actually applied. A file edited
+  // three times now lists three edits, each with its own outcome.
+  const edits = Array.isArray(c.edits) && c.edits.length
+    ? c.edits
+    : [{ kind: c.kind === "nomatch" ? "nomatch" : c.kind === "missing" ? "missing" : "edit",
+         status: outcomeOf(c.kind) }];
+
+  const body = el("div", { className: "fc-body" });
+  const editList = el("div", { className: "fc-edit-list" });
+
+  for (const edit of edits) {
+    const row = el("div", { className: `fc-edit fc-edit-${edit.status}` });
+
+    const mark = el("span", { className: "fc-edit-mark" });
+    mark.innerHTML = edit.status === "failed" ? FAILURE_ICON : CHECK_ICON;
+    row.append(mark);
+
+    row.append(el("span", {
+      className: "fc-edit-kind",
+      textContent: EDIT_KIND_LABEL[edit.kind] || "Edited",
+    }));
+
+    // The find text is what makes one edit distinguishable from another on the same
+    // file, so it is shown when there is one - trimmed to a single readable line.
+    if (edit.find) {
+      const snippet = String(edit.find).replace(/\s+/g, " ").trim().slice(0, 90);
+      if (snippet) row.append(el("span", { className: "fc-edit-find", textContent: snippet }));
+    }
+
+    if (edit.status === "failed") {
+      row.append(el("span", {
+        className: "fc-edit-note",
+        // The two failures are different problems: the file is not there at all, versus
+        // the find text not appearing in it. Saying which one sends the user to the right
+        // place.
+        textContent: edit.kind === "missing" ? "file not in workspace" : "text not found",
+      }));
+    }
+
+    editList.append(row);
   }
+
+  body.append(editList);
+  details.append(body);
 
   return details;
 }
@@ -5775,9 +6151,13 @@ function renderMessage(msg, index) {
   }
 
   const content = el("div", { className: "content" });
-  content.innerHTML = renderMarkdown(contentForDisplay(msg.content));
+  // File commands render as status lines, from the change list already stored with the
+  // message - so a reloaded reply shows which edits succeeded and which did not.
+  content.innerHTML = renderContentWithStatuses(
+    msg.content,
+    statesFromFileChanges(msg)
+  ).join("");
   decorateCodeBlocks(content);
-  decorateToolCalls(content);
   row.append(content);
 
   if (msg.fileChanges && msg.fileChanges.length) {
@@ -6932,14 +7312,13 @@ async function runCompletion(conv) {
    * The reply is parsed into blocks; a finished paragraph is written to the DOM
    * once and never touched again, and only the final block, still being typed,
    * is replaced each frame. Appending a block also decorates it, once, so the
-   * copy buttons and tool rows are paid for per block rather than per frame.
+   * copy buttons are paid for per block rather than per frame.
    */
   const paintContent = (shown) => {
-    // Strip first, then balance: if a command block is mid-stream and still open,
-    // strip removes everything from its marker onwards, so the balanced text never
-    // contains a half-finished fence.
-    const visible = contentForDisplay(shown);
-    const blocks = visible ? renderMarkdownBlocks(balanceCodeFences(visible)) : [];
+    // While a reply streams, every command is still running - the outcome is only known
+    // once it has been applied at onDone. The parser drops each command's payload as it
+    // goes, so a create/find block never flashes its code into the transcript.
+    const blocks = shown ? renderContentWithStatuses(shown) : [];
 
     let start = 0;
     while (
@@ -7163,9 +7542,11 @@ async function runCompletion(conv) {
           assistantRow.append(buildReasoningBlock(assistantMsg.reasoning, { durationMs: reasoningMs }));
         }
         const c = el("div", { className: "content" });
-        c.innerHTML = renderMarkdown(contentForDisplay(assistantMsg.content));
+        c.innerHTML = renderContentWithStatuses(
+          assistantMsg.content,
+          statesFromFileChanges(assistantMsg)
+        ).join("");
         decorateCodeBlocks(c);
-        decorateToolCalls(c);
         assistantRow.append(c);
 
         // Warn when the page cut the reply off for length.
@@ -8411,7 +8792,6 @@ function populateSettingsFields() {
   $("sAccentHex").value = settings.accentHex || "";
   $("accentSwatch").style.background = settings.accentHex ? "#" + settings.accentHex : "";
   $("sReasoningExpanded").checked = !!settings.reasoningExpanded;
-  $("sShowToolCalls").checked = settings.showToolCalls !== false;
   $("sTypingSpeed").value = settings.typingSpeed || "default";
   $("sRetryEnabled").checked = !!settings.retryEnabled;
   $("sRetryMax").value = settings.retryMax;
@@ -8884,7 +9264,6 @@ function collectAllSettings() {
   settings.accentHex = norm || "";
 
   settings.reasoningExpanded = $("sReasoningExpanded").checked;
-  settings.showToolCalls = $("sShowToolCalls").checked;
   const speedVal = $("sTypingSpeed").value;
   settings.typingSpeed = TYPING_SPEEDS[speedVal] !== undefined ? speedVal : "default";
   settings.retryEnabled = $("sRetryEnabled").checked;
