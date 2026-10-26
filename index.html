@@ -4448,7 +4448,7 @@ function fileCommandStatusHtml(kind, file, state) {
   const icon = state === "done"
     ? TOOL_CALL_ICONS[kind] || TOOL_CALL_ICONS.replace
     : state === "failed"
-      ? `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M8 4.5v4.5M8 11.2v.3"/><circle cx="8" cy="8" r="6"/></svg>`
+      ? FAILURE_ICON
       : TOOL_CALL_ICONS[kind] || TOOL_CALL_ICONS.create;
 
   return `<div class="file-op file-op-${state}" data-file="${escapeAttr(file)}">` +
@@ -6164,7 +6164,9 @@ function buildReasoningBlock(reasoning, opts = {}) {
 // =============================================================================
 /** Small tick and cross, shared by the edit list rows. */
 const CHECK_ICON = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 4.5L6.5 11 3 7.5"/></svg>`;
-const FAILURE_ICON = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/></svg>`;
+// A file outline broken on each side - the read glyph with its integrity lost. It says
+// "this could not be read or written" more precisely than a plain cross.
+const FAILURE_ICON = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1.325 3.754A3.18 3.18 0 0 1 4.504.575v1.35a1.83 1.83 0 0 0-1.83 1.829v.834H1.326zm0 8.492a3.18 3.18 0 0 0 3.179 3.179v-1.35a1.83 1.83 0 0 1-1.83-1.829v-.834H1.326zm13.35-8.492A3.18 3.18 0 0 0 11.496.575v1.35c1.01 0 1.83.819 1.83 1.829v.834h1.349zm0 8.492a3.18 3.18 0 0 1-3.179 3.179v-1.35a1.83 1.83 0 0 0 1.83-1.829v-.834h1.349zM9.781.575v1.35H6.22V.575zm0 13.5v1.35H6.22v-1.35zm3.544-7.619h1.35v2.955h-1.35zm-12 0h1.35v2.955h-1.35zm9.917-1.401v1.3H4.758v-1.3zm-1.834 3.04v1.3h-4.65v-1.3z" fill="currentColor"/></svg>`;
 
 /** How an edit kind reads in the list. */
 const EDIT_KIND_LABEL = {
@@ -6429,6 +6431,19 @@ function hideLiveEditWindow() {
  * Passing `anchor` keeps a specific message's position instead, which is what an
  * edit wants: the message being changed should stay where it was.
  */
+
+/**
+ * Scroll events that this code caused, not the reader.
+ *
+ * Declared before renderMessages because that function uses it and runs on the first
+ * paint - a `let` further down would still be in its temporal dead zone and throw.
+ *
+ * A counter rather than a boolean: several writes can be in flight in one frame - the
+ * follow, the jump button, a render restore - and a boolean cleared early would let the
+ * last of them through as if the reader had scrolled.
+ */
+let programmaticScrolls = 0;
+
 function renderMessages({ toBottom = false, anchor = null } = {}) {
   // Measure before the rebuild, so the position can be restored after it.
   const box = $("messages");
@@ -6443,6 +6458,14 @@ function renderMessages({ toBottom = false, anchor = null } = {}) {
   }
 
   const wasAtBottom = previousHeight - previousTop - box.clientHeight < 40;
+
+  // What the reader is looking at, captured BEFORE the rebuild destroys it.
+  //
+  // A re-render that has to hold the reader's place cannot trust the scrollHeight delta:
+  // content-visibility means the height it reports depends on how much of the transcript
+  // happened to be rendered, and that changes across a rebuild. The message under the
+  // viewport's top edge is a stable reference whatever the total becomes.
+  const visibleMarker = (toBottom || wasAtBottom || anchor != null) ? null : firstVisibleMarker(box);
 
   const inner = $("messagesInner");
   inner.innerHTML = "";
@@ -6480,6 +6503,12 @@ function renderMessages({ toBottom = false, anchor = null } = {}) {
   inner.classList.remove("force-layout");
 
   // Restore position, before paint so there is no visible jump.
+  //
+  // Every write here is marked as ours. A restore fires a scroll event, and the listener
+  // would otherwise read it as the reader moving - turning the follow off, or moving the
+  // jump button - so the transcript would end up somewhere the reader did not ask for
+  // after a re-render.
+  programmaticScrolls++;
   if (toBottom || (anchor == null && wasAtBottom)) {
     // Following the newest message. Staying pinned to the bottom is right when
     // the reader was already there, so a live reply keeps its place.
@@ -6491,11 +6520,51 @@ function renderMessages({ toBottom = false, anchor = null } = {}) {
       box.scrollTop += now - anchorOffset;
     }
   } else {
-    // Hold the reader's place. Content above may have grown, so the same
-    // scrollTop would show different text; shift by the height difference to
-    // keep the same content under the viewport.
-    box.scrollTop = previousTop + (box.scrollHeight - previousHeight);
+    // Hold the reader's place by re-measuring what they were looking at.
+    //
+    // This used to shift scrollTop by the change in scrollHeight. That is only correct if
+    // BOTH height measurements describe the same layout - and they do not: content-
+    // visibility means a long transcript reports smaller heights while parts of it are
+    // skipped, and rebuilding changes how much is skipped. Measured against a 40-message
+    // transcript, scrollHeight fell by ~1000px across the rebuild, the delta came out
+    // negative, and scrollTop clamped to 0 - the reader was thrown to the top.
+    //
+    // Re-rendering the same content produces the same layout, so the message the reader
+    // was looking at can simply be put back where it was, whatever happened to the total.
+    if (visibleMarker) {
+      const restored = box.querySelector(`[data-index="${visibleMarker.index}"]`);
+      if (restored) {
+        const now = restored.getBoundingClientRect().top - box.getBoundingClientRect().top;
+        box.scrollTop += now - visibleMarker.offset;
+      } else {
+        box.scrollTop = previousTop;
+      }
+    } else {
+      box.scrollTop = previousTop;
+    }
   }
+  requestAnimationFrame(() => { programmaticScrolls = Math.max(0, programmaticScrolls - 1); });
+}
+
+/**
+ * The first message whose top is at or above the top of the viewport.
+ *
+ * That is the message the reader has scrolled to, so it is the one to hold still. Returns
+ * null when there is nothing on screen to anchor to.
+ */
+function firstVisibleMarker(box) {
+  const nodes = box.querySelectorAll("[data-index]");
+  const boxTop = box.getBoundingClientRect().top;
+  let best = null;
+  for (const node of nodes) {
+    const top = node.getBoundingClientRect().top;
+    if (top <= boxTop + 1) {
+      best = { index: node.dataset.index, offset: top - boxTop };
+    } else {
+      break;          // messages are in document order, so the first one below is enough
+    }
+  }
+  return best;
 }
 
 /**
@@ -6810,7 +6879,17 @@ function followIfPinned() {
   const distance = m.scrollHeight - m.scrollTop - m.clientHeight;
 
   if (followOutput) {
+    // Mark the write as ours BEFORE it happens.
+    //
+    // Setting scrollTop fires a scroll event, and the listener below treats any scroll as
+    // the reader moving - so the follow would switch itself off after one frame. That is
+    // the "it jumps somewhere else" behaviour: the transcript stopped following mid-reply,
+    // then a later re-render restored a stale position.
+    programmaticScrolls++;
     m.scrollTop += distance;
+    // Zero on the next frame, by which point the event has been delivered.
+    requestAnimationFrame(() => { programmaticScrolls = Math.max(0, programmaticScrolls - 1); });
+
     if (btn) btn.classList.remove("show");
     return;
   }
@@ -6838,7 +6917,10 @@ function scheduleFollow() {
 
 function scrollToBottom() {
   const m = $("messages");
+  // Ours, not the reader's: without this the follow would cancel itself here.
+  programmaticScrolls++;
   m.scrollTop = m.scrollHeight;
+  requestAnimationFrame(() => { programmaticScrolls = Math.max(0, programmaticScrolls - 1); });
   followOutput = true;
   updateJumpButton();
 }
@@ -6856,11 +6938,16 @@ function updateJumpButton() {
 //
 // This is the reader's intent made explicit: being at the bottom means "keep me
 // here", moving away means "let me read".
+//
+// A scroll this code caused is not the reader's intent, so it is ignored - otherwise the
+// follow would cancel itself the moment it scrolled, and a render's position restore would
+// be mistaken for the user jumping somewhere.
 (function wireTranscriptScroll() {
   const m = $("messages");
   if (!m || m.dataset.scrollWired === "1") return;
   m.dataset.scrollWired = "1";
   m.addEventListener("scroll", () => {
+    if (programmaticScrolls > 0) return;
     followOutput = isNearBottom(m);
     updateJumpButton();
   }, { passive: true });
@@ -6873,7 +6960,9 @@ function updateJumpButton() {
     const m = $("messages");
     // Jumping back down also resumes following, so the next delta keeps the
     // reader at the end where they asked to be.
+    programmaticScrolls++;
     m.scrollTop = m.scrollHeight;
+    requestAnimationFrame(() => { programmaticScrolls = Math.max(0, programmaticScrolls - 1); });
     followOutput = true;
     updateJumpButton();
   });
