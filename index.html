@@ -946,26 +946,52 @@
      typewriter in runCompletion). The pane is capped and contained so its
      growth does not push the entire transcript through layout on every frame -
      the reason a long think made scrolling stutter on Android. */
+  /*
+     The streaming pane, and its blurred edges.
+
+     A mask fades the text to transparent, which is a FADE - it dims the last visible
+     lines rather than blurring them. What was wanted here is a blur: text that is still
+     legible where it enters and leaves the pane.
+
+     A blur needs something above the text to sample, so the text sits in a frame and two
+     thin strips cover its top and bottom. Each strip is `backdrop-filter: blur()`, which
+     blurs whatever is behind it - the text scrolling underneath - and a mask on the strip
+     makes the blur fade out towards the middle, so the edge is smooth rather than a band.
+  */
+  .reasoning-block[data-streaming="1"] .reasoning-frame {
+    position: relative;
+    max-height: 220px;
+  }
+  .reasoning-block[data-streaming="1"] .reasoning-frame::before,
+  .reasoning-block[data-streaming="1"] .reasoning-frame::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 22px;
+    pointer-events: none;
+    z-index: 2;
+    -webkit-backdrop-filter: blur(5px);
+    backdrop-filter: blur(5px);
+  }
+  /* Top strip: strongest at the very top, gone by the bottom of the strip. */
+  .reasoning-block[data-streaming="1"] .reasoning-frame::before {
+    top: 0;
+    -webkit-mask-image: linear-gradient(to bottom, #000 0%, transparent 100%);
+    mask-image: linear-gradient(to bottom, #000 0%, transparent 100%);
+  }
+  /* Bottom strip: reversed, so the newest line stays sharp and text arriving is soft. */
+  .reasoning-block[data-streaming="1"] .reasoning-frame::after {
+    bottom: 0;
+    -webkit-mask-image: linear-gradient(to top, #000 0%, transparent 100%);
+    mask-image: linear-gradient(to top, #000 0%, transparent 100%);
+  }
+
   .reasoning-block[data-streaming="1"] .reasoning-text {
     max-height: 220px;
     overflow-y: auto;
     contain: layout paint;
     padding-right: 4px;
-    /* The fade at each end is drawn by the two mask layers below. */
-    -webkit-mask-image: linear-gradient(
-      to bottom,
-      transparent 0,
-      #000 18px,
-      #000 calc(100% - 18px),
-      transparent 100%
-    );
-    mask-image: linear-gradient(
-      to bottom,
-      transparent 0,
-      #000 18px,
-      #000 calc(100% - 18px),
-      transparent 100%
-    );
     /* Scrolling is automatic while it streams, so a stray wheel or drag would only
        fight the follow. It stays scrollable for a finished reply. */
     overscroll-behavior-y: contain;
@@ -4368,7 +4394,13 @@ function fileCommandStatusHtml(kind, file, state) {
  */
 function statesFromFileChanges(msg) {
   const changes = Array.isArray(msg && msg.fileChanges) ? msg.fileChanges : [];
-  if (!changes.length) return null;
+
+  // NOT an early return when there are no changes.
+  //
+  // A reply that only READ files has none - reading changes nothing - so this used to
+  // return null here and every status line fell back to "running". The result was a
+  // finished reply stuck on "Reading app.js..." with the pulsing icon, which reads as a
+  // request that never completed.
 
   const byFile = new Map();
   for (const c of changes) {
@@ -6027,12 +6059,16 @@ function buildReasoningBlock(reasoning, opts = {}) {
 
   details.append(summary);
 
+  // The text sits inside a frame whose ::before/::after strips blur its top and bottom
+  // edges while it streams. See the reasoning-frame rules in the stylesheet.
+  const frame = el("div", { className: "reasoning-frame" });
   const rtext = el("div", { className: "reasoning-text" });
   if (reasoning) {
     rtext.innerHTML = renderMarkdown(reasoning);
     decorateCodeBlocks(rtext);
   }
-  details.append(rtext);
+  frame.append(rtext);
+  details.append(frame);
 
   return details;
 }
