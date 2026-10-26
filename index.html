@@ -287,7 +287,8 @@
   .sidebar-footer .icon-btn svg { width: 16px; height: 16px; }
 
   /* ===== Main ===== */
-  .main { flex: 1; display: flex; flex-direction: column; min-width: 0; background: var(--bg); }
+  /* position: relative anchors the live edit window, which floats above the composer. */
+  .main { flex: 1; display: flex; flex-direction: column; min-width: 0; background: var(--bg); position: relative; }
   .topbar {
     height: 56px; flex-shrink: 0;
     display: flex; align-items: center; gap: 6px;
@@ -1249,6 +1250,102 @@
     flex-shrink: 0;
     font-size: 11.5px;
     color: var(--text-dim);
+  }
+
+  /* ===== Live edit window =====
+     Sits above the composer while a reply is writing files, and disappears once the
+     edits are applied. It exists because the code no longer appears in the transcript:
+     this is where it can be watched, without leaving a wall of it behind afterwards. */
+  .live-edit {
+    /* A sibling of .messages rather than a child: .messages scrolls and clips its
+       overflow, so a window inside it could not float above the transcript.
+       It is positioned from the bottom of the column, and its own height pushes it up -
+       so it sits just above the composer, never over it. */
+    position: absolute;
+    left: 50%;
+    bottom: 96px;
+    transform: translateX(-50%);
+    width: min(768px, calc(100% - 48px));
+    max-height: 200px;
+    display: flex;
+    flex-direction: column;
+    background: var(--ds-bg-layer-2);
+    border: 1px solid var(--ds-border-l2);
+    border-radius: 12px;
+    box-shadow: var(--ds-shadow-lv3);
+    overflow: hidden;
+    z-index: 6;
+    animation: live-edit-in .18s var(--ds-ease-out);
+  }
+  .live-edit[hidden] { display: none; }
+  @keyframes live-edit-in {
+    from { opacity: 0; transform: translateX(-50%) translateY(6px); }
+    to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+  }
+
+  .live-edit-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    font-size: 12.5px;
+    color: var(--text-muted);
+  }
+  .live-edit-head .le-icon {
+    width: 14px;
+    height: 14px;
+    display: inline-flex;
+    flex-shrink: 0;
+    color: var(--ds-accent-text);
+  }
+  .live-edit-head .le-icon svg { width: 100%; height: 100%; display: block; }
+  .live-edit-head .le-file {
+    font-family: var(--ds-font-code);
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .live-edit-head .le-kind {
+    flex-shrink: 0;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--ds-accent-text);
+    border: 1px solid var(--ds-accent);
+    border-radius: 4px;
+    padding: 0 5px;
+  }
+
+  .live-edit-code {
+    margin: 0;
+    padding: 10px 12px;
+    overflow: auto;
+    flex: 1;
+    min-height: 0;
+    font-family: var(--ds-font-code);
+    font-size: 12px;
+    line-height: 1.55;
+    color: var(--text);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    /* Same treatment as the reasoning pane: the newest line stays visible and the
+       edges fade rather than cutting the text. */
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+    mask-image: linear-gradient(to bottom, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+  }
+
+  /* On a phone the window would cover the composer, so it is shorter and flatter. */
+  @media (max-width: 720px) {
+    .live-edit {
+      width: calc(100% - 24px);
+      max-height: 150px;
+      bottom: 8px;
+      border-radius: 10px;
+    }
+    .live-edit-code { font-size: 11.5px; padding: 8px 10px; }
   }
 
   /* ===== Input area ===== */
@@ -2475,6 +2572,28 @@
           <path d="M12 5v14M19 12l-7 7-7-7"/>
         </svg>
       </button>
+    </div>
+
+    <!--
+      The live edit window.
+
+      While a reply streams, the code it is writing does not appear in the transcript -
+      the reply shows "Editing foo.js..." instead. This window is where that code lives
+      for the few seconds it is arriving, so it can be watched taking shape, and it hides
+      itself as soon as the edits are applied. Styled after the reasoning pane on purpose:
+      both are transient views of something happening inside the model.
+    -->
+    <div class="live-edit" id="liveEdit" hidden>
+      <div class="live-edit-head">
+        <span class="le-icon" aria-hidden="true">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5"/>
+          </svg>
+        </span>
+        <span class="le-file" id="liveEditFile">file</span>
+        <span class="le-kind" id="liveEditKind">editing</span>
+      </div>
+      <pre class="live-edit-code"><code id="liveEditCode"></code></pre>
     </div>
 
     <div class="input-area">
@@ -5957,6 +6076,60 @@ function renderFileChangeItem(c) {
 }
 
 // =============================================================================
+// Live edit window
+// =============================================================================
+/**
+ * Show the code of the command currently being written.
+ *
+ * Called on every repaint while a reply streams. `text` is everything received so far;
+ * the last command in it is the one being written, so that is what the window shows.
+ *
+ * Only an UNCLOSED command is worth showing. Once its closing fence arrives the code is
+ * complete and is about to be applied, so the window hides itself rather than sitting
+ * there with finished content - which is also what makes it read as a transient view
+ * rather than another panel.
+ */
+function updateLiveEditWindow(text) {
+  const box = $("liveEdit");
+  if (!box) return;
+
+  const segments = parseReplySegments(text);
+  let last = null;
+  for (const seg of segments) if (seg.type === "command") last = seg;
+
+  if (!last || last.closed || !last.body) {
+    hideLiveEditWindow();
+    return;
+  }
+
+  const fileEl = $("liveEditFile");
+  const kindEl = $("liveEditKind");
+  const codeEl = $("liveEditCode");
+
+  const name = last.file.split("/").pop() || last.file;
+  if (fileEl.textContent !== name) fileEl.textContent = name;
+  if (kindEl.textContent !== last.kind) kindEl.textContent = last.kind;
+  if (codeEl.textContent !== last.body) {
+    codeEl.textContent = last.body;
+    // Keep the newest line in view, as the reasoning pane does.
+    const pre = box.querySelector(".live-edit-code");
+    if (pre) pre.scrollTop = pre.scrollHeight;
+  }
+
+  box.hidden = false;
+}
+
+/** Hide the live edit window. */
+function hideLiveEditWindow() {
+  const box = $("liveEdit");
+  if (!box || box.hidden) return;
+  box.hidden = true;
+  // Clear the content so the next one starts empty rather than flashing the previous file.
+  const codeEl = $("liveEditCode");
+  if (codeEl) codeEl.textContent = "";
+}
+
+// =============================================================================
 // Message rendering
 // =============================================================================
 /**
@@ -7320,6 +7493,14 @@ async function runCompletion(conv) {
     // goes, so a create/find block never flashes its code into the transcript.
     const blocks = shown ? renderContentWithStatuses(shown) : [];
 
+    // Show the code of the command being written in the live window.
+    //
+    // This is the counterpart to dropping it from the transcript: the payload is gone
+    // from the prose, but it is still worth watching arrive. The window follows the LAST
+    // command in what has been received, so it switches files as the reply moves on.
+    if (shown) updateLiveEditWindow(shown);
+    else hideLiveEditWindow();
+
     let start = 0;
     while (
       start < renderedBlocks.length &&
@@ -7537,6 +7718,9 @@ async function runCompletion(conv) {
         const fileChanges = applyAssistantReply(conv, assistantMsg);
         void fileChanges;
 
+        // The edits are applied, so the live view of them has served its purpose.
+        hideLiveEditWindow();
+
         assistantRow.innerHTML = "";
         if (assistantMsg.reasoning) {
           assistantRow.append(buildReasoningBlock(assistantMsg.reasoning, { durationMs: reasoningMs }));
@@ -7588,6 +7772,9 @@ async function runCompletion(conv) {
       reasoningTypewriter.flush();
       contentTypewriter.flush();
       activeTypewriters = null;
+
+      // Nothing is being written any more, so the live view goes with it.
+      hideLiveEditWindow();
 
       assistantRow.innerHTML = "";
       const errBox = el("div", { className: "error-msg", textContent: err.message });
