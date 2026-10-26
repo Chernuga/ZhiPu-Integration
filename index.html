@@ -3795,7 +3795,31 @@ function workspaceListingFor(conv) {
 }
 
 /**
+ * Whether the reply ends on a read, with nothing said after it.
+ *
+ * That is the signature of a model waiting for an answer: it asked, and stopped. Prose
+ * after the read means it moved on without waiting, which needs no reply from us.
+ */
+function endsOnARead(text) {
+  const segments = parseReplySegments(text);
+  // Walk back past empty text segments; the last meaningful one decides.
+  for (let i = segments.length - 1; i >= 0; i--) {
+    const seg = segments[i];
+    if (seg.type === "text") {
+      if (seg.text.trim()) return false;     // something was said after the last command
+      continue;
+    }
+    return seg.kind === "read";
+  }
+  return false;
+}
+
+/**
  * Text a `read:` command asked for.
+ *
+ * Only the LAST read in the text is answered, because that is the one the model is waiting
+ * on. Earlier ones were answered by an earlier round, and answering them again would put
+ * the same file into the conversation repeatedly.
  *
  * Returns "" when nothing was requested, so the caller can append nothing at all rather
  * than an empty section that would only puzzle the model.
@@ -3803,27 +3827,26 @@ function workspaceListingFor(conv) {
 function readRequestedFiles(conv, text) {
   const files = (conv && conv.files) || {};
   const segments = parseReplySegments(text);
-  const wanted = [];
-  for (const seg of segments) {
-    if (seg.type === "command" && seg.kind === "read" && seg.file) wanted.push(seg.file);
-  }
-  if (!wanted.length) return "";
 
-  const parts = [];
-  const missing = [];
-  for (const path of wanted) {
-    const content = files[path];
-    if (content == null) { missing.push(path); continue; }
-    const ext = (path.split(".").pop() || "").toLowerCase();
-    // dropEnding: a file stored with a trailing newline would otherwise put a blank line
-    // inside the fence, which reads as content that is not there.
-    const body = String(content).replace(/\n$/, "");
-    parts.push(`--- ${path} ---\n\`\`\`${ext}\n${body}\n\`\`\``);
+  let target = null;
+  for (const seg of segments) {
+    if (seg.type === "command" && seg.kind === "read" && seg.file) target = seg.file;
   }
-  if (missing.length) {
-    parts.push(`Not in the workspace: ${missing.join(", ")}`);
+  if (!target) return "";
+
+  const content = files[target];
+  if (content == null) {
+    const available = Object.keys(files).sort();
+    return (
+      `No file "${target}" in the workspace.` +
+      (available.length ? ` Available: ${available.join(", ")}` : " The workspace is empty.")
+    );
   }
-  return parts.join("\n\n");
+
+  const ext = (target.split(".").pop() || "").toLowerCase();
+  // dropEnding: a file stored with a trailing newline would otherwise put a blank line
+  // inside the fence, which reads as content that is not there.
+  return `--- ${target} ---\n\`\`\`${ext}\n${String(content).replace(/\n$/, "")}\n\`\`\``;
 }
 
 // Detect touch devices once. We keep this as a live MediaQueryList so it
@@ -7026,7 +7049,7 @@ function buildRequestUrl() {
  *   OpenAI-style  { choices: [ { message: { content, reasoning_content } } ] }
  *   simple        { content, reasoning_content }
  */
-async function fullCompletion({ messages, model, thinking, search, chatUrl, signal, onDelta, onDone, onError }) {
+async function fullCompletion({ messages, model, thinking, search, chatUrl, tools: offerTools, signal, onDelta, onDone, onError }) {
   const p = activeProvider();
 
   // `stream: false` keeps an OpenAI-compatible host from opening an SSE body.
@@ -7044,6 +7067,11 @@ async function fullCompletion({ messages, model, thinking, search, chatUrl, sign
   // See the note in streamCompletion: sent only when this model has a preference.
   const effortFull = effortForModel(p, model);
   if (effortFull) payload.reasoning_effort = effortFull;
+
+  if (Array.isArray(offerTools) && offerTools.length) {
+    payload.tools = offerTools;
+    payload.tool_choice = "auto";
+  }
 
   // The app reads this and clicks the DeepSeek page's own Search control. Other
   // providers ignore it.
@@ -7101,7 +7129,11 @@ async function fullCompletion({ messages, model, thinking, search, chatUrl, sign
   const content = String(message?.content ?? data?.content ?? "");
   const reasoning = String(message?.reasoning_content ?? data?.reasoning_content ?? "");
 
-  if (!content && !reasoning) {
+  const wholeToolCalls = Array.isArray(message?.tool_calls) ? message.tool_calls : [];
+
+  // A turn that only asked for a tool has no content and no reasoning, which is a
+  // legitimate answer rather than an empty response.
+  if (!content && !reasoning && !wholeToolCalls.length) {
     onError?.(new Error(
       data?.error?.message ?? data?.error ??
       "The response contained no content. Check the provider's path suffix."
@@ -7130,6 +7162,7 @@ async function fullCompletion({ messages, model, thinking, search, chatUrl, sign
     usage: data?.usage ?? null,
     aborted: false,
     truncated,
+    toolCalls: wholeToolCalls,
     // Reported by the app so a conversation started from the home page learns
     // which DeepSeek chat it now belongs to.
     chatUrl: typeof data?.x_chat_url === "string" ? data.x_chat_url : "",
@@ -7186,7 +7219,7 @@ function modelForRequest(provider, model, thinking, search) {
   return "deepseek" + (wantsThinking ? "-thinking" : "") + (wantsSearch ? "" : "-nosearch");
 }
 
-async function streamCompletion({ messages, model, thinking, search, chatUrl, signal, onDelta, onDone, onError }) {
+async function streamCompletion({ messages, model, thinking, search, chatUrl, tools: offerTools, signal, onDelta, onDone, onError }) {
   const provider = activeProvider();
   const payload = {
     model: modelForRequest(provider, model, thinking, search),
@@ -7203,6 +7236,12 @@ async function streamCompletion({ messages, model, thinking, search, chatUrl, si
   // a model with no preference behaves exactly as it did before.
   const effort = effortForModel(provider, model);
   if (effort) payload.reasoning_effort = effort;
+
+  // Real tool calling, offered only where the endpoint can act on it.
+  if (Array.isArray(offerTools) && offerTools.length) {
+    payload.tools = offerTools;
+    payload.tool_choice = "auto";
+  }
 
   // Which DeepSeek conversation this belongs to, and whether to search.
   //
@@ -7260,6 +7299,8 @@ async function streamCompletion({ messages, model, thinking, search, chatUrl, si
   let usage = null;
   /** The DeepSeek chat this turn landed on, when the app reports one. */
   let landedChatUrl = "";
+  /** Tool calls the model asked for, accumulated across delta frames. */
+  const toolCalls = [];
 
   try {
     while (true) {
@@ -7288,6 +7329,18 @@ async function streamCompletion({ messages, model, thinking, search, chatUrl, si
         let changed = false;
         if (delta.reasoning_content) { reasoningText += delta.reasoning_content; changed = true; }
         if (delta.content) { fullText += delta.content; changed = true; }
+        // Tool calls arrive in pieces - an id and name first, then fragments of the
+        // arguments - so they are accumulated by index rather than overwritten.
+        if (Array.isArray(delta.tool_calls)) {
+          for (const part of delta.tool_calls) {
+            const idx = typeof part.index === "number" ? part.index : toolCalls.length;
+            const slot = toolCalls[idx] ||
+              (toolCalls[idx] = { id: "", type: "function", function: { name: "", arguments: "" } });
+            if (part.id) slot.id = part.id;
+            if (part.function?.name) slot.function.name = part.function.name;
+            if (part.function?.arguments) slot.function.arguments += part.function.arguments;
+          }
+        }
         if (changed) onDelta?.({ content: fullText, reasoning: reasoningText });
       }
     }
@@ -7296,11 +7349,107 @@ async function streamCompletion({ messages, model, thinking, search, chatUrl, si
   } finally {
     reader.releaseLock();
     const aborted = signal?.aborted === true;
-    onDone?.({ content: fullText, reasoning: reasoningText, usage, chatUrl: landedChatUrl, aborted });
+    onDone?.({
+      content: fullText,
+      reasoning: reasoningText,
+      usage,
+      chatUrl: landedChatUrl,
+      aborted,
+      // Only complete ones; a slot that never received a name is a stray fragment.
+      toolCalls: toolCalls.filter((c) => c && c.function && c.function.name),
+    });
   }
 }
 
-async function streamWithRetry({ messages, model, thinking, search, chatUrl, onDelta, onRetry, onDone, onError }) {
+// =============================================================================
+// Function calling
+// =============================================================================
+/**
+ * The tools offered to an endpoint that speaks OpenAI tool calling.
+ *
+ * One tool, deliberately. Reading a file is the only thing the app can do that the model
+ * cannot do itself, and it is what makes an edit precise: quote the exact text you want to
+ * replace, having read it, rather than guessing at it.
+ *
+ * Edits stay in the text protocol. They need no capability the model lacks - it already
+ * knows what to write - so a tool call for them would add a round-trip and nothing else.
+ */
+const WORKSPACE_TOOLS = [
+  {
+    type: "function",
+    function: {
+      name: "read_workspace_file",
+      description:
+        "Read a file from the conversation's workspace. Use this before editing a file " +
+        "you have not seen in this conversation, and to re-read one that may have " +
+        "changed. Ask for one file at a time.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "Path of the file, exactly as listed in the workspace.",
+          },
+        },
+        required: ["path"],
+      },
+    },
+  },
+];
+
+/**
+ * Whether this provider can do real tool calling.
+ *
+ * OpenAI-compatible HTTP endpoints can; the DeepSeek bridge cannot - it types into a web
+ * page and returns text, with no concept of a tool call. Offering tools to it would either
+ * be ignored or confuse the model into emitting JSON it cannot act on, so it falls back to
+ * the text protocol instead.
+ */
+function supportsToolCalling(provider) {
+  if (!provider) return false;
+  const url = String(provider.baseUrl || "");
+  if (!url) return false;
+  // The local bridge speaks its own simplified shape, and WebAI2API takes one message.
+  if (/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?/i.test(url)) return false;
+  if (!/^https?:\/\//i.test(url)) return false;
+  if (isWebAi2ApiProvider(provider)) return false;
+  return true;
+}
+
+/**
+ * Run a tool the model asked for.
+ *
+ * The result always comes back as text, including for a file that is not there. Returning
+ * the failure to the model lets it correct itself - ask for the right path, or say the file
+ * is missing - where throwing would end the whole turn.
+ */
+function runWorkspaceTool(conv, call) {
+  let args = {};
+  try {
+    args = JSON.parse(call.function?.arguments || "{}");
+  } catch (e) {
+    return { ok: false, text: "The arguments were not valid JSON. Pass {\"path\": \"...\"}." };
+  }
+
+  const path = normalizePath(String(args.path || "").trim());
+  if (!path) return { ok: false, text: "No path was given." };
+
+  const files = (conv && conv.files) || {};
+  const content = files[path];
+  if (content == null) {
+    const available = Object.keys(files).sort();
+    return {
+      ok: false,
+      text:
+        `No file "${path}" in the workspace.` +
+        (available.length ? ` Available: ${available.join(", ")}` : " The workspace is empty."),
+    };
+  }
+
+  return { ok: true, text: String(content), path };
+}
+
+async function streamWithRetry({ messages, model, thinking, search, chatUrl, tools: offerTools, signal: outerSignal, onDelta, onRetry, onDone, onError }) {
   const ctrl = new AbortController();
   streamingAbort = ctrl;
 
@@ -7327,6 +7476,9 @@ async function streamWithRetry({ messages, model, thinking, search, chatUrl, onD
           : streamCompletion;
         call({
           messages, model, thinking, search, chatUrl,
+          // Forwarded or the tools never reach the sender: the request would carry no
+          // tool definition, and the model would never know it could ask for a file.
+          tools: offerTools,
           signal: ctrl.signal,
           onDelta,
           onDone: (r) => resolve({ ok: true, result: r }),
@@ -7363,6 +7515,133 @@ async function streamWithRetry({ messages, model, thinking, search, chatUrl, onD
   } finally {
     streamingAbort = null;
   }
+}
+
+/**
+ * Run a turn, following tool calls until the model has nothing more to ask for.
+ *
+ * One user turn can take several round-trips: the model asks to read a file, the app
+ * answers, the model continues. Each round goes through streamWithRetry, so retries and
+ * the stop button behave identically at every step.
+ *
+ * The accumulation matters: every round starts a fresh stream, so its deltas describe only
+ * that round. `shown` joins them, and the caller receives the reply as one continuous body
+ * of text rather than the last round's fragment.
+ *
+ * The loop is bounded by MAX_TOOL_ROUNDS. A model that kept asking for the same file would
+ * otherwise never terminate, and eight is generous for a real edit - a handful of reads
+ * before writing.
+ */
+async function runWithTools({ outgoing, conv, onDelta, onRetry, onDone, onError }) {
+  const MAX_TOOL_ROUNDS = 8;
+  const offerTools = supportsToolCalling(activeProvider()) ? WORKSPACE_TOOLS : null;
+  const loopMessages = outgoing.slice();
+  let shown = "";
+  let shownReasoning = "";
+  let lastResult = null;
+
+  for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
+    const settled = await new Promise((resolve) => {
+      streamWithRetry({
+        messages: loopMessages,
+        model: settings.model,
+        thinking: settings.deepthink,
+        search: settings.search,
+        chatUrl: deepseekTargetFor(conv),
+        tools: offerTools,
+        onDelta: ({ content, reasoning }) => {
+          // Each round restarts the text, so what has been shown so far is prefixed back
+          // on - otherwise round two would erase round one from the transcript.
+          onDelta({ content: shown + content, reasoning: shownReasoning + reasoning });
+        },
+        onRetry,
+        onDone: (r) => resolve({ ok: true, result: r }),
+        onError: (err) => resolve({ ok: false, err }),
+      });
+    });
+
+    if (!settled.ok) { onError(settled.err); return "error"; }
+
+    lastResult = settled.result;
+    shown += settled.result.content || "";
+    shownReasoning += settled.result.reasoning || "";
+
+    const calls = Array.isArray(settled.result.toolCalls) ? settled.result.toolCalls : [];
+    if (!calls.length || settled.result.aborted) break;
+
+    // The assistant turn that asked has to go back verbatim, or the model cannot match the
+    // answer to its question.
+    loopMessages.push({
+      role: "assistant",
+      content: settled.result.content || "",
+      tool_calls: calls,
+    });
+
+    for (const call of calls) {
+      const outcome = runWorkspaceTool(conv, call);
+
+      // Show the read in the transcript, in the same form the text protocol uses, so a
+      // tool round and a text round look identical to the reader.
+      shown += `${outcome.path || ""} read:\n\n`;
+      onDelta({ content: shown, reasoning: shownReasoning });
+
+      loopMessages.push({
+        role: "tool",
+        tool_call_id: call.id,
+        content: outcome.text,
+      });
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // The text protocol's equivalent, for providers that cannot do tool calls.
+  //
+  // Without this a reply that ended on `path read:` simply stopped - the request was made
+  // and nothing ever answered it, so the turn died with a status line and no content. The
+  // file is now read and the turn CONTINUES: the answer goes back as a user turn the model
+  // can act on, which is as close as a single-message endpoint gets to a tool result.
+  // ---------------------------------------------------------------------------
+  if (!offerTools && !lastResult?.aborted) {
+    for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+      // Only continue when the reply STOPPED on a read. A read followed by prose means the
+      // model carried on without the file, and answering it then would replay a file into
+      // a turn that had already moved past it.
+      if (!endsOnARead(shown)) break;
+
+      const asked = readRequestedFiles(conv, shown);
+      if (!asked) break;
+
+      const settled = await new Promise((resolve) => {
+        streamWithRetry({
+          messages: [
+            ...loopMessages,
+            { role: "assistant", content: shown },
+            { role: "user", content: `Here is what you asked for:\n\n${asked}` },
+          ],
+          model: settings.model,
+          thinking: settings.deepthink,
+          search: settings.search,
+          chatUrl: deepseekTargetFor(conv),
+          tools: null,
+          onDelta: ({ content, reasoning }) => {
+            onDelta({ content: shown + content, reasoning: shownReasoning + reasoning });
+          },
+          onRetry,
+          onDone: (r) => resolve({ ok: true, result: r }),
+          onError: (err) => resolve({ ok: false, err }),
+        });
+      });
+
+      if (!settled.ok) { onError(settled.err); return "error"; }
+      lastResult = settled.result;
+      shown += settled.result.content || "";
+      shownReasoning += settled.result.reasoning || "";
+      if (settled.result.aborted) break;
+    }
+  }
+
+  onDone(lastResult || { content: shown, reasoning: shownReasoning });
+  return "done";
 }
 
 // =============================================================================
@@ -7549,13 +7828,12 @@ async function runCompletion(conv) {
 
   // Contents for any `read:` the previous reply asked for.
   //
-  // The read runs as a tool call would: the last assistant turn requested a file, and the
-  // answer is attached to the request that follows. It is looked up in the workspace, so a
-  // file created earlier in the same conversation can be read back and edited precisely
-  // rather than re-guessed.
+  // The read runs like a tool call: an earlier assistant turn requested a file, and the
+  // answer is attached to the request that follows, so a file created earlier in the
+  // conversation can be read back and edited precisely rather than re-guessed.
   const lastAssistant = [...conv.messages].reverse().find((m) => m.role === "assistant");
   const requested = lastAssistant ? readRequestedFiles(conv, lastAssistant.content) : "";
-  if (requested) sysParts.push(`Contents requested in the last reply:\n\n${requested}`);
+  if (requested) sysParts.push(`Contents requested in an earlier reply:\n\n${requested}`);
 
   outgoing.push({ role: "system", content: sysParts.join("\n\n") });
 
@@ -7801,14 +8079,11 @@ async function runCompletion(conv) {
 
   activeTypewriters = { reasoning: reasoningTypewriter, content: contentTypewriter };
 
-  await streamWithRetry({
-    messages: outgoing,
-    model: settings.model,
-    thinking: settings.deepthink, search: settings.search,
-    // The page is the chat, so it must be on this conversation's chat before
-    // anything is typed into it.
-    chatUrl: deepseekTargetFor(conv),
-
+  // One user turn may take several round-trips when the model wants to read files. The
+  // loop lives in its own function so this one keeps its single continuous reply.
+  const rounds = await runWithTools({
+    outgoing,
+    conv,
     onDelta: ({ content, reasoning }) => {
       assistantMsg.content = content;
       assistantMsg.reasoning = reasoning;
