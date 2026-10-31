@@ -8843,7 +8843,40 @@ function installSaveSafetyNet() {
  * download before it starts. The window.open fallback catches WebViews that
  * refuse to honour a programmatic click.
  */
-function downloadFile(filename, mime, content) {
+/**
+ * Save `content` as `filename`.
+ *
+ * In a browser this is the usual anchor-and-click download. In the Android app that
+ * silently does nothing - a WebView has no download manager, so an anchor with a
+ * `download` attribute fires and is ignored. There, the bytes go through the bridge,
+ * which asks the system for a destination and writes them.
+ *
+ * Async because the app path waits for the user to pick a location; the browser path
+ * resolves at once, so callers behave the same either way.
+ */
+async function downloadFile(filename, mime, content) {
+  const bridge = workspaceBridge();
+
+  if (bridge && typeof bridge.saveFile === "function") {
+    try {
+      const res = JSON.parse(
+        bridge.saveFile(filename, mime || "application/octet-stream", textToBase64(content))
+      );
+      if (!res.ok) {
+        // A cancelled dialog is a normal outcome, not a failure worth an alert.
+        if (!/cancel/i.test(res.error || "")) {
+          console.error("Save failed:", res.error);
+          alert(`Could not save the file:\n\n${res.error}`);
+        }
+      }
+      return res.ok === true;
+    } catch (e) {
+      console.error("Save failed:", e);
+      alert(`Could not save the file:\n\n${e.message}`);
+      return false;
+    }
+  }
+
   const blob = new Blob([content], { type: mime });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -8861,6 +8894,7 @@ function downloadFile(filename, mime, content) {
     a.remove();
     URL.revokeObjectURL(url);
   }, 30_000);
+  return true;
 }
 
 /** A filename-safe slug of `conv.title`. */
@@ -9030,7 +9064,7 @@ async function exportConversationJson(conv) {
     schema: 2,
     conversation: conversationWithImages(conv, images),
   };
-  downloadFile(
+  await downloadFile(
     `${todayForFilename()}-${conversationSlug(conv)}.json`,
     "application/json",
     JSON.stringify(payload, null, 2)
@@ -9041,7 +9075,7 @@ async function exportConversationJson(conv) {
 async function exportConversationMarkdown(conv) {
   if (!conv) return;
   const images = await loadConversationImages(conv);
-  downloadFile(
+  await downloadFile(
     `${todayForFilename()}-${conversationSlug(conv)}.md`,
     "text/markdown",
     conversationToMarkdown(conv, images)
@@ -9068,7 +9102,7 @@ async function exportAllJson() {
     const images = await loadConversationImages(conv);
     payload.conversations.push(conversationWithImages(conv, images));
   }
-  downloadFile(
+  await downloadFile(
     `${todayForFilename()}-deepseek-all.json`,
     "application/json",
     JSON.stringify(payload, null, 2)
@@ -9086,7 +9120,7 @@ async function exportAllMarkdown() {
     parts.push(conversationToMarkdown(conv, images));
     parts.push("\n\n---\n\n");
   }
-  downloadFile(
+  await downloadFile(
     `${todayForFilename()}-deepseek-all.md`,
     "text/markdown",
     parts.join("")
