@@ -397,7 +397,17 @@
      an animation. Opening a conversation therefore showed the top of the
      history and glided downward. Scrolling is now instant; the JS jumps
      straight to the bottom before the first paint. */
-  .messages { flex: 1; overflow-y: auto; padding: 0 24px; position: relative; }
+  .messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 24px;
+    position: relative;
+    /* The follow logic owns the scroll position. Scroll anchoring also adjusts it -
+       by however much content changed above the anchor - and the two corrections
+       fight, which is what made the transcript drift while a reply streamed in. */
+    overflow-anchor: none;
+    scroll-behavior: auto;
+  }
   .messages-inner { max-width: 768px; margin: 0 auto; padding-bottom: 24px; }
 
   /* Jump to the latest message.
@@ -452,18 +462,12 @@
 
   .msg {
     padding: 22px 0;
-    /* Skip layout and paint for messages above or below the viewport. `auto` on
-       the intrinsic size means each message's real height is remembered once it
-       has been rendered, so the scrollbar does not jump back to an estimate. */
-    content-visibility: auto;
-    contain-intrinsic-size: auto 96px;
-  }
-  /* Undoes the skip for one layout pass. renderMessages flips this on before it
-     measures, because a freshly rebuilt transcript is otherwise entirely 96px
-     estimates - scrollHeight comes back far smaller than it really is, and the
-     scroll restore clamps to 0. That is the "jumped to the top" behaviour. */
-  .messages-inner.force-layout .msg {
-    content-visibility: visible;
+    /* Every message is laid out, so scrollHeight is the transcript's real height.
+       content-visibility:auto made off-screen messages report a 96px estimate, and
+       that estimate is what the follow-the-bottom logic scrolled to - so the view
+       stopped short of the end and drifted, and a restored position clamped to 0
+       (the "jumped to the top" behaviour). A transcript is bounded work, so
+       correctness wins here. */
   }
   .msg-user { display: flex; justify-content: flex-end; }
   .msg-user-wrap {
@@ -2816,6 +2820,31 @@
 </svg></span>
             Search
           </button>
+          <button class="pill" id="codeBtn" title="Code guidance is on — the prompt finish is appended to every message. Click to turn it off">
+            <span class="pill-thinking-icon" id="codeIcon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" focusable="false" data-icon="code">
+  <title>Code</title>
+  <g stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+    <g transform="translate(8 8)">
+      <g>
+        <animateTransform attributeName="transform" type="scale" dur="0.68s" begin="indefinite" fill="freeze" repeatCount="1" calcMode="spline" keyTimes="0;0.24;0.62;1" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" values="1 1;0.9 0.9;1.04 1.04;1 1" id="code-on-frame" data-leg="on"/>
+        <animateTransform attributeName="transform" type="scale" dur="0.68s" begin="indefinite" fill="freeze" repeatCount="1" calcMode="spline" keyTimes="0;0.24;0.62;1" keySplines="0.42 0 0.58 1;0.42 0 0.58 1;0.42 0 0.58 1" values="1 1;0.9 0.9;1.04 1.04;1 1" id="code-off-frame" data-leg="off"/>
+        <g transform="translate(-8 -8)">
+          <rect x="1.8" y="3.3" width="12.4" height="9.4" rx="2.1"/>
+          <path d="M5.05 6.55 6.9 8.2 5.05 9.85" stroke-dasharray="6" stroke-dashoffset="0">
+            <animate attributeName="stroke-dashoffset" dur="0.68s" begin="indefinite" fill="freeze" repeatCount="1" calcMode="spline" keyTimes="0;0.18;0.66;1" keySplines="0 0 1 1;0.42 0 0.58 1;0 0 1 1" values="6;6;0;0" id="code-on-chevron" data-leg="on"/>
+            <animate attributeName="stroke-dashoffset" dur="0.68s" begin="indefinite" fill="freeze" repeatCount="1" calcMode="spline" keyTimes="0;0.3;0.74;1" keySplines="0 0 1 1;0.42 0 0.58 1;0 0 1 1" values="0;0;6;0" id="code-off-chevron" data-leg="off"/>
+          </path>
+          <path d="M8.4 9.85h2.55" stroke-dasharray="3" stroke-dashoffset="0">
+            <animate attributeName="opacity" dur="0.68s" begin="indefinite" fill="freeze" repeatCount="1" calcMode="spline" keyTimes="0;0.36;0.56;1" keySplines="0 0 1 1;0 0 1 1;0 0 1 1" values="0;0;1;1" id="code-on-cursor" data-leg="on"/>
+            <animate attributeName="opacity" dur="0.68s" begin="indefinite" fill="freeze" repeatCount="1" calcMode="spline" keyTimes="0;0.3;0.62;1" keySplines="0 0 1 1;0.42 0 0.58 1;0 0 1 1" values="1;1;0;1" id="code-off-cursor" data-leg="off"/>
+          </path>
+        </g>
+      </g>
+    </g>
+  </g>
+</svg></span>
+            Code
+          </button>
         </div>
         <textarea id="input" rows="1" placeholder="Message DeepSeek"></textarea>
         <div class="input-bottom">
@@ -3850,6 +3879,27 @@ function workspaceListingFor(conv) {
  * That is the signature of a model waiting for an answer: it asked, and stopped. Prose
  * after the read means it moved on without waiting, which needs no reply from us.
  */
+/**
+ * Is a completed command block followed by nothing but whitespace?
+ *
+ * Separated from endsOnARead on purpose: "the last command is a read" and "the read is
+ * the last thing in the reply" are different questions, and only both together justify
+ * opening a tool loop. Collapsing them was why a read in the middle of a longer answer
+ * left the state active after the AI had visibly stopped.
+ */
+function hasContentAfterLastCommand(text) {
+  const source = String(text || "");
+  FILE_CMD_BLOCK_RE_CLOSED.lastIndex = 0;
+  let lastEnd = -1;
+  let match;
+  while ((match = FILE_CMD_BLOCK_RE_CLOSED.exec(source)) !== null) {
+    lastEnd = match.index + match[0].length;
+  }
+  FILE_CMD_BLOCK_RE_CLOSED.lastIndex = 0;
+  if (lastEnd < 0) return false;
+  return !!source.slice(lastEnd).trim();
+}
+
 function endsOnARead(text) {
   const segments = parseReplySegments(text);
   // Walk back past empty text segments; the last meaningful one decides.
@@ -4039,7 +4089,34 @@ function flashButton(btn, ok, originalHtml) {
  * Capturing is still strict about the three words and the colon, so a sentence that
  * merely mentions create: is not mistaken for a command.
  */
-const FILE_CMD_LINE_RE = /^[\s`*_~]*([^\s`*_~]+)[\s`*_~]+(find|replace|create|read)[\s`*_~]*:[\s`*_~]*$/i;
+/**
+ * The CAPTURE excludes only what cannot realistically appear in a path - whitespace,
+ * backticks, asterisks and tildes - and deliberately ALLOWS "_".
+ *
+ * It used to be excluded along with the decoration characters, and the result was that a
+ * filename containing an underscore never matched: "my_file.py create:" was not a command
+ * at all, so the line stayed in the transcript as prose, the block beneath it rendered as
+ * an ordinary code block, and no file was written. Underscores are ordinary in filenames -
+ * snake_case, Python modules, __init__.py, _app.js, helpers_test.js - so this quietly
+ * disabled the whole command protocol for a large share of real paths, including `read:`
+ * on such a file, which in turn broke the round-trip that answers a read.
+ *
+ * "_" is still accepted as DECORATION on either side of the path (see the separator
+ * classes below, and the leading/trailing strip applied to the capture), so
+ * `_file.py_ create:` parses. It is simply no longer forbidden inside the name itself.
+ */
+const FILE_CMD_LINE_RE = /^[\s`*_~]*([^\s`*~]+)[\s`*_~]+(find|replace|create|read)[\s`*_~]*:[\s`*_~]*$/i;
+
+/**
+ * The same command, but only once its fenced payload is closed.
+ *
+ * The difference is the closing fence (`[\s\S]*?` followed by three backticks, rather than
+ * running to the end of the string). While a reply streams, a block whose closing fence
+ * has not arrived yet simply does not match - which is exactly the distinction needed to
+ * tell "a command is being written" from "a command is complete", and what makes
+ * `hasContentAfterLastCommand` meaningful.
+ */
+const FILE_CMD_BLOCK_RE_CLOSED = /^[\s`*_~]*([^\s`*~]+)[\s`*_~]+(find|replace|create|read)[\s`*_~]*:[\s`*_~]*\n+```[a-zA-Z0-9]*\n?([\s\S]*?)```/gim;
 
 /**
  * Canonicalise a workspace path.
@@ -4507,7 +4584,12 @@ function statesFromFileChanges(msg) {
     // it were still running.
     if (seg.kind === "read") { states.push("done"); continue; }
     const tally = byFile.get(seg.file);
-    if (!tally) { states.push("running"); continue; }
+    // No record means the command did not leave one - and this function only ever runs
+    // over a reply that has finished, so "running" was never true here. It left a stored
+    // reply pulsing forever: the common case is a `read:`, which edits nothing and so has
+    // no entry in fileChanges, and the reader was told it was still reading a file it had
+    // read minutes ago. A finished reply has finished its commands.
+    if (!tally) { states.push("done"); continue; }
     // Failures are consumed first: a file that was retried shows the failure, then the
     // success, which is the order they happened in.
     if (tally.failed > 0) { tally.failed--; states.push("failed"); }
@@ -4522,6 +4604,28 @@ function renderContentWithStatuses(text, states = null) {
   const out = [];
   let cmdIndex = 0;
 
+  // Which segment is the last one carrying anything.
+  //
+  // While a reply streams there are no stored outcomes to read, so progress has to come
+  // from the text itself: a command with anything after it has finished, and only a
+  // command at the very end of the reply can still be running. Every command used to be
+  // drawn as running for the whole duration of the reply, so a finished "Reading app.js..."
+  // kept pulsing behind the prose that followed it.
+  let runningFrom = -1;
+  if (!states) {
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i];
+      if (seg.type === "text" && !seg.text.trim()) continue;
+      runningFrom = i;
+    }
+  }
+
+  /** "running" / "done" / "failed" for the command at segment `segIndex`. */
+  const stateFor = (segIndex, index) => {
+    if (states) return states[index] || "running";
+    return segIndex >= runningFrom ? "running" : "done";
+  };
+
   for (let k = 0; k < segments.length; k++) {
     const seg = segments[k];
 
@@ -4530,28 +4634,29 @@ function renderContentWithStatuses(text, states = null) {
       continue;
     }
 
-    // A find is followed by its replace. The pair reads as one edit - "Editing x.js..."
-    // then "Edited x.js." - rather than two unrelated lines about the same file.
+    // A find is followed by its replace. The pair is ONE edit from the reader's point of
+    // view, so it gets one line: "Editing x.js..." while the find is still open, then
+    // "Edited x.js." (or the failure) once its replace has an outcome. Emitting both
+    // lines printed the same sentence twice.
     const next = segments[k + 1];
     const isPairedFind =
       seg.kind === "find" &&
       next && next.type === "command" && next.kind === "replace" && next.file === seg.file;
 
-    const st = states ? (states[cmdIndex] || "running") : "running";
-    out.push(fileCommandStatusHtml(seg.kind, seg.file, st));
-
     if (isPairedFind) {
-      // The replace carries the outcome of this find; it gets the second line and the
-      // loop skips it below.
-      const repState = states ? (states[cmdIndex + 1] || "running") : "running";
-      if (repState !== "running") {
-        out.push(fileCommandStatusHtml("replace", next.file, repState));
+      const pairState = stateFor(k + 1, cmdIndex + 1);
+      if (pairState === "running") {
+        out.push(fileCommandStatusHtml(seg.kind, seg.file, "running"));
+      } else {
+        out.push(fileCommandStatusHtml("replace", next.file, pairState));
       }
       k++;                       // consume the replace
+      cmdIndex += 2;
+      continue;
     }
 
+    out.push(fileCommandStatusHtml(seg.kind, seg.file, stateFor(k, cmdIndex)));
     cmdIndex++;
-    if (isPairedFind) cmdIndex++;
   }
 
   return out;
@@ -5094,6 +5199,11 @@ function resizeInput() {
   const ta = $("input");
   ta.style.height = "auto";
   ta.style.height = Math.min(ta.scrollHeight, 220) + "px";
+  // A taller composer is a shorter transcript, so the end of the conversation
+  // slides out of view while typing - and the window resize handler never saw it,
+  // because the window did not change. scheduleFollow covers both cases: a
+  // following reader stays at the end, a reading one keeps their block in place.
+  scheduleFollow();
 }
 
 /**
@@ -6446,17 +6556,228 @@ function hideLiveEditWindow() {
  * edit wants: the message being changed should stay where it was.
  */
 
+/* ============================================================================
+   Transcript scrolling - one owner, one rule.
+   ----------------------------------------------------------------------------
+   What this replaces, and why: the old model marked our own writes with a
+   counter, decremented a frame later. While a reply streams in, those writes happen
+   many times a second, so a reader scrolling up during generation was frequently
+   misread as our own write and ignored - the follow stayed on and the next delta
+   pulled them back down. The transcript appeared to refuse to let go.
+
+   The model now:
+
+     1. Has a single piece of state: `followOutput`. True means "carry me along
+        with new content", false means "I am reading, hold still". There is no
+        proximity threshold any more - stopping even a few pixels from the end used
+        to leave the follow armed.
+     2. Recognises its own writes by VALUE, not by time. The scrollTop produced by
+        our last write is remembered; a scroll event sitting exactly there is ours.
+        A reader's scroll always lands somewhere else, so it can never be mistaken
+        for ours, no matter how small or how soon.
+     3. While following, eases toward the end rather than jumping, so a burst of
+        streamed text is chased smoothly instead of teleporting.
+     4. While not following, holds the block under the reader's eyes in place
+        across every height change: streamed text, the final markdown re-render, a
+        taller composer.
+     5. Notices an upward gesture on the way down (wheel, touch) instead of only
+        after the browser has already moved the view, so following stops on the
+        first movement of the finger rather than a frame later.
+   ============================================================================ */
+
+/** Hard cap on one frame's movement, and the share of the gap closed per frame. */
+const SCROLL_STEP_MAX_PX = 140;
+const SCROLL_EASE = 0.22;
+
+/** The scrollTop produced by our last write; a scroll event here is ours. */
+let wroteScrollTop = -1;
+
+/** The block held in place while the reader is away from the end: { el, top }. */
+let scrollAnchor = null;
+
+/** One follow per frame, at most. */
+let followQueued = false;
+
+/** The live ResizeObserver, with the element it watches. */
+let transcriptWatcher = null;
+
+function scrollBox() { return $("messages"); }
+
+function transcriptInner(m) {
+  return m.querySelector(".messages-inner") || m;
+}
+
+function gapToEnd(m) {
+  return m.scrollHeight - m.scrollTop - m.clientHeight;
+}
+
+function isAtEnd(m) {
+  return gapToEnd(m) <= 1;
+}
+
+/** Write scrollTop, and remember the value so the event it fires is ignored. */
+function writeScroll(m, top) {
+  const max = Math.max(0, m.scrollHeight - m.clientHeight);
+  const value = Math.max(0, Math.min(top, max));
+  wroteScrollTop = value;
+  m.scrollTop = value;
+}
+
+/** The running smooth-scroll frame, if any. */
+let scrollRaf = 0;
+
 /**
- * Scroll events that this code caused, not the reader.
+ * Move toward the end a little at a time.
  *
- * Declared before renderMessages because that function uses it and runs on the first
- * paint - a `let` further down would still be in its temporal dead zone and throw.
- *
- * A counter rather than a boolean: several writes can be in flight in one frame - the
- * follow, the jump button, a render restore - and a boolean cleared early would let the
- * last of them through as if the reader had scrolled.
+ * A fifth of what is left per frame, capped so a burst of streamed text cannot
+ * teleport the view, floored at 1px so the last few pixels still arrive. The step
+ * is recomputed from the live gap every frame, so a growing transcript is chased at
+ * the same perceived speed - the reply never outruns the scroll and never leaves a
+ * visible gap at the bottom.
  */
-let programmaticScrolls = 0;
+function stepAutoScroll() {
+  scrollRaf = 0;
+  const m = scrollBox();
+  if (!m || !followOutput) return;
+  const gap = gapToEnd(m);
+  if (gap <= 0.5) return;
+  const step = Math.min(gap, SCROLL_STEP_MAX_PX, Math.max(1, gap * SCROLL_EASE));
+  writeScroll(m, m.scrollTop + step);
+  if (gapToEnd(m) > 0.5) scrollRaf = requestAnimationFrame(stepAutoScroll);
+}
+
+function startAutoScroll() {
+  const m = scrollBox();
+  if (!m) return;
+  // A restore, not a live delta: rolling a thousand pixels down looks like a
+  // glitch, so anything further than a screen and a half lands immediately and
+  // only the following updates get animated.
+  if (gapToEnd(m) > m.clientHeight * 1.5) {
+    writeScroll(m, m.scrollHeight);
+    return;
+  }
+  if (!scrollRaf) scrollRaf = requestAnimationFrame(stepAutoScroll);
+}
+
+function stopAutoScroll() {
+  if (scrollRaf) { cancelAnimationFrame(scrollRaf); scrollRaf = 0; }
+}
+
+/**
+ * Remember the message at the top of the viewport and its exact offset. Every
+ * unpinned correction is computed from this pair, so nothing accumulates.
+ */
+function captureAnchor() {
+  const m = scrollBox();
+  if (!m) return;
+  const boxTop = m.getBoundingClientRect().top;
+  const blocks = transcriptInner(m).children;
+  let found = null;
+  for (let i = 0; i < blocks.length; i++) {
+    const rect = blocks[i].getBoundingClientRect();
+    if (rect.bottom > boxTop + 1) {
+      found = { el: blocks[i], top: rect.top - boxTop };
+      break;
+    }
+  }
+  scrollAnchor = found;
+}
+
+/** Put the anchored block back where the reader last saw it. */
+function restoreAnchor() {
+  const m = scrollBox();
+  if (!m || followOutput || !scrollAnchor) return;
+  const el = scrollAnchor.el;
+  if (!el || !el.isConnected) { captureAnchor(); return; }
+  const boxTop = m.getBoundingClientRect().top;
+  const drift = (el.getBoundingClientRect().top - boxTop) - scrollAnchor.top;
+  if (Math.abs(drift) >= 0.5) writeScroll(m, m.scrollTop + drift);
+}
+
+/**
+ * Give up following without moving the reader.
+ *
+ * An upward wheel or a finger on the glass calls this directly, before the scroll
+ * event exists, so the reply cannot win the race and drag the view back for a
+ * frame. Resuming is deliberately NOT done here: only the button does that, so a
+ * reader who stops to read is not carried off by the next delta.
+ */
+function leaveEnd() {
+  const m = scrollBox();
+  if (!m) return;
+  if (!followOutput) { captureAnchor(); return; }
+  followOutput = false;
+  stopAutoScroll();
+  captureAnchor();
+  updateJumpButton();
+}
+
+/** Follow the end if the reader is following, hold their place if not. */
+function followIfPinned() {
+  const m = scrollBox();
+  if (!m) return;
+  if (followOutput) startAutoScroll();
+  else restoreAnchor();
+  updateJumpButton();
+}
+
+/** Run the follow after this frame's layout, once. */
+function scheduleFollow() {
+  if (followQueued) return;
+  followQueued = true;
+  requestAnimationFrame(() => {
+    followQueued = false;
+    followIfPinned();
+  });
+}
+
+/** Jump to the newest message and resume following - the only thing that resumes it. */
+function scrollToBottom() {
+  const m = scrollBox();
+  if (!m) return;
+  followOutput = true;
+  scrollAnchor = null;
+  startAutoScroll();
+  updateJumpButton();
+}
+
+/**
+ * The scroll listener's body.
+ *
+ * The first branch is the whole of point 2 above: our writes land exactly on the
+ * value we stored, so anything else is the reader and is honoured immediately.
+ */
+function onTranscriptScroll() {
+  const m = scrollBox();
+  if (!m) return;
+  if (Math.abs(m.scrollTop - wroteScrollTop) < 1) return;
+
+  if (followOutput) {
+    // Pulled away from a reply that is still arriving: stop for good. Auto-scroll
+    // is a mode now, so it does not silently re-arm when the end drifts back into
+    // view - only the button does that.
+    followOutput = false;
+    stopAutoScroll();
+  }
+  captureAnchor();
+  updateJumpButton();
+}
+
+/** Height changes: streamed text, a markdown re-render, a taller composer. */
+function watchTranscriptHeight() {
+  const m = scrollBox();
+  if (!m || typeof ResizeObserver !== "function") return;
+  const inner = transcriptInner(m);
+  if (transcriptWatcher && transcriptWatcher.el === inner) return;
+  if (transcriptWatcher) transcriptWatcher.observer.disconnect();
+  const observer = new ResizeObserver(() => {
+    if (followOutput) startAutoScroll();
+    else restoreAnchor();
+    updateJumpButton();
+  });
+  observer.observe(inner);
+  transcriptWatcher = { observer, el: inner };
+}
 
 function renderMessages({ toBottom = false, anchor = null } = {}) {
   // Measure before the rebuild, so the position can be restored after it.
@@ -6471,7 +6792,11 @@ function renderMessages({ toBottom = false, anchor = null } = {}) {
     if (node) anchorOffset = node.getBoundingClientRect().top - box.getBoundingClientRect().top;
   }
 
-  const wasAtBottom = previousHeight - previousTop - box.clientHeight < 40;
+  // No threshold of its own any more: "was the reader at the bottom" is the same
+  // question the follow asks, so it is asked the same way. With 40 here and 80
+  // there, a reader between the two counted as at the end for streaming and away
+  // from it for a re-render - and a rebuild threw them back up to an old marker.
+  const wasAtBottom = isAtEnd(box);
 
   // What the reader is looking at, captured BEFORE the rebuild destroys it.
   //
@@ -6496,25 +6821,10 @@ function renderMessages({ toBottom = false, anchor = null } = {}) {
   // source in when the read lands.
   hydrateAttachmentImages(inner);
 
-  // Lay every message out once, so the restore below measures real heights.
-  //
-  // content-visibility: auto keeps a long transcript cheap to scroll and to
-  // stream into, but it also means a freshly appended message has not been
-  // rendered yet and therefore reports its 96px intrinsic size instead of its
-  // real height. box.scrollHeight is then far smaller than it was before the
-  // rebuild, and the delta restore clamps scrollTop to 0 - the "jumped to the
-  // top" case.
-  //
-  // Reading offsetHeight with the property overridden forces the layout, and
-  // afterwards each message's real size is remembered (contain-intrinsic-size
-  // uses `auto`), so subsequent measurements - including the streaming follow -
-  // are accurate while the property keeps doing its job for scrolling.
-  //
-  // This runs only on a deliberate rebuild - send, delete, edit, regenerate,
-  // settings save - never during streaming, so the one-off cost is acceptable.
-  inner.classList.add("force-layout");
-  void inner.offsetHeight;                             // force a synchronous layout
-  inner.classList.remove("force-layout");
+  // No forced layout pass any more. content-visibility is gone from .msg, so every
+  // message is laid out and scrollHeight is the transcript's real height - the
+  // override only ever corrected one measurement while the streaming follow still
+  // read an estimate.
 
   // Restore position, before paint so there is no visible jump.
   //
@@ -6522,7 +6832,6 @@ function renderMessages({ toBottom = false, anchor = null } = {}) {
   // would otherwise read it as the reader moving - turning the follow off, or moving the
   // jump button - so the transcript would end up somewhere the reader did not ask for
   // after a re-render.
-  programmaticScrolls++;
   if (toBottom || (anchor == null && wasAtBottom)) {
     // Following the newest message. Staying pinned to the bottom is right when
     // the reader was already there, so a live reply keeps its place.
@@ -6557,7 +6866,18 @@ function renderMessages({ toBottom = false, anchor = null } = {}) {
       box.scrollTop = previousTop;
     }
   }
-  requestAnimationFrame(() => { programmaticScrolls = Math.max(0, programmaticScrolls - 1); });
+  // The rebuild replaced every node, so an anchor captured before it points at
+  // detached elements. Re-establish the state against the DOM that now exists:
+  // following keeps the end in view, reading keeps the block they were on exactly
+  // where it was, even though the transcript just changed height.
+  if (followOutput) {
+    writeScroll(box, box.scrollHeight);
+  } else {
+    scrollAnchor = null;
+    captureAnchor();
+    wroteScrollTop = box.scrollTop;
+  }
+  updateJumpButton();
 }
 
 /**
@@ -6863,123 +7183,67 @@ async function commitEdit(index, newText, attachments) {
 /**
  * Whether the transcript should follow new text.
  *
- * Follows while the reader is at the bottom, and stops as soon as they scroll up -
- * the same rule the DeepSeek site uses. Before this, every streamed delta jumped to
- * the bottom, so scrolling back to re-read something was impossible while a reply
- * was arriving.
+ * A mode, not a proximity test: true carries the view along with new content, false
+ * holds it perfectly still. Declared here rather than beside the model above because
+ * this is where the rest of the file reads it, and the model only touches it at call
+ * time.
  */
 let followOutput = true;
 
-/** How close to the bottom still counts as "at the bottom", in pixels. */
-const FOLLOW_THRESHOLD_PX = 80;
-
-function isNearBottom(el) {
-  return el.scrollHeight - el.scrollTop - el.clientHeight <= FOLLOW_THRESHOLD_PX;
-}
-
 /**
- * Scroll to the bottom only when following.
+ * Show the jump-to-bottom button whenever the follow is paused.
  *
- * Called on every streamed delta, so it must not fight a reader who has scrolled
- * away.
+ * Distance is deliberately not the test. Once following became a mode, the button
+ * has to mean "auto-scroll is off, tap to turn it back on" - a reader who stopped
+ * five pixels short would otherwise have no way back except scrolling by hand.
  */
-function followIfPinned() {
-  const m = $("messages");
-  const btn = $("jumpToBottomBtn");
-
-  // One measurement, then only writes. Reading scrollHeight after setting
-  // scrollTop forces a synchronous layout on every streamed frame; the distance
-  // is computed once and reused for both the scroll and the button state.
-  const distance = m.scrollHeight - m.scrollTop - m.clientHeight;
-
-  if (followOutput) {
-    // Mark the write as ours BEFORE it happens.
-    //
-    // Setting scrollTop fires a scroll event, and the listener below treats any scroll as
-    // the reader moving - so the follow would switch itself off after one frame. That is
-    // the "it jumps somewhere else" behaviour: the transcript stopped following mid-reply,
-    // then a later re-render restored a stale position.
-    programmaticScrolls++;
-    m.scrollTop += distance;
-    // Zero on the next frame, by which point the event has been delivered.
-    requestAnimationFrame(() => { programmaticScrolls = Math.max(0, programmaticScrolls - 1); });
-
-    if (btn) btn.classList.remove("show");
-    return;
-  }
-  if (btn) btn.classList.toggle("show", distance > FOLLOW_THRESHOLD_PX);
-}
-
-let followFrameQueued = false;
-
-/**
- * Coalesce every follow request into one per frame.
- *
- * During streaming, deltas arrive in bursts - a single read can hand over ten
- * at once. Reading scrollHeight once per delta forced a synchronous layout
- * each time, which is what made scrolling stutter on Android. This collapses
- * any number of calls within one frame into a single read.
- */
-function scheduleFollow() {
-  if (followFrameQueued) return;
-  followFrameQueued = true;
-  requestAnimationFrame(() => {
-    followFrameQueued = false;
-    followIfPinned();
-  });
-}
-
-function scrollToBottom() {
-  const m = $("messages");
-  // Ours, not the reader's: without this the follow would cancel itself here.
-  programmaticScrolls++;
-  m.scrollTop = m.scrollHeight;
-  requestAnimationFrame(() => { programmaticScrolls = Math.max(0, programmaticScrolls - 1); });
-  followOutput = true;
-  updateJumpButton();
-}
-
-/** Show the jump-to-bottom button only while the reader is above the end. */
 function updateJumpButton() {
   const btn = $("jumpToBottomBtn");
   if (!btn) return;
-  const m = $("messages");
-  const away = m.scrollHeight - m.scrollTop - m.clientHeight > FOLLOW_THRESHOLD_PX;
-  btn.classList.toggle("show", away);
+  btn.classList.toggle("show", !followOutput);
 }
 
-// Scrolling up stops the follow; returning to the bottom resumes it.
-//
-// This is the reader's intent made explicit: being at the bottom means "keep me
-// here", moving away means "let me read".
-//
-// A scroll this code caused is not the reader's intent, so it is ignored - otherwise the
-// follow would cancel itself the moment it scrolled, and a render's position restore would
-// be mistaken for the user jumping somewhere.
+/** The remaining helpers live in the scroll model block near the top of the script. */
+
 (function wireTranscriptScroll() {
   const m = $("messages");
   if (!m || m.dataset.scrollWired === "1") return;
   m.dataset.scrollWired = "1";
-  m.addEventListener("scroll", () => {
-    if (programmaticScrolls > 0) return;
-    followOutput = isNearBottom(m);
-    updateJumpButton();
+  m.addEventListener("scroll", onTranscriptScroll, { passive: true });
+  watchTranscriptHeight();
+
+  // Gestures are watched as well as scroll events. Waiting for the scroll event
+  // means a frame, sometimes several on iOS, during which the follow is still
+  // writing to the bottom while the finger is already moving away from it - which
+  // is what "it fights you while it's generating" actually was. These only ever
+  // stop following; nothing here resumes it.
+  m.addEventListener("wheel", (e) => {
+    if (e.deltaY < 0 && m.scrollTop > 0) leaveEnd();
   }, { passive: true });
+
+  let touchStartY = null;
+  m.addEventListener("touchstart", (e) => {
+    touchStartY = e.touches[0] ? e.touches[0].clientY : null;
+    // A touch is the interruption. Pausing on contact rather than on the first
+    // upward pixel means a finger that lands to read, select or copy stops the
+    // reply from sliding under it - which is the actual complaint.
+    leaveEnd();
+  }, { passive: true });
+  m.addEventListener("touchmove", (e) => {
+    if (touchStartY == null || !e.touches[0]) return;
+    // Finger moving down drags the content down, i.e. the reader is going up.
+    if (e.touches[0].clientY - touchStartY > 4 && m.scrollTop > 0) leaveEnd();
+  }, { passive: true });
+  m.addEventListener("touchend", () => { touchStartY = null; }, { passive: true });
+  m.addEventListener("touchcancel", () => { touchStartY = null; }, { passive: true });
 })();
 
 (function wireJumpButton() {
   const btn = $("jumpToBottomBtn");
   if (!btn) return;
-  btn.addEventListener("click", () => {
-    const m = $("messages");
-    // Jumping back down also resumes following, so the next delta keeps the
-    // reader at the end where they asked to be.
-    programmaticScrolls++;
-    m.scrollTop = m.scrollHeight;
-    requestAnimationFrame(() => { programmaticScrolls = Math.max(0, programmaticScrolls - 1); });
-    followOutput = true;
-    updateJumpButton();
-  });
+  // Jumping back down is also what resumes following, so the next delta keeps the
+  // reader at the end where they asked to be.
+  btn.addEventListener("click", () => { scrollToBottom(); });
 })();
 
 // =============================================================================
@@ -7692,7 +7956,7 @@ async function streamWithRetry({ messages, model, thinking, search, chatUrl, too
  * otherwise never terminate, and eight is generous for a real edit - a handful of reads
  * before writing.
  */
-async function runWithTools({ outgoing, conv, onDelta, onRetry, onDone, onError }) {
+async function runWithTools({ outgoing, conv, onDelta, onRound, onRetry, onDone, onError }) {
   const MAX_TOOL_ROUNDS = 8;
   const offerTools = supportsToolCalling(activeProvider()) ? WORKSPACE_TOOLS : null;
   const loopMessages = outgoing.slice();
@@ -7701,6 +7965,11 @@ async function runWithTools({ outgoing, conv, onDelta, onRetry, onDone, onError 
   let lastResult = null;
 
   for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
+    // Announce where this round begins, before any of it has arrived. The caller needs
+    // the offsets because everything it receives is cumulative: without them, round one's
+    // finished answer reads as "this round already answered" the instant round two opens.
+    if (round > 0) onRound?.(round, shown.length, shownReasoning.length);
+
     const settled = await new Promise((resolve) => {
       streamWithRetry({
         messages: loopMessages,
@@ -7724,7 +7993,11 @@ async function runWithTools({ outgoing, conv, onDelta, onRetry, onDone, onError 
 
     lastResult = settled.result;
     shown += settled.result.content || "";
-    shownReasoning += settled.result.reasoning || "";
+    // Separated, not concatenated. Two rounds are two turns of thought, and gluing them
+    // together produced a stored block that began mid-sentence of the previous one.
+    if (settled.result.reasoning) {
+      shownReasoning += (shownReasoning ? "\n\n" : "") + settled.result.reasoning;
+    }
 
     const calls = Array.isArray(settled.result.toolCalls) ? settled.result.toolCalls : [];
     if (!calls.length || settled.result.aborted) break;
@@ -7766,10 +8039,18 @@ async function runWithTools({ outgoing, conv, onDelta, onRetry, onDone, onError 
       // Only continue when the reply STOPPED on a read. A read followed by prose means the
       // model carried on without the file, and answering it then would replay a file into
       // a turn that had already moved past it.
-      if (!endsOnARead(shown)) break;
+      // Only continue when the reply STOPS on a read, with nothing said after it.
+      //
+      // `endsOnARead` only asks whether the last command was a read. A read followed by
+      // prose means the model carried on without waiting for the file, and answering it
+      // then reopened a turn that was already over - which is what left the reply marked
+      // as still working after it had visibly finished.
+      if (!endsOnARead(shown) || hasContentAfterLastCommand(shown)) break;
 
       const asked = readRequestedFiles(conv, shown);
       if (!asked) break;
+
+      onRound?.(round + 1, shown.length, shownReasoning.length);
 
       const settled = await new Promise((resolve) => {
         streamWithRetry({
@@ -7795,7 +8076,9 @@ async function runWithTools({ outgoing, conv, onDelta, onRetry, onDone, onError 
       if (!settled.ok) { onError(settled.err); return "error"; }
       lastResult = settled.result;
       shown += settled.result.content || "";
-      shownReasoning += settled.result.reasoning || "";
+      if (settled.result.reasoning) {
+        shownReasoning += (shownReasoning ? "\n\n" : "") + settled.result.reasoning;
+      }
       if (settled.result.aborted) break;
     }
   }
@@ -8203,6 +8486,10 @@ async function runCompletion(conv) {
     }
 
     renderedBlocks = blocks;
+    // The transcript just got taller. Re-pin on the NEXT frame, after this paint
+    // has been laid out, so the height being followed is the real one rather than
+    // the height before the block was added.
+    scheduleFollow();
   };
 
   const contentTypewriter = createTypewriter({
@@ -8241,33 +8528,64 @@ async function runCompletion(conv) {
 
   // One user turn may take several round-trips when the model wants to read files. The
   // loop lives in its own function so this one keeps its single continuous reply.
+  // Where this round starts inside the reply as a whole.
+  //
+  // Everything handed to onDelta is cumulative, so "has this round produced an answer
+  // yet" cannot be answered from it: round one's finished text is still there when round
+  // two opens. These two offsets are that answer.
+  let roundContentBase = 0;
+  let roundReasoningBase = 0;
+
   const rounds = await runWithTools({
     outgoing,
     conv,
+    // A tool round is a new turn: the model thinks again, then answers again.
+    //
+    // Its reasoning is a fresh string rather than a continuation, and the previous
+    // round's pane has already been formatted and frozen - so without this, round two's
+    // thinking was never shown while still being appended to the stored text. That is the
+    // scramble seen when a file is read mid-reply: the pane and the reply disagreed.
+    onRound: (round, contentLength, reasoningLength) => {
+      roundContentBase = contentLength;
+      roundReasoningBase = reasoningLength;
+
+      reasoningSlot.innerHTML = "";
+      reasoningBlockEl = null;
+      reasoningTextEl = null;
+      reasoningFrozen = false;
+      reasoningStreaming = false;
+      reasoningPending = null;
+      reasoningFrameQueued = false;
+      reasoningTypewriter.reset();
+    },
     onDelta: ({ content, reasoning }) => {
       assistantMsg.content = content;
       assistantMsg.reasoning = reasoning;
 
+      // Only what this round has produced decides what the panes do.
+      const roundReasoning = reasoning.slice(roundReasoningBase);
+      const hasAnswer = content.length > roundContentBase;
+
       if (reasoning || content) hideSpinner();
 
-      if (reasoning && reasoningStartedAt === null) {
+      if (roundReasoning && reasoningStartedAt === null) {
         reasoningStartedAt = performance.now();
       }
 
-      if (reasoning && !reasoningFrozen) {
+      if (roundReasoning && !reasoningFrozen) {
         ensureReasoningBlock();
-        reasoningTypewriter.set(reasoning);
+        reasoningTypewriter.set(roundReasoning);
         // Suspend the answer's typewriter only while the reasoning is still
-        // arriving and the answer has not started. It used to stay paused for
-        // the rest of the reply, so the answer only appeared when the whole
+        // arriving and this round's answer has not started. It used to stay paused
+        // for the rest of the reply, so the answer only appeared when the whole
         // stream finished.
-        if (!contentPaused && !content) {
+        if (!contentPaused && !hasAnswer) {
           contentTypewriter.pause();
           contentPaused = true;
         }
       }
 
-      if (content) {
+      if (hasAnswer) {
         // Reasoning has stopped growing. Snap its formatting in once, and
         // start showing the answer immediately instead of waiting for it to
         // finish buffering.
@@ -8419,6 +8737,10 @@ async function runCompletion(conv) {
           );
         }
         assistantRow.append(messageActions(conv.messages.length - 1, assistantMsg));
+        // The final pass replaces the streamed markup with the formatted reply,
+        // which changes the height one last time. Without this the transcript
+        // ends a few tens of pixels off the bottom.
+        scheduleFollow();
 
         conv.updatedAt = Date.now();
         saveConversations();
@@ -8583,6 +8905,40 @@ $("searchBtn").addEventListener("click", () => {
   playIcon("searchIcon", settings.search);
   saveSettings();
   mirrorTogglesToPage();
+});
+
+/**
+ * The Code switch: the prompt finish, on or off.
+ *
+ * It is the same setting the "Chat behavior" panel exposes, so the pill and the
+ * checkbox read one value and either moves the other. It earns a pill of its own
+ * because it is toggled far more often than any other setting: the prompt finish is
+ * what keeps replies in the find/replace/create shape, and turning it off for a prose
+ * question then back on for an edit is a normal rhythm. Reaching into Settings for
+ * that is a long way round.
+ */
+function syncCodeToggleTitle() {
+  const btn = $("codeBtn");
+  if (!btn) return;
+  btn.title = settings.promptFinishEnabled
+    ? "Code guidance is on — the prompt finish is appended to every message. Click to turn it off"
+    : "Code guidance is off — the prompt finish is not sent. Click to turn it on";
+}
+
+$("codeBtn").addEventListener("click", () => {
+  settings.promptFinishEnabled = !settings.promptFinishEnabled;
+  $("codeBtn").classList.toggle("active", settings.promptFinishEnabled);
+  playIcon("codeIcon", settings.promptFinishEnabled);
+  syncCodeToggleTitle();
+  saveSettings();
+
+  // Mirror into the Settings panel so the checkbox and its textarea agree with the
+  // pill straight away, rather than correcting themselves on the next open.
+  const box = $("sPromptFinishEnabled");
+  if (box) {
+    box.checked = settings.promptFinishEnabled;
+    syncPromptFinishDisabledState();
+  }
 });
 
 /**
@@ -11465,6 +11821,11 @@ renderPendingAttachments();
 syncAppProviders();
 $("deepthinkBtn").classList.toggle("active", !!settings.deepthink);
 $("searchBtn").classList.toggle("active", !!settings.search);
+// The Code pill starts on, because the prompt finish is on by default. Its resting
+// drawing already matches the enabled state, so it needs only the class and the
+// tooltip - no animation is played on load.
+$("codeBtn").classList.toggle("active", !!settings.promptFinishEnabled);
+syncCodeToggleTitle();
 
 // Open in the state the setting says, without animating: a stored "on" should
 // present as on from the first frame, and the forward leg ends on that drawing.
