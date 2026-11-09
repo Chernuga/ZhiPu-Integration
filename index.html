@@ -3966,24 +3966,35 @@ function workspaceListingFor(conv) {
  * after the read means it moved on without waiting, which needs no reply from us.
  */
 /**
- * Is a completed command block followed by nothing but whitespace?
+ * Is anything said after the last command in the reply?
  *
- * Separated from endsOnARead on purpose: "the last command is a read" and "the read is
- * the last thing in the reply" are different questions, and only both together justify
- * opening a tool loop. Collapsing them was why a read in the middle of a longer answer
- * left the state active after the AI had visibly stopped.
+ * Both questions have to be asked: "the last command is a read" and "the read is the last
+ * thing in the reply" are different, and only both together justify opening a tool loop.
+ * Collapsing them was why a read in the middle of a longer answer left the state active
+ * after the AI had visibly stopped.
+ *
+ * This used to look for the last CLOSED fenced block with a regular expression, which
+ * meant it only recognised commands that carry a fenced payload - create, replace and
+ * find. A `read:` takes no payload, so after "index.html create: ```...``` index.html
+ * read:" the only closed block was the create, everything after it looked like prose, and
+ * the answer to the read was never requested. Creating a file and reading it straight
+ * back is the most natural thing a model does, and it silently did nothing.
  */
 function hasContentAfterLastCommand(text) {
-  const source = String(text || "");
-  FILE_CMD_BLOCK_RE_CLOSED.lastIndex = 0;
-  let lastEnd = -1;
-  let match;
-  while ((match = FILE_CMD_BLOCK_RE_CLOSED.exec(source)) !== null) {
-    lastEnd = match.index + match[0].length;
+  const segments = parseReplySegments(text);
+
+  let lastCommand = -1;
+  for (let i = 0; i < segments.length; i++) {
+    if (segments[i].type === "command") lastCommand = i;
   }
-  FILE_CMD_BLOCK_RE_CLOSED.lastIndex = 0;
-  if (lastEnd < 0) return false;
-  return !!source.slice(lastEnd).trim();
+  if (lastCommand < 0) return false;
+
+  for (let i = lastCommand + 1; i < segments.length; i++) {
+    const seg = segments[i];
+    if (seg.type === "command") return true;
+    if (seg.type === "text" && seg.text.trim()) return true;
+  }
+  return false;
 }
 
 function endsOnARead(text) {
@@ -4010,8 +4021,35 @@ function endsOnARead(text) {
  * Returns "" when nothing was requested, so the caller can append nothing at all rather
  * than an empty section that would only puzzle the model.
  */
+/**
+ * The workspace as it would be if this reply's file commands were already applied.
+ *
+ * A shallow copy of the files, with the reply's own create/replace/find operations run
+ * over it. Nothing is written back: the real apply happens when the turn ends, and doing
+ * it twice would make the second attempt fail - a `find` whose text was already replaced
+ * no longer matches.
+ */
+function workspaceAsIfApplied(conv, text) {
+  const source = (conv && conv.files) || {};
+  const ops = parseFileCommands(text);
+  if (!ops.length) return source;
+
+  const files = Object.assign({}, source);
+  // applyFileOps records outcomes and mutates the map; the records are irrelevant here.
+  applyFileOps(files, ops);
+  return files;
+}
+
 function readRequestedFiles(conv, text) {
-  const files = (conv && conv.files) || {};
+  // What the workspace will contain once this reply is applied.
+  //
+  // Reading only `conv.files` was wrong for the most natural flow there is: the model
+  // writes a file and then reads it back to check its own work - "I'll build it, then
+  // read it back". Commands in the reply being streamed are not applied until the turn
+  // ends, so that read found nothing, the model was told the file did not exist, and the
+  // transcript still showed "Read foo.js." as though it had worked. The reply's own
+  // operations are applied to a copy here, so the read sees the file it just wrote.
+  const files = workspaceAsIfApplied(conv, text);
   const segments = parseReplySegments(text);
 
   let target = null;
@@ -6753,6 +6791,11 @@ const SCROLL_EASE = 0.22;
 
 /** The scrollTop produced by our last write; a scroll event here is ours. */
 let wroteScrollTop = -1;
+/** When that write happened, so an identical position later still counts as the reader. */
+let wroteScrollAt = 0;
+
+/** Per-frame movement cap for the current follow: calm while streaming, quicker for a glide. */
+let scrollStepCap = SCROLL_STEP_MAX_PX;
 
 /** The block held in place while the reader is away from the end: { el, top }. */
 let scrollAnchor = null;
@@ -6782,6 +6825,7 @@ function writeScroll(m, top) {
   const max = Math.max(0, m.scrollHeight - m.clientHeight);
   const value = Math.max(0, Math.min(top, max));
   wroteScrollTop = value;
+  wroteScrollAt = performance.now();
   m.scrollTop = value;
 }
 
@@ -6803,18 +6847,27 @@ function stepAutoScroll() {
   if (!m || !followOutput) return;
   const gap = gapToEnd(m);
   if (gap <= 0.5) return;
-  const step = Math.min(gap, SCROLL_STEP_MAX_PX, Math.max(1, gap * SCROLL_EASE));
+  const step = Math.min(gap, scrollStepCap, Math.max(1, gap * SCROLL_EASE));
   writeScroll(m, m.scrollTop + step);
   if (gapToEnd(m) > 0.5) scrollRaf = requestAnimationFrame(stepAutoScroll);
 }
 
-function startAutoScroll() {
+function startAutoScroll(animate = false) {
   const m = scrollBox();
   if (!m) return;
   // A restore, not a live delta: rolling a thousand pixels down looks like a
   // glitch, so anything further than a screen and a half lands immediately and
   // only the following updates get animated.
-  if (gapToEnd(m) > m.clientHeight * 1.5) {
+  //
+  // `animate` is passed by the jump button, where a long glide IS the point - the reader
+  // asked to go there, so the transcript should travel rather than blink to a new place.
+  // The per-frame cap is raised for that glide (about a screen a frame), because a fixed
+  // 140px cap made a jump across a long conversation take well over a second.
+  scrollStepCap = animate
+    ? Math.max(SCROLL_STEP_MAX_PX, Math.round(m.clientHeight * 0.85))
+    : SCROLL_STEP_MAX_PX;
+
+  if (!animate && gapToEnd(m) > m.clientHeight * 1.5) {
     writeScroll(m, m.scrollHeight);
     return;
   }
@@ -6894,12 +6947,12 @@ function scheduleFollow() {
 }
 
 /** Jump to the newest message and resume following - the only thing that resumes it. */
-function scrollToBottom() {
+function scrollToBottom({ animate = false } = {}) {
   const m = scrollBox();
   if (!m) return;
   followOutput = true;
   scrollAnchor = null;
-  startAutoScroll();
+  startAutoScroll(animate);
   updateJumpButton();
 }
 
@@ -6912,14 +6965,32 @@ function scrollToBottom() {
 function onTranscriptScroll() {
   const m = scrollBox();
   if (!m) return;
-  if (Math.abs(m.scrollTop - wroteScrollTop) < 1) return;
+
+  // Our own write, or the reader's scroll?
+  //
+  // Matching the value alone was not enough: a reader who returned to the bottom landed
+  // on exactly the scrollTop of our last write, so the event was discarded, the follow
+  // stayed off, and the jump button kept offering to go where they already were. Position
+  // plus recency identifies our own writes without swallowing a real one.
+  const ours = Math.abs(m.scrollTop - wroteScrollTop) < 1 &&
+    (performance.now() - wroteScrollAt) < 120;
+  if (ours) return;
 
   if (followOutput) {
     // Pulled away from a reply that is still arriving: stop for good. Auto-scroll
-    // is a mode now, so it does not silently re-arm when the end drifts back into
-    // view - only the button does that.
+    // is a mode, so it does not silently re-arm when the end drifts back into
+    // view - only reaching the end or the button does that.
     followOutput = false;
     stopAutoScroll();
+  } else if (gapToEnd(m) <= 8) {
+    // Scrolled back to the end by hand: the reader is at the bottom, so follow again.
+    //
+    // Without this the mode stayed off after any manual scroll, even once the reader had
+    // returned to the end - the reply then grew below them and the jump button stayed on
+    // screen, offering to do the thing that had already been done. Reaching the bottom is
+    // the signal that they want to be carried along again.
+    followOutput = true;
+    scrollAnchor = null;
   }
   captureAnchor();
   updateJumpButton();
@@ -7566,7 +7637,9 @@ function updateJumpButton() {
   // thinking pane stayed parked above its own end, is not what the button says.
   btn.addEventListener("click", () => {
     resumeReasoningFollow();
-    scrollToBottom();
+    // Animated: the reader asked to travel to the end, so glide there. Snapping was the
+    // one place in the transcript where the view moved without being followed.
+    scrollToBottom({ animate: true });
   });
 })();
 
@@ -8682,6 +8755,16 @@ async function runCompletion(conv) {
   let reasoningStartedAt = null;
   let reasoningBlockEl = null;
   let reasoningTextEl = null;
+  /**
+   * Everything the reasoner has said this round, whether or not it has been revealed yet.
+   *
+   * The pane paints through a typewriter, so at any moment it shows a prefix. Finalising
+   * from the DOM therefore froze whatever had been typed so far and threw away the rest -
+   * which is why a reply that started answering early showed a thinking block cut off
+   * mid-word, and why the read cases looked stale: the round was finalised the instant
+   * the answer began. The full string is kept here so finalising formats all of it.
+   */
+  let reasoningFull = "";
   /** Timestamp of the last throttled mid-stream save. */
   let lastStreamSaveAt = 0;
 
@@ -8768,7 +8851,8 @@ async function runCompletion(conv) {
     reasoningStreaming = false;
     reasoningFrozen = true;
     if (reasoningBlockEl) delete reasoningBlockEl.dataset.streaming;
-    const text = reasoningTextEl.textContent || "";
+    // The whole thought, not the part the typewriter had reached.
+    const text = reasoningFull || reasoningTextEl.textContent || "";
     if (!text) return;
     reasoningTextEl.innerHTML = renderMarkdown(balanceCodeFences(text));
     decorateCodeBlocks(reasoningTextEl);
@@ -8931,6 +9015,8 @@ async function runCompletion(conv) {
       reasoningStreaming = false;
       reasoningPending = null;
       reasoningFrameQueued = false;
+      // The finished round's text stays on screen; only the live buffer is cleared.
+      reasoningFull = "";
       reasoningTypewriter.reset();
     },
     onDelta: ({ content, reasoning }) => {
@@ -8949,6 +9035,7 @@ async function runCompletion(conv) {
 
       if (roundReasoning && !reasoningFrozen) {
         ensureReasoningBlock();
+        reasoningFull = roundReasoning;
         reasoningTypewriter.set(roundReasoning);
         // Suspend the answer's typewriter only while the reasoning is still
         // arriving and this round's answer has not started. It used to stay paused
@@ -9383,6 +9470,30 @@ async function addFilesFromTransfer(files) {
   // The editor ids change as files arrive, so the box must be re-measured.
   resizeInput();
 }
+
+/**
+ * Tapping a control in the composer must not take focus away from the field.
+ *
+ * On a phone, blurring the textarea closes the keyboard. Toggling DeepThink, Search or
+ * Code, attaching a file, refreshing the reply, or jumping to the bottom all did that -
+ * so each one had to be followed by tapping the field again before typing could continue.
+ * The focus move is cancelled with the click still delivered, which is what a toolbar
+ * should do.
+ */
+(function keepComposerFocus() {
+  const area = document.querySelector(".input-area");
+  const input = $("input");
+  if (!area || !input) return;
+
+  const guard = (e) => {
+    if (!e.target.closest || !e.target.closest("button")) return;
+    // Only when the reader was typing: otherwise let focus do what it normally does.
+    if (document.activeElement === input) e.preventDefault();
+  };
+  // Capture phase, so this runs before anything that might move focus itself.
+  area.addEventListener("pointerdown", guard, true);
+  area.addEventListener("mousedown", guard, true);
+})();
 
 /**
  * Dropping and pasting files into the composer.
