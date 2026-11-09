@@ -4623,20 +4623,26 @@ function parseReplySegments(text) {
  */
 function commandStatusLabel(kind, file, state) {
   const name = file.split("/").pop() || file;
+  // No full stop on a finished line.
+  //
+  // "Read index.html." and "Edited app.js." are sentences, and a sentence is not what these
+  // are - they are labels on an action, the same shape as the running form ("Reading
+  // index.html...") that precedes them. The running forms keep their ellipsis, which reads
+  // as work in progress; the finished forms simply drop the stop.
   if (kind === "read") {
     // A read completes the moment it is acted on, so there is no failure wording: an
     // unreadable file comes back to the model as "not in the workspace" instead.
-    return state === "done" ? `Read ${name}.` : `Reading ${name}...`;
+    return state === "done" ? `Read ${name}` : `Reading ${name}...`;
   }
   if (kind === "create") {
-    if (state === "failed") return `Failed to create ${name}.`;
-    return state === "done" ? `Created ${name}.` : `Creating ${name}...`;
+    if (state === "failed") return `Failed to create ${name}`;
+    return state === "done" ? `Created ${name}` : `Creating ${name}...`;
   }
   if (kind === "find") {
-    if (state === "failed") return `Failed to edit ${name}.`;
-    return state === "done" ? `Edited ${name}.` : `Editing ${name}...`;
+    if (state === "failed") return `Failed to edit ${name}`;
+    return state === "done" ? `Edited ${name}` : `Editing ${name}...`;
   }
-  return state === "failed" ? `Failed to edit ${name}.` : `Edited ${name}.`;
+  return state === "failed" ? `Failed to edit ${name}` : `Edited ${name}`;
 }
 
 /**
@@ -8271,7 +8277,7 @@ function supportsToolCalling(provider) {
  * the failure to the model lets it correct itself - ask for the right path, or say the file
  * is missing - where throwing would end the whole turn.
  */
-function runWorkspaceTool(conv, call) {
+function runWorkspaceTool(conv, call, filesOverride) {
   let args = {};
   try {
     args = JSON.parse(call.function?.arguments || "{}");
@@ -8282,12 +8288,17 @@ function runWorkspaceTool(conv, call) {
   const path = normalizePath(String(args.path || "").trim());
   if (!path) return { ok: false, text: "No path was given." };
 
-  const files = (conv && conv.files) || {};
+  // A read of a file created earlier in this same reply has to see it; the caller passes
+  // the workspace as it would be once the reply is applied.
+  const files = filesOverride || (conv && conv.files) || {};
   const content = files[path];
   if (content == null) {
     const available = Object.keys(files).sort();
+    // `path` is returned even on failure: the transcript still says which file was asked
+    // for, so a miss reads as "Read notes.md" and not as a bare "read:".
     return {
       ok: false,
+      path,
       text:
         `No file "${path}" in the workspace.` +
         (available.length ? ` Available: ${available.join(", ")}` : " The workspace is empty."),
@@ -8435,12 +8446,24 @@ async function runWithTools({ outgoing, conv, onDelta, onRound, onRetry, onDone,
     });
 
     for (const call of calls) {
-      const outcome = runWorkspaceTool(conv, call);
+      // The workspace as this turn has left it: a create earlier in the same reply is not
+      // applied until the turn ends, so the tool would otherwise be told the file it just
+      // wrote does not exist.
+      const filesNow = workspaceAsIfApplied(conv, shown);
+      const outcome = runWorkspaceTool(conv, call, filesNow);
 
       // Show the read in the transcript, in the same form the text protocol uses, so a
       // tool round and a text round look identical to the reader.
-      shown += `${outcome.path || ""} read:\n\n`;
-      onDelta({ content: shown, reasoning: shownReasoning });
+      //
+      // Two things were wrong here. The command was glued straight onto whatever the model
+      // had said ("...before creating anything.index.html read:"), because nothing
+      // separated it from the prose - and a command that is not alone on its line is not a
+      // command, so it rendered as literal text instead of "Read index.html". And when the
+      // file was missing the path was dropped entirely, leaving a bare " read:".
+      if (outcome.path) {
+        shown += (shown.trim() ? "\n\n" : "") + `${outcome.path} read:\n\n`;
+        onDelta({ content: shown, reasoning: shownReasoning });
+      }
 
       loopMessages.push({
         role: "tool",
@@ -8837,8 +8860,8 @@ async function runCompletion(conv) {
         // moment the reader moves - and the jump button is how it resumes.
         followReasoning();
         scheduleFollow();
-        // If the answer has started before this paint landed, finalize now.
-        if (assistantMsg.content) finalizeReasoning();
+        // The pane is no longer finalised as soon as the answer exists. It keeps
+        // accumulating for the rest of the round; see the note in onDelta.
       });
     },
     speed: reasoningDelay,
@@ -9048,10 +9071,14 @@ async function runCompletion(conv) {
       }
 
       if (hasAnswer) {
-        // Reasoning has stopped growing. Snap its formatting in once, and
-        // start showing the answer immediately instead of waiting for it to
-        // finish buffering.
-        finalizeReasoning();
+        // Show the answer straight away instead of waiting for it to finish buffering.
+        //
+        // The thinking pane is deliberately NOT finalised here. Doing that froze it the
+        // instant the first answer byte arrived - and when reasoning and answer arrive in
+        // the same delta, "the instant the answer started" is the first few characters,
+        // which is the block that sat there reading "The" while the model carried on.
+        // The pane keeps accepting reasoning for the rest of the round and settles when
+        // the round ends, which is the only point at which the thinking is really done.
         if (contentPaused) { contentTypewriter.resume(); contentPaused = false; }
         if (reasoningBlockEl) reasoningBlockEl.classList.remove("active");
       } else if (reasoningBlockEl) {
