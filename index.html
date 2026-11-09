@@ -409,14 +409,25 @@
     scroll-behavior: auto;
   }
   .messages-inner { max-width: 768px; margin: 0 auto; padding-bottom: 24px; }
+  /* An empty transcript has nothing to separate from: the bottom padding only made a
+     brand-new chat a couple of dozen pixels taller than its own viewport. */
+  .messages-inner.is-empty { padding-bottom: 0; }
 
   /* Jump to the latest message.
      Hidden until the reader scrolls away from the end, so it never covers the
      reply they are already reading. */
   .jump-bottom {
-    position: sticky;
-    bottom: 12px;
+    /* Anchored to the composer, not to the transcript.
+       It used to be `position: sticky` inside #messages, which does what it looks like it
+       should - but a sticky element still occupies space in the flow, so it added its own
+       34px to the scroll height of the transcript. A brand-new chat therefore reported
+       itself as scrollable with nothing to scroll to, and the page could be nudged up by
+       a button's worth of nothing. As an absolutely positioned child of the composer it
+       contributes no height at all. */
+    position: absolute;
+    bottom: 100%;
     left: 50%;
+    margin-bottom: 10px;
     transform: translateX(-50%) translateY(8px);
     width: 34px;
     height: 34px;
@@ -432,7 +443,7 @@
     pointer-events: none;
     transition: opacity .15s ease, transform .15s ease;
     box-shadow: var(--ds-shadow-lv2);
-    /* Above the messages it sits beside. */
+    /* Above the transcript it floats over. */
     z-index: 5;
   }
   .jump-bottom.show {
@@ -447,7 +458,20 @@
     max-width: 768px; margin: 0 auto;
     display: flex; flex-direction: column;
     align-items: center; justify-content: center;
-    min-height: 100%; padding-bottom: 120px;
+    /*
+       Fit the space, and never exceed it.
+
+       This was `min-height: 100%` with a fixed `padding-bottom: 120px`. The padding is
+       not part of the message list's height, so the empty state was always 120px taller
+       than the space it had - harmless on a tall screen, where the transcript simply
+       centred, and the reason a brand-new chat became scrollable the moment the keyboard
+       opened and the viewport dropped below roughly 520px. `height` (not min-height) plus
+       no bottom padding means it shrinks with the viewport instead of overflowing it.
+    */
+    height: 100%;
+    padding-bottom: 0;
+    box-sizing: border-box;
+    overflow: hidden;
     text-align: center;
   }
   .empty-logo {
@@ -458,6 +482,26 @@
     margin-bottom: 22px;
   }
   .empty-title { font-size: 26px; font-weight: 600; margin-bottom: 6px; }
+
+  /*
+     A phone with the keyboard open leaves very little height. The full empty state does
+     not fit in it, and - because it used to be laid out at a fixed 294px - it overflowed
+     and made a brand-new chat scrollable before the reader had done anything. Shrinking
+     it keeps a new chat still and exactly as tall as the space it has.
+  */
+  @media (max-height: 460px) {
+    .empty-logo { width: 36px; height: 36px; border-radius: 10px; font-size: 18px; margin-bottom: 10px; }
+    .empty-title { font-size: 19px; margin-bottom: 2px; }
+    .empty-sub { font-size: 13px; }
+  }
+  /* Below this the greeting itself does not fit. The composer is the point of the
+     screen at this size, and the sentence is decoration - so it goes rather than
+     forcing a scrollbar. */
+  @media (max-height: 380px) {
+    .empty-logo { display: none; }
+    .empty-sub { display: none; }
+    .empty-title { font-size: 17px; }
+  }
   .empty-sub { color: var(--text-muted); font-size: 15px; margin-bottom: 28px; }
 
   .msg {
@@ -2746,15 +2790,6 @@
 
     <div class="messages" id="messages">
       <div class="messages-inner" id="messagesInner"></div>
-      <!--
-        Appears only while the reader is above the end of the conversation, so
-        returning to a live reply is one tap. Styled after the DeepSeek site's own.
-      -->
-      <button type="button" class="jump-bottom" id="jumpToBottomBtn" title="Jump to the latest" aria-label="Jump to the latest">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 5v14M19 12l-7 7-7-7"/>
-        </svg>
-      </button>
     </div>
 
     <!--
@@ -2780,6 +2815,18 @@
     </div>
 
     <div class="input-area">
+      <!--
+        Appears only while the reader is above the end of the conversation, so returning
+        to a live reply is one tap. Styled after the DeepSeek site's own.
+
+        It lives here rather than in the transcript so that it takes up no height in the
+        scroller - see the note on .jump-bottom.
+      -->
+      <button type="button" class="jump-bottom" id="jumpToBottomBtn" title="Jump to the latest" aria-label="Jump to the latest">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 5v14M19 12l-7 7-7-7"/>
+        </svg>
+      </button>
       <div class="input-box">
         <div class="input-attachments" id="inputAttachments"></div>
         <div class="input-toggles">
@@ -6584,6 +6631,16 @@ function renderFileChangeItem(c) {
  */
 let liveEditMount = null;
 
+/**
+ * The assistant message currently being streamed, and the row it writes into.
+ *
+ * Kept so a rebuild of the transcript can put the live row back instead of destroying it.
+ * Both are cleared when the turn ends, at which point the row is an ordinary rendered
+ * message again.
+ */
+let liveAssistantMsg = null;
+let liveAssistantRow = null;
+
 function updateLiveEditWindow(text) {
   const box = $("liveEdit");
   if (!box) return;
@@ -7016,9 +7073,26 @@ function renderMessages({ toBottom = false, anchor = null } = {}) {
   const visibleMarker = (toBottom || wasAtBottom || anchor != null) ? null : firstVisibleMarker(box);
 
   const inner = $("messagesInner");
-  inner.innerHTML = "";
   const conv = getActive();
+
+  // Lift the reply being streamed out of the rebuild.
+  //
+  // Its row is not a rendering of the message - it is the thing the typewriters and the
+  // reasoning pane write into, in place. Clearing the transcript detached it, so the
+  // deltas kept arriving and updating a node that was no longer on screen: switching a
+  // setting, or changing the typing speed, appeared to freeze the answer mid-sentence
+  // until the turn ended and the next render rebuilt it from storage. The row is removed
+  // here, skipped in the loop below, and put back at the end - same node, same writers.
+  // Both halves are needed: the row alone exists for a moment before the message does,
+  // and re-appending it then would draw it beside a copy built from a half-filled record.
+  const liveRow = liveAssistantMsg && liveAssistantRow && liveAssistantRow.isConnected
+    ? liveAssistantRow : null;
+  if (liveRow) liveRow.remove();
+  const liveIndex = conv && liveAssistantMsg ? conv.messages.indexOf(liveAssistantMsg) : -1;
+
+  inner.innerHTML = "";
   if (!conv || conv.messages.length === 0) {
+    inner.classList.add("is-empty");
     inner.append(emptyState());
     // An empty conversation has nothing below the fold, so the follow state and the
     // jump button are both meaningless here - and leaving them as the previous chat
@@ -7030,8 +7104,12 @@ function renderMessages({ toBottom = false, anchor = null } = {}) {
     return;
   }
   for (let i = 0; i < conv.messages.length; i++) {
+    if (i === liveIndex) continue;         // the live row is appended below instead
     inner.append(renderMessage(conv.messages[i], i));
   }
+  inner.classList.remove("is-empty");
+  if (liveRow) inner.append(liveRow);      // last message while it is being written
+  if (liveRow) liveRow.dataset.index = String(liveIndex);
 
   // Any image held in IndexedDB paints as a reserved frame first and swaps its
   // source in when the read lands.
@@ -8502,6 +8580,10 @@ async function runCompletion(conv) {
   // The live command window belongs to this reply: it is appended inside the row, so it
   // appears in the conversation where the code is being written.
   liveEditMount = assistantRow;
+  // Registered so a rebuild during the stream - a settings change, a theme switch - puts
+  // this row back rather than leaving the typewriters writing to a detached node. The
+  // message itself is registered where it is created, below: it must exist first.
+  liveAssistantRow = assistantRow;
   scrollToBottom();
 
   setSending(true);
@@ -8585,6 +8667,10 @@ async function runCompletion(conv) {
   const assistantMsg = { role: "assistant", content: "", reasoning: "" };
   conv.messages.push(assistantMsg);
   conv.updatedAt = Date.now();
+  // Now that the message exists, tie the live row to it: a rebuild during the stream can
+  // then skip this message and re-append the row that is still being written into,
+  // instead of drawing a second copy from a half-filled message.
+  liveAssistantMsg = assistantMsg;
   // Persist the assistant placeholder immediately.
   //
   // It used to be written only in onDone, so reloading (or closing the tab)
@@ -8603,10 +8689,14 @@ async function runCompletion(conv) {
     if (reasoningBlockEl) return;
     reasoningBlockEl = buildReasoningBlock("", { streaming: true });
     reasoningTextEl = reasoningBlockEl.querySelector(".reasoning-text");
-    reasoningSlot.innerHTML = "";
+    // Appended, not replaced.
+    //
+    // This used to clear the slot, which was right when a turn had exactly one thinking
+    // pass. A read (or a tool round) splits a turn into several passes, and clearing the
+    // slot erased the process the reader was watching - the thinking vanished at the
+    // moment the model went to fetch a file, so the turn looked like it had restarted.
+    // Blocks accumulate instead, and the whole process stays on screen.
     reasoningSlot.append(reasoningBlockEl);
-    // Hand the pane to the follow model: eased scrolling, and a wheel or a finger
-    // stops it instead of being overwritten on the next frame.
     attachReasoningFollow(reasoningTextEl);
   }
 
@@ -8827,7 +8917,14 @@ async function runCompletion(conv) {
       roundContentBase = contentLength;
       roundReasoningBase = reasoningLength;
 
-      reasoningSlot.innerHTML = "";
+      // Let the round that just ended keep its thinking, formatted and in place.
+      //
+      // This used to empty the slot, so the moment a reply read a file and started a
+      // second round, everything the model had thought so far disappeared - the process
+      // the reader was watching was interrupted exactly where it was most interesting.
+      // The block is finalised instead, and the next round appends its own below it.
+      finalizeReasoning();
+
       reasoningBlockEl = null;
       reasoningTextEl = null;
       reasoningFrozen = false;
@@ -8986,6 +9083,11 @@ async function runCompletion(conv) {
         // The edits are applied, so the live view of them has served its purpose.
         hideLiveEditWindow();
 
+        // The turn is over and the row below is rebuilt from the finished message, so it
+        // is no longer a live target for the typewriters.
+        liveAssistantRow = null;
+        liveAssistantMsg = null;
+
         assistantRow.innerHTML = "";
         if (assistantMsg.reasoning) {
           assistantRow.append(buildReasoningBlock(assistantMsg.reasoning, { durationMs: reasoningMs }));
@@ -9045,6 +9147,9 @@ async function runCompletion(conv) {
 
       // Nothing is being written any more, so the live view goes with it.
       hideLiveEditWindow();
+
+      liveAssistantRow = null;
+      liveAssistantMsg = null;
 
       assistantRow.innerHTML = "";
       const errBox = el("div", { className: "error-msg", textContent: err.message });
