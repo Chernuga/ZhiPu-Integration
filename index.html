@@ -503,6 +503,43 @@
     width: 160px;
     height: 110px;
   }
+
+  /* An image that could not be stored or decoded.
+     It used to keep the reserved 160x110 frame and show nothing at all, which read as
+     the app being broken with no way to tell why. A muted placeholder with a caption
+     says what happened and still leaves the transcript's height stable. */
+  .bubble-image.failed {
+    width: 160px;
+    height: 110px;
+    border: 1px dashed var(--ds-border-l3);
+    background: var(--ds-bg-layer-3);
+  }
+  .img-failed-note {
+    font-size: 11.5px;
+    color: var(--text-dim);
+    margin-top: 4px;
+    line-height: 1.4;
+  }
+
+  /* The composer while files are being dragged over it. */
+  .input-area.drop-target .input-box {
+    border-color: var(--ds-accent);
+    box-shadow: 0 0 0 2px var(--ds-accent);
+  }
+  .input-area.drop-target::after {
+    content: "Drop to attach";
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background: rgba(86, 134, 254, .12);
+    color: var(--ds-accent-text);
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: 22px;
+    pointer-events: none;
+  }
+  .input-area { position: relative; }
   .bubble-file {
     background: var(--ds-bg-layer-3);
     padding: 6px 10px; border-radius: 8px;
@@ -1007,8 +1044,14 @@
     overflow-y: auto;
     contain: layout paint;
     padding-right: 4px;
-    /* Scrolling is automatic while it streams, so a stray wheel or drag would only
-       fight the follow. It stays scrollable for a finished reply. */
+    /* Preserve the line breaks that arrive.
+       Reasoning streams as textContent, and a div collapses "\n" by default - so a
+       thought that arrived as a list of steps rendered as one run-on paragraph. The
+       formatted version at the end uses markdown; this is only for the live pass. */
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    /* Scrolling is automatic while it streams, and a wheel or drag takes over - the
+       follow model stops rather than fighting. */
     overscroll-behavior-y: contain;
   }
   .reasoning-block .reasoning-text p { margin: 0 0 8px; }
@@ -1312,34 +1355,32 @@
   }
 
   /* ===== Live edit window =====
-     Sits above the composer while a reply is writing files, and disappears once the
-     edits are applied. It exists because the code no longer appears in the transcript:
-     this is where it can be watched, without leaving a wall of it behind afterwards. */
+     Appears IN the reply while a command is being written, then disappears once the
+     payload is complete.
+
+     It used to be an absolutely positioned overlay pinned above the composer. That put
+     it on top of the input box whenever the composer grew past the hardcoded offset,
+     and it was the wrong idea besides: the code belongs where the reply is, in the flow
+     of the conversation, not floating over the page. It is now a normal block inside the
+     message, so it pushes the transcript instead of covering anything, and it scrolls
+     away with the rest of the answer. */
   .live-edit {
-    /* A sibling of .messages rather than a child: .messages scrolls and clips its
-       overflow, so a window inside it could not float above the transcript.
-       It is positioned from the bottom of the column, and its own height pushes it up -
-       so it sits just above the composer, never over it. */
-    position: absolute;
-    left: 50%;
-    bottom: 96px;
-    transform: translateX(-50%);
-    width: min(768px, calc(100% - 48px));
+    position: static;
+    margin: 14px 0 4px;
+    width: 100%;
     max-height: 200px;
     display: flex;
     flex-direction: column;
     background: var(--ds-bg-layer-2);
     border: 1px solid var(--ds-border-l2);
     border-radius: 12px;
-    box-shadow: var(--ds-shadow-lv3);
     overflow: hidden;
-    z-index: 6;
     animation: live-edit-in .18s var(--ds-ease-out);
   }
   .live-edit[hidden] { display: none; }
   @keyframes live-edit-in {
-    from { opacity: 0; transform: translateX(-50%) translateY(6px); }
-    to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+    from { opacity: 0; }
+    to   { opacity: 1; }
   }
 
   .live-edit-head {
@@ -1396,12 +1437,10 @@
     mask-image: linear-gradient(to bottom, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
   }
 
-  /* On a phone the window would cover the composer, so it is shorter and flatter. */
+  /* On a phone the window is shorter, but it is in the flow so nothing to reposition. */
   @media (max-width: 720px) {
     .live-edit {
-      width: calc(100% - 24px);
       max-height: 150px;
-      bottom: 8px;
       border-radius: 10px;
     }
     .live-edit-code { font-size: 11.5px; padding: 8px 10px; }
@@ -4567,34 +4606,49 @@ function statesFromFileChanges(msg) {
   // finished reply stuck on "Reading app.js..." with the pulsing icon, which reads as a
   // request that never completed.
 
+  // Per-file outcomes, ONE PER EDIT rather than one per file.
+  //
+  // This is where the finished states were wrong. `fileChanges` stores a file once,
+  // with each attempt in `edits`, but the parser yields one command per occurrence -
+  // and a find/replace pair is TWO commands for ONE edit. Counting the file once meant
+  // the pair consumed a single "done": the find got it and the replace found the tally
+  // empty, fell through to "running", and a reply that had just successfully edited a
+  // file sat there saying "Editing app.js..." forever.
   const byFile = new Map();
   for (const c of changes) {
-    const rec = byFile.get(c.file) || { failed: 0, done: 0 };
-    if (c.kind === "nomatch" || c.kind === "missing") rec.failed++;
-    else rec.done++;
-    byFile.set(c.file, rec);
+    const list = byFile.get(c.file) || [];
+    if (Array.isArray(c.edits) && c.edits.length) {
+      for (const e of c.edits) list.push(e.status === "failed" ? "failed" : "done");
+    } else {
+      list.push(c.kind === "nomatch" || c.kind === "missing" ? "failed" : "done");
+    }
+    byFile.set(c.file, list);
   }
 
   const segments = parseReplySegments(msg.content);
   const states = [];
-  for (const seg of segments) {
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
     if (seg.type !== "command") continue;
-    // A read edits nothing, so it never appears in fileChanges - but it did happen, and a
-    // reloaded reply should say "Read foo.js." rather than leaving it mid-sentence as if
-    // it were still running.
+
+    // A read edits nothing, so it never appears in fileChanges - but it did happen, and
+    // a reloaded reply should say "Read foo.js." rather than leaving it mid-sentence.
     if (seg.kind === "read") { states.push("done"); continue; }
-    const tally = byFile.get(seg.file);
-    // No record means the command did not leave one - and this function only ever runs
-    // over a reply that has finished, so "running" was never true here. It left a stored
-    // reply pulsing forever: the common case is a `read:`, which edits nothing and so has
-    // no entry in fileChanges, and the reader was told it was still reading a file it had
-    // read minutes ago. A finished reply has finished its commands.
-    if (!tally) { states.push("done"); continue; }
-    // Failures are consumed first: a file that was retried shows the failure, then the
-    // success, which is the order they happened in.
-    if (tally.failed > 0) { tally.failed--; states.push("failed"); }
-    else if (tally.done > 0) { tally.done--; states.push("done"); }
-    else states.push("running");
+
+    // A find and the replace that follows it are one edit. Both segments carry the
+    // outcome of that single edit, which is also how the renderer draws them - as one
+    // line that starts "Editing" and settles on "Edited".
+    const next = segments[i + 1];
+    const paired = seg.kind === "find" && next && next.type === "command" &&
+      next.kind === "replace" && next.file === seg.file;
+
+    const queue = byFile.get(seg.file) || [];
+    // No record at all means the reply never recorded one; it has finished, so "done"
+    // is the honest reading rather than a permanent pulse.
+    const outcome = queue.length ? queue.shift() : "done";
+
+    states.push(outcome);
+    if (paired) { states.push(outcome); i++; }
   }
   return states;
 }
@@ -5339,14 +5393,38 @@ async function hydrateAttachmentImages(root) {
           src = rec.dataUrl;
           attachmentCache.set(id, src);
         }
-      } catch (e) { /* unavailable; the frame stays empty */ }
+      } catch (e) { /* unavailable; reported below */ }
     }
-    if (src) {
-      img.src = src;
-      img.classList.remove("pending");
-      img.removeAttribute("data-att-id");
+
+    if (!src) {
+      markImageFailed(img, "This image is no longer stored on this device.");
+      continue;
     }
+
+    // A decode failure must be visible.
+    //
+    // The image was set and left alone, so anything the browser could not decode - a
+    // HEIC photo stored before the format was normalised, a corrupt record - rendered
+    // as an empty 160x110 frame with no explanation. An error listener turns that into
+    // a labelled placeholder the reader can act on.
+    img.addEventListener("error", () => markImageFailed(img, "This image could not be displayed."), { once: true });
+    img.src = src;
+    img.classList.remove("pending");
+    img.removeAttribute("data-att-id");
   }
+}
+
+/** Replace an image that cannot be shown with a visible, labelled placeholder. */
+function markImageFailed(img, reason) {
+  img.classList.remove("pending");
+  img.classList.add("failed");
+  img.removeAttribute("src");
+  img.alt = reason;
+  img.title = reason;
+  // Only label it once, however many times this is called.
+  if (!img.parentElement || img.parentElement.querySelector(".img-failed-note")) return;
+  const note = el("div", { className: "img-failed-note", textContent: reason });
+  img.insertAdjacentElement("afterend", note);
 }
 
 /**
@@ -6497,6 +6575,15 @@ function renderFileChangeItem(c) {
  * there with finished content - which is also what makes it read as a transient view
  * rather than another panel.
  */
+/**
+ * Where the live window should appear: the reply being streamed.
+ *
+ * Set by runCompletion when it creates the assistant row, and cleared when the reply
+ * ends. Without it the window has nowhere meaningful to go and falls back to the end of
+ * the transcript.
+ */
+let liveEditMount = null;
+
 function updateLiveEditWindow(text) {
   const box = $("liveEdit");
   if (!box) return;
@@ -6509,6 +6596,14 @@ function updateLiveEditWindow(text) {
     hideLiveEditWindow();
     return;
   }
+
+  // Put it inside the message, at the end - where the reply is being written - rather
+  // than floating it over the page. Appending moves it if it is already there, which
+  // keeps it last as the reply grows.
+  const mount = liveEditMount && liveEditMount.isConnected
+    ? liveEditMount
+    : $("messagesInner");
+  if (mount && box.parentElement !== mount) mount.append(box);
 
   const fileEl = $("liveEditFile");
   const kindEl = $("liveEditKind");
@@ -6525,16 +6620,26 @@ function updateLiveEditWindow(text) {
   }
 
   box.hidden = false;
+  // It just changed the transcript's height, so let the follow keep up.
+  scheduleFollow();
 }
 
 /** Hide the live edit window. */
 function hideLiveEditWindow() {
   const box = $("liveEdit");
-  if (!box || box.hidden) return;
-  box.hidden = true;
+  if (!box) return;
+  if (!box.hidden) box.hidden = true;
   // Clear the content so the next one starts empty rather than flashing the previous file.
   const codeEl = $("liveEditCode");
   if (codeEl) codeEl.textContent = "";
+
+  // Park it outside the transcript.
+  //
+  // The reply's row is cleared with innerHTML when it finishes, which would destroy this
+  // element along with its children - and getElementById would then return null for the
+  // rest of the session, so no later reply could show a window.
+  if (box.parentElement !== document.body) document.body.appendChild(box);
+  liveEditMount = null;
 }
 
 // =============================================================================
@@ -6779,6 +6884,110 @@ function watchTranscriptHeight() {
   transcriptWatcher = { observer, el: inner };
 }
 
+/**
+ * The same follow model, for the thinking pane.
+ *
+ * The pane is its own scroller: it is capped in height while reasoning streams, and the
+ * thing the reader wants is the newest line. It used to get `scrollTop = scrollHeight` on
+ * every frame, which pinned it hard - so the pane could not be scrolled up at all while a
+ * reply was thinking, and any wheel or drag was overwritten on the next paint.
+ *
+ * This mirrors the transcript: ease toward the end, stop the moment the reader moves, and
+ * let the jump button be the only way back.
+ */
+let reasoningFollow = true;
+/** The scrollTop our last write produced; an event landing on it is ours. */
+let reasoningWroteTop = -1;
+let reasoningRaf = 0;
+/** The pane currently streaming, so the button knows what it would act on. */
+let reasoningScrollEl = null;
+
+function reasoningGap(el) {
+  return el.scrollHeight - el.scrollTop - el.clientHeight;
+}
+
+/** Whether the thinking pane has somewhere to go and is not following. */
+function reasoningAwayFromEnd() {
+  const el = reasoningScrollEl;
+  if (!el || !el.isConnected) return false;
+  return reasoningGap(el) > 4 && !reasoningFollow;
+}
+
+function writeReasoningScroll(el, top) {
+  const max = Math.max(0, el.scrollHeight - el.clientHeight);
+  const value = Math.max(0, Math.min(top, max));
+  reasoningWroteTop = value;
+  el.scrollTop = value;
+}
+
+function stepReasoningScroll() {
+  reasoningRaf = 0;
+  const el = reasoningScrollEl;
+  if (!el || !reasoningFollow) return;
+  const gap = reasoningGap(el);
+  if (gap <= 0.5) return;
+  const step = Math.min(gap, SCROLL_STEP_MAX_PX, Math.max(1, gap * SCROLL_EASE));
+  writeReasoningScroll(el, el.scrollTop + step);
+  if (reasoningGap(el) > 0.5) reasoningRaf = requestAnimationFrame(stepReasoningScroll);
+}
+
+/** Ask the thinking pane to follow its end. */
+function followReasoning() {
+  const el = reasoningScrollEl;
+  if (!el || !el.isConnected) return;
+  if (reasoningFollow && !reasoningRaf) reasoningRaf = requestAnimationFrame(stepReasoningScroll);
+  updateJumpButton();
+}
+
+/** Give up following the thinking pane - the reader moved. */
+function leaveReasoningEnd() {
+  if (!reasoningFollow) return;
+  reasoningFollow = false;
+  if (reasoningRaf) { cancelAnimationFrame(reasoningRaf); reasoningRaf = 0; }
+  updateJumpButton();
+}
+
+/** Resume following: only the jump button does this. */
+function resumeReasoningFollow() {
+  const el = reasoningScrollEl;
+  if (!el || !el.isConnected) return;
+  reasoningFollow = true;
+  followReasoning();
+}
+
+/**
+ * Start following a freshly created reasoning pane.
+ *
+ * A new reply resets the mode: the previous reply's "reader scrolled up" must not carry
+ * over, or the first thought of the next answer would arrive off-screen.
+ */
+function attachReasoningFollow(el) {
+  reasoningScrollEl = el;
+  reasoningFollow = true;
+  reasoningWroteTop = -1;
+  if (reasoningRaf) { cancelAnimationFrame(reasoningRaf); reasoningRaf = 0; }
+
+  if (el.dataset.followWired === "1") return;
+  el.dataset.followWired = "1";
+  el.addEventListener("scroll", () => {
+    // Our own writes land exactly on the stored value; anything else is the reader.
+    if (Math.abs(el.scrollTop - reasoningWroteTop) < 1) return;
+    leaveReasoningEnd();
+  }, { passive: true });
+  // Contact is intent, same rule as the transcript: a finger on the pane stops it.
+  el.addEventListener("touchstart", leaveReasoningEnd, { passive: true });
+  el.addEventListener("wheel", (e) => {
+    if (e.deltaY < 0) leaveReasoningEnd();
+  }, { passive: true });
+}
+
+/** Called when a reply ends, so a stale pane is not left in the follow state. */
+function detachReasoningFollow() {
+  reasoningScrollEl = null;
+  reasoningFollow = true;
+  if (reasoningRaf) { cancelAnimationFrame(reasoningRaf); reasoningRaf = 0; }
+}
+
 function renderMessages({ toBottom = false, anchor = null } = {}) {
   // Measure before the rebuild, so the position can be restored after it.
   const box = $("messages");
@@ -6811,6 +7020,13 @@ function renderMessages({ toBottom = false, anchor = null } = {}) {
   const conv = getActive();
   if (!conv || conv.messages.length === 0) {
     inner.append(emptyState());
+    // An empty conversation has nothing below the fold, so the follow state and the
+    // jump button are both meaningless here - and leaving them as the previous chat
+    // left them is what put a down arrow on a blank page.
+    followOutput = true;
+    scrollAnchor = null;
+    writeScroll(box, 0);
+    updateJumpButton();
     return;
   }
   for (let i = 0; i < conv.messages.length; i++) {
@@ -6877,6 +7093,18 @@ function renderMessages({ toBottom = false, anchor = null } = {}) {
     captureAnchor();
     wroteScrollTop = box.scrollTop;
   }
+
+  // A transcript that fits on screen has no "end" to follow to.
+  //
+  // "Not following" is a mode that outlives the conversation it was set in, so a new
+  // chat inherited it and offered a jump button with nothing below - and the follow
+  // would have refused to move to the bottom of a chat that was already entirely
+  // visible. Fitting on screen means there is nothing to be away from.
+  if (box.scrollHeight - box.clientHeight <= 1) {
+    followOutput = true;
+    scrollAnchor = null;
+  }
+
   updateJumpButton();
 }
 
@@ -7200,7 +7428,18 @@ let followOutput = true;
 function updateJumpButton() {
   const btn = $("jumpToBottomBtn");
   if (!btn) return;
-  btn.classList.toggle("show", !followOutput);
+  const m = scrollBox();
+  if (!m) return;
+
+  // Two conditions, not one.
+  //
+  // Asking only about the follow state left the button visible on a brand-new chat:
+  // `followOutput` is reset per conversation by nothing, so a reader who had scrolled
+  // up in the previous chat carried "not following" into a transcript with nothing
+  // below it. The button then offered to jump to an end that was already on screen.
+  const reachable = m.scrollHeight - m.clientHeight > 1;
+  const thinkingAway = reasoningAwayFromEnd();
+  btn.classList.toggle("show", reachable ? !followOutput : thinkingAway);
 }
 
 /** The remaining helpers live in the scroll model block near the top of the script. */
@@ -7243,7 +7482,14 @@ function updateJumpButton() {
   if (!btn) return;
   // Jumping back down is also what resumes following, so the next delta keeps the
   // reader at the end where they asked to be.
-  btn.addEventListener("click", () => { scrollToBottom(); });
+  //
+  // The thinking pane is resumed too. While a reply is thinking, that pane is what the
+  // button is for - and clicking it only to watch the transcript move, while the
+  // thinking pane stayed parked above its own end, is not what the button says.
+  btn.addEventListener("click", () => {
+    resumeReasoningFollow();
+    scrollToBottom();
+  });
 })();
 
 // =============================================================================
@@ -7266,27 +7512,54 @@ function readAsText(file) {
   });
 }
 
+/**
+ * Turn a picked image into a data URL the WebView can definitely decode.
+ *
+ * Every image is re-encoded through a canvas, not just the large ones.
+ *
+ * The size test was the mobile bug. A photo picked on Android can arrive as HEIC/HEIF,
+ * and a WebView generally cannot decode that - so `img.src` was set, the decode failed,
+ * and the image rendered as an empty frame with a reserved 160x110 box and nothing in
+ * it. Small files skipped the canvas entirely (`if (file.size < 512 * 1024) return
+ * dataUrl`), so the *smaller* the photo, the more likely it was to stay in a format the
+ * app could not show. Drawing it through a canvas guarantees PNG or JPEG out, whatever
+ * came in, and the same pass applies the downscale.
+ *
+ * Two formats are passed through untouched: GIF, because re-encoding drops the
+ * animation, and SVG, because rasterising it loses the vector.
+ */
 async function compressImage(file) {
   const dataUrl = await readAsDataURL(file);
-  if (file.size < 512 * 1024) return dataUrl;
+
+  if (/^image\/(gif|svg\+xml)$/i.test(file.type || "")) return dataUrl;
 
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
       const { width, height } = img;
+      // A zero dimension means the browser decoded nothing usable; keep the original
+      // rather than producing a 0x0 canvas.
+      if (!width || !height) { resolve(dataUrl); return; }
+
       const longest = Math.max(width, height);
       const ratio = longest > MAX_IMAGE_DIM ? MAX_IMAGE_DIM / longest : 1;
-      const w = Math.round(width * ratio);
-      const h = Math.round(height * ratio);
+      const w = Math.max(1, Math.round(width * ratio));
+      const h = Math.max(1, Math.round(height * ratio));
 
       const canvas = document.createElement("canvas");
       canvas.width = w;
       canvas.height = h;
       const ctx = canvas.getContext("2d");
+      // A transparent PNG drawn onto a transparent canvas keeps its alpha; a JPEG does
+      // not, so flatten only when the output is JPEG.
+      const outType = /png|webp/i.test(file.type || "") ? "image/png" : "image/jpeg";
+      if (outType === "image/jpeg") {
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, w, h);
+      }
       ctx.drawImage(img, 0, 0, w, h);
 
-      const outType = /png|webp|gif/i.test(file.type) ? "image/png" : "image/jpeg";
-      try { resolve(canvas.toDataURL(outType, 0.85)); }
+      try { resolve(canvas.toDataURL(outType, 0.9)); }
       catch { resolve(dataUrl); }
     };
     img.onerror = () => resolve(dataUrl);
@@ -8226,6 +8499,9 @@ async function runCompletion(conv) {
 
   assistantRow.append(reasoningSlot, statusSlot, contentEl);
   inner.append(assistantRow);
+  // The live command window belongs to this reply: it is appended inside the row, so it
+  // appears in the conversation where the code is being written.
+  liveEditMount = assistantRow;
   scrollToBottom();
 
   setSending(true);
@@ -8329,6 +8605,9 @@ async function runCompletion(conv) {
     reasoningTextEl = reasoningBlockEl.querySelector(".reasoning-text");
     reasoningSlot.innerHTML = "";
     reasoningSlot.append(reasoningBlockEl);
+    // Hand the pane to the follow model: eased scrolling, and a wheel or a finger
+    // stops it instead of being overwritten on the next frame.
+    attachReasoningFollow(reasoningTextEl);
   }
 
   function hideSpinner() {
@@ -8377,14 +8656,13 @@ async function runCompletion(conv) {
         reasoningStreaming = true;
         if (reasoningBlockEl) reasoningBlockEl.dataset.streaming = "1";
         reasoningTextEl.textContent = text;
-        // Keep the newest thought in view.
+        // Follow the newest thought, the same way the transcript follows the answer.
         //
-        // The pane is capped in height, so once the reasoning outgrows it the
-        // interesting part - the thought being formed now - was the part below the
-        // fold, and it scrolled away unseen. Setting scrollTop to scrollHeight after
-        // the text is written pins it to the bottom, which is what a reader wants
-        // while watching a model think: the latest line, always.
-        reasoningTextEl.scrollTop = reasoningTextEl.scrollHeight;
+        // This used to assign scrollTop = scrollHeight, which pinned the pane flat: a
+        // reader could not scroll up at all while the model was thinking, because the
+        // next frame put it back. The follow model eases toward the end and stops the
+        // moment the reader moves - and the jump button is how it resumes.
+        followReasoning();
         scheduleFollow();
         // If the answer has started before this paint landed, finalize now.
         if (assistantMsg.content) finalizeReasoning();
@@ -8669,6 +8947,8 @@ async function runCompletion(conv) {
         }
 
         activeTypewriters = null;
+        // The thinking pane has stopped growing, so it no longer owns the jump button.
+        detachReasoningFollow();
 
         // Re-read the finished reply from the page rather than trusting the
         // assembly of fragments.
@@ -8761,6 +9041,7 @@ async function runCompletion(conv) {
       reasoningTypewriter.flush();
       contentTypewriter.flush();
       activeTypewriters = null;
+      detachReasoningFollow();
 
       // Nothing is being written any more, so the live view goes with it.
       hideLiveEditWindow();
@@ -8981,6 +9262,98 @@ $("fileInput").addEventListener("change", async (e) => {
   renderPendingAttachments();
   updateSendButton();
 });
+
+/**
+ * Take a batch of files from a drop or a paste.
+ *
+ * Shared by both so the two cannot drift: a dropped file and a pasted one go through
+ * exactly the same checks and storage as one picked with the button.
+ */
+async function addFilesFromTransfer(files) {
+  const list = [...(files || [])].filter(Boolean);
+  if (!list.length) return;
+  for (const f of list) await addAttachmentFromFile(f);
+  renderPendingAttachments();
+  updateSendButton();
+  // The editor ids change as files arrive, so the box must be re-measured.
+  resizeInput();
+}
+
+/**
+ * Dropping and pasting files into the composer.
+ *
+ * Neither existed: the only way in was the attach button, which opens a picker. On a
+ * desktop that is the slow path for an image that is already on the clipboard or in a
+ * file manager, and on a phone the keyboard's paste delivered text only - a copied
+ * screenshot was silently dropped on the floor.
+ */
+(function wireFileTransfers() {
+  const area = document.querySelector(".input-area");
+  const input = $("input");
+  if (!area || !input) return;
+
+  /** True when the drag carries files rather than selected text or a link. */
+  const carriesFiles = (e) => {
+    const types = e.dataTransfer && e.dataTransfer.types;
+    return !!types && Array.prototype.indexOf.call(types, "Files") !== -1;
+  };
+
+  // dragover MUST be cancelled or the browser refuses the drop and opens the file.
+  area.addEventListener("dragover", (e) => {
+    if (!carriesFiles(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    area.classList.add("drop-target");
+  });
+
+  area.addEventListener("dragenter", (e) => {
+    if (!carriesFiles(e)) return;
+    e.preventDefault();
+    area.classList.add("drop-target");
+  });
+
+  // dragleave fires when moving between children too, so only clear when the pointer
+  // has actually left the composer.
+  area.addEventListener("dragleave", (e) => {
+    if (e.target !== area && area.contains(e.relatedTarget)) return;
+    area.classList.remove("drop-target");
+  });
+
+  area.addEventListener("drop", async (e) => {
+    if (!carriesFiles(e)) return;
+    e.preventDefault();
+    area.classList.remove("drop-target");
+    await addFilesFromTransfer(e.dataTransfer.files);
+  });
+
+  // A file dropped anywhere else would navigate the page to it, losing the session.
+  window.addEventListener("dragover", (e) => {
+    if (carriesFiles(e)) e.preventDefault();
+  });
+  window.addEventListener("drop", (e) => {
+    if (carriesFiles(e)) e.preventDefault();
+  });
+
+  input.addEventListener("paste", async (e) => {
+    const data = e.clipboardData;
+    if (!data) return;
+
+    const files = [];
+    if (data.files && data.files.length) {
+      files.push(...data.files);
+    } else if (data.items) {
+      for (const item of data.items) {
+        if (item.kind !== "file") continue;
+        const f = item.getAsFile();
+        if (f) files.push(f);
+      }
+    }
+    if (!files.length) return;     // an ordinary text paste: leave it to the browser
+
+    e.preventDefault();
+    await addFilesFromTransfer(files);
+  });
+})();
 
 // =============================================================================
 // Fetch the last response from the page
