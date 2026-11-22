@@ -3541,10 +3541,18 @@ const DEFAULT_PROVIDERS = [
     // No worker in front of it. Google answers the CORS preflight for both the native and
     // the compatible endpoint and echoes the calling origin, so a browser can call it
     // directly - verified with an OPTIONS request carrying Origin.
+    //
+    // Hardcoded on purpose, and locked. The endpoint and the four models below are the
+    // configuration; nothing in the settings panel or a model refresh is allowed to
+    // change them. Everything Google-specific lives in one place, which is the only way
+    // it stays right when the shared request builder changes for another provider.
     baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
     apiKey: "",
     route: "root",
+    pathSuffix: "/chat/completions",
+    responseMode: "stream",
     modelsPath: "/models",
+    locked: true,
     note: "Uses the Gemini API key from AI Studio. Calls Google directly; no worker needed.",
     models: [
       { id: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash-Lite", desc: "Fast, cheap" },
@@ -3575,6 +3583,11 @@ function normalizeProvider(p, fallbackId) {
     responseMode: p?.responseMode === "full" ? "full" : "stream",
     modelsPath: String(p?.modelsPath || "/models"),
     note: String(p?.note || ""),
+    // A locked provider keeps its endpoint and model list from the built-in record.
+    // Saved settings must not be able to change it, and "Refresh from provider" must not
+    // replace it - Google answers /models with hundreds of entries, most of which the key
+    // cannot use, and sweeping them in destroyed the curated four.
+    locked: p?.locked === true,
     models: Array.isArray(p?.models) && p.models.length
       ? p.models.map((m) => {
           const rec = {
@@ -3681,6 +3694,27 @@ function migrateProviders(providers) {
   }
   out.length = 0;
   out.push(...kept);
+
+  // A locked provider keeps the endpoint it ships with.
+  //
+  // The built-in Google record IS the configuration - base URL, route, path, response
+  // mode - and a copy saved in settings would otherwise keep winning forever, which is
+  // exactly the trap the GLM entry fell into. Those fields are re-asserted on every load.
+  // The key, the label and any hand-edited model rows stay the user's: only the endpoint
+  // is the app's business.
+  for (const p of out) {
+    const builtin = DEFAULT_PROVIDERS.find((d) => d.id === p.id && d.locked);
+    if (!builtin) continue;
+    p.locked = true;
+    p.baseUrl = builtin.baseUrl;
+    p.route = builtin.route;
+    p.pathSuffix = builtin.pathSuffix || "";
+    p.responseMode = builtin.responseMode || "stream";
+    p.modelsPath = builtin.modelsPath || "/models";
+    if (!Array.isArray(p.models) || !p.models.length) {
+      p.models = builtin.models.map((m) => ({ ...m }));
+    }
+  }
 
   return { providers: out, renames };
 }
@@ -7588,7 +7622,7 @@ let followOutput = true;
  * stopped and settled somewhere to read, it is furniture - it sits over the text they
  * are reading with nothing to do until they move again.
  */
-const JUMP_IDLE_HIDE_MS = 2000;
+const JUMP_IDLE_HIDE_MS = 1000;
 
 let jumpIdleTimer = 0;
 /** True once the button has hidden itself because the reader settled. */
@@ -8019,7 +8053,7 @@ async function fullCompletion({ messages, model, thinking, search, chatUrl, tool
         "Content-Type": "application/json",
         "Authorization": `Bearer ${settings.apiKey}`,
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(forProvider(payload, p)),
       signal,
     });
   } catch (err) {
@@ -8150,6 +8184,33 @@ function modelForRequest(provider, model, thinking, search) {
   return "deepseek" + (wantsThinking ? "-thinking" : "") + (wantsSearch ? "" : "-nosearch");
 }
 
+/**
+ * The fields Google's compatible endpoint accepts.
+ *
+ * Google is stricter than the other providers: an unknown field is a 400, not something
+ * quietly ignored. Ours are extensions - `thinking`, `search`, `chat_url`,
+ * `include_reasoning`, `stream_options` - and the shared builder sends them because the
+ * app bridge and the others read them. Filtering to a whitelist for Google keeps one
+ * request shape working everywhere without taking anything away from the providers that
+ * do use the extras.
+ */
+const GOOGLE_COMPAT_FIELDS = new Set([
+  "model", "messages", "stream", "temperature", "top_p", "max_tokens",
+  "max_completion_tokens", "stop", "n", "seed", "presence_penalty",
+  "frequency_penalty", "response_format", "tools", "tool_choice",
+  "reasoning_effort",
+]);
+
+/** Trim a request to what the active provider actually understands. */
+function forProvider(payload, provider) {
+  if (!isGoogleProvider(provider)) return payload;
+  const out = {};
+  for (const key of Object.keys(payload)) {
+    if (GOOGLE_COMPAT_FIELDS.has(key)) out[key] = payload[key];
+  }
+  return out;
+}
+
 async function streamCompletion({ messages, model, thinking, search, chatUrl, tools: offerTools, signal, onDelta, onDone, onError }) {
   const provider = activeProvider();
   const payload = {
@@ -8195,7 +8256,7 @@ async function streamCompletion({ messages, model, thinking, search, chatUrl, to
         "Content-Type": "application/json",
         "Authorization": `Bearer ${settings.apiKey}`,
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(forProvider(payload, provider)),
       signal,
     });
   } catch (err) {
@@ -11116,6 +11177,15 @@ $("sModelsFetch").addEventListener("click", async () => {
   const p = activeProvider();
   const status = $("sModelsStatus");
   if (!p.baseUrl) { status.textContent = "Set a Base URL first."; return; }
+  // A locked provider has a hand-picked list for a reason.
+  //
+  // Google answers /models with hundreds of entries - most unusable with a given key, and
+  // many that the compatible endpoint does not accept at all - so refreshing would replace
+  // four working models with a wall of broken ones.
+  if (p.locked) {
+    status.textContent = "This provider's model list is fixed. Edit the rows above to change it.";
+    return;
+  }
   const url = `${p.baseUrl.replace(/\/+$/, "")}${p.modelsPath || "/models"}`;
   status.textContent = `Fetching ${url} …`;
   $("sModelsFetch").disabled = true;
