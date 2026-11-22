@@ -6956,8 +6956,7 @@ function scheduleFollow() {
 function scrollToBottom({ animate = false } = {}) {
   const m = scrollBox();
   if (!m) return;
-  followOutput = true;
-  scrollAnchor = null;
+  arriveAtEnd();
   startAutoScroll(animate);
   updateJumpButton();
 }
@@ -6995,9 +6994,10 @@ function onTranscriptScroll() {
     // returned to the end - the reply then grew below them and the jump button stayed on
     // screen, offering to do the thing that had already been done. Reaching the bottom is
     // the signal that they want to be carried along again.
-    followOutput = true;
-    scrollAnchor = null;
+    arriveAtEnd();
   }
+  // The reader moved: the button is wanted again, and the settling clock restarts.
+  noteReaderScroll();
   captureAnchor();
   updateJumpButton();
 }
@@ -7108,8 +7108,7 @@ function attachReasoningFollow(el) {
     if (Math.abs(el.scrollTop - reasoningWroteTop) < 1) return;
     leaveReasoningEnd();
   }, { passive: true });
-  // Contact is intent, same rule as the transcript: a finger on the pane stops it.
-  el.addEventListener("touchstart", leaveReasoningEnd, { passive: true });
+  // Same rule as the transcript: movement stops the follow, contact does not.
   el.addEventListener("wheel", (e) => {
     if (e.deltaY < 0) leaveReasoningEnd();
   }, { passive: true });
@@ -7176,6 +7175,8 @@ function renderMessages({ toBottom = false, anchor = null } = {}) {
     // left them is what put a down arrow on a blank page.
     followOutput = true;
     scrollAnchor = null;
+    jumpHiddenByIdle = false;
+    if (jumpIdleTimer) { clearTimeout(jumpIdleTimer); jumpIdleTimer = 0; }
     writeScroll(box, 0);
     updateJumpButton();
     return;
@@ -7580,21 +7581,98 @@ let followOutput = true;
  * has to mean "auto-scroll is off, tap to turn it back on" - a reader who stopped
  * five pixels short would otherwise have no way back except scrolling by hand.
  */
+/**
+ * How long the button stays after the reader stops scrolling, before it hides itself.
+ *
+ * While someone is moving through a long reply the button is useful. Once they have
+ * stopped and settled somewhere to read, it is furniture - it sits over the text they
+ * are reading with nothing to do until they move again.
+ */
+const JUMP_IDLE_HIDE_MS = 2000;
+
+let jumpIdleTimer = 0;
+/** True once the button has hidden itself because the reader settled. */
+let jumpHiddenByIdle = false;
+/** Settling after a gesture ends: is the reader at the end after all? */
+let jumpSettleTimer = 0;
+
+/** The reader is scrolling again, so the button is wanted again. */
+function noteReaderScroll() {
+  jumpHiddenByIdle = false;
+  if (jumpSettleTimer) { clearTimeout(jumpSettleTimer); jumpSettleTimer = 0; }
+  if (jumpIdleTimer) clearTimeout(jumpIdleTimer);
+  jumpIdleTimer = setTimeout(() => {
+    jumpIdleTimer = 0;
+    const m = scrollBox();
+    if (!m) return;
+    if (gapToEnd(m) <= 8) {
+      // Settled at the end after all: follow again, and the button goes with it.
+      //
+      // This is the finger-still-down case. Scrolling to the bottom and holding it there
+      // sometimes left the button up, because the scroll event that reached the end was
+      // taken for one of our own writes and nothing asked the question again. Here the
+      // position is final whatever the events said.
+      arriveAtEnd();
+    } else if (!followOutput) {
+      // Still away from the end: they have settled to read, so the button goes.
+      jumpHiddenByIdle = true;
+    }
+    updateJumpButton();
+  }, JUMP_IDLE_HIDE_MS);
+  updateJumpButton();
+}
+
+/**
+ * Confirm the resting position once a gesture has finished.
+ *
+ * Scrolling to the bottom with a finger still on the glass did not always count as
+ * arriving: the last scroll event can land a pixel short, or be swallowed as our own
+ * write, and nothing revisited the question - so the button stayed up at the bottom.
+ * Deciding it again after the gesture, when the position is final, removes the luck.
+ */
+function settleJumpButton() {
+  if (jumpSettleTimer) clearTimeout(jumpSettleTimer);
+  jumpSettleTimer = setTimeout(() => {
+    jumpSettleTimer = 0;
+    const m = scrollBox();
+    if (!m) return;
+    if (gapToEnd(m) <= 8) {
+      followOutput = true;
+      scrollAnchor = null;
+      jumpHiddenByIdle = false;
+      if (jumpIdleTimer) { clearTimeout(jumpIdleTimer); jumpIdleTimer = 0; }
+    }
+    updateJumpButton();
+  }, 140);
+}
+
+/** Stopped following and arrived at the end: keep following, forget the idle state. */
+function arriveAtEnd() {
+  followOutput = true;
+  scrollAnchor = null;
+  jumpHiddenByIdle = false;
+  if (jumpIdleTimer) { clearTimeout(jumpIdleTimer); jumpIdleTimer = 0; }
+}
+
 function updateJumpButton() {
   const btn = $("jumpToBottomBtn");
   if (!btn) return;
   const m = scrollBox();
   if (!m) return;
 
-  // Two conditions, not one.
+  // Three conditions, not one.
   //
   // Asking only about the follow state left the button visible on a brand-new chat:
   // `followOutput` is reset per conversation by nothing, so a reader who had scrolled
   // up in the previous chat carried "not following" into a transcript with nothing
   // below it. The button then offered to jump to an end that was already on screen.
+  //
+  // And `jumpHiddenByIdle` is the settling rule: away from the end is not on its own a
+  // reason to keep a control on screen forever.
   const reachable = m.scrollHeight - m.clientHeight > 1;
   const thinkingAway = reasoningAwayFromEnd();
-  btn.classList.toggle("show", reachable ? !followOutput : thinkingAway);
+  const show = reachable ? (!followOutput && !jumpHiddenByIdle) : thinkingAway;
+  btn.classList.toggle("show", show);
 }
 
 /** The remaining helpers live in the scroll model block near the top of the script. */
@@ -7617,19 +7695,21 @@ function updateJumpButton() {
 
   let touchStartY = null;
   m.addEventListener("touchstart", (e) => {
+    // Movement, not contact, is what stops the follow.
+    //
+    // Putting a finger on the glass to stop a reply, to select text, or simply to rest it
+    // while reading used to stop the follow on contact alone - so the view stopped
+    // tracking for a touch that never meant to scroll. The direction is measured from here
+    // in touchmove instead.
     touchStartY = e.touches[0] ? e.touches[0].clientY : null;
-    // A touch is the interruption. Pausing on contact rather than on the first
-    // upward pixel means a finger that lands to read, select or copy stops the
-    // reply from sliding under it - which is the actual complaint.
-    leaveEnd();
   }, { passive: true });
   m.addEventListener("touchmove", (e) => {
     if (touchStartY == null || !e.touches[0]) return;
     // Finger moving down drags the content down, i.e. the reader is going up.
     if (e.touches[0].clientY - touchStartY > 4 && m.scrollTop > 0) leaveEnd();
   }, { passive: true });
-  m.addEventListener("touchend", () => { touchStartY = null; }, { passive: true });
-  m.addEventListener("touchcancel", () => { touchStartY = null; }, { passive: true });
+  m.addEventListener("touchend", () => { touchStartY = null; settleJumpButton(); }, { passive: true });
+  m.addEventListener("touchcancel", () => { touchStartY = null; settleJumpButton(); }, { passive: true });
 })();
 
 (function wireJumpButton() {
