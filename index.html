@@ -8053,7 +8053,7 @@ async function fullCompletion({ messages, model, thinking, search, chatUrl, tool
         "Content-Type": "application/json",
         "Authorization": `Bearer ${settings.apiKey}`,
       },
-      body: JSON.stringify(forProvider(payload, p)),
+      body: JSON.stringify(forProvider(payload, p, thinking)),
       signal,
     });
   } catch (err) {
@@ -8187,27 +8187,67 @@ function modelForRequest(provider, model, thinking, search) {
 /**
  * The fields Google's compatible endpoint accepts.
  *
- * Google is stricter than the other providers: an unknown field is a 400, not something
- * quietly ignored. Ours are extensions - `thinking`, `search`, `chat_url`,
- * `include_reasoning`, `stream_options` - and the shared builder sends them because the
- * app bridge and the others read them. Filtering to a whitelist for Google keeps one
- * request shape working everywhere without taking anything away from the providers that
- * do use the extras.
+ * Ours are extensions - `thinking`, `search`, `chat_url`, `include_reasoning`,
+ * `stream_options` - and the shared builder sends them because the app bridge and the
+ * other providers read them. Filtering to what Google documents keeps one request shape
+ * working everywhere without taking anything away from the providers that use the extras.
+ *
+ * `thinking_config` is in the list because it is how Google takes thinking settings; see
+ * the note in forProvider.
  */
 const GOOGLE_COMPAT_FIELDS = new Set([
   "model", "messages", "stream", "temperature", "top_p", "max_tokens",
   "max_completion_tokens", "stop", "n", "seed", "presence_penalty",
   "frequency_penalty", "response_format", "tools", "tool_choice",
-  "reasoning_effort",
+  "reasoning_effort", "thinking_config",
 ]);
 
-/** Trim a request to what the active provider actually understands. */
-function forProvider(payload, provider) {
+/** Token budgets for Gemini 2.5 and earlier, which take a budget rather than a level. */
+const GOOGLE_THINKING_BUDGET = {
+  minimal: 1024, low: 2048, medium: 8192, high: 24576,
+};
+
+/**
+ * Trim a request to what the active provider actually understands, and give Google the
+ * thinking switch in the form it takes.
+ *
+ * Thinking on Gemini is not the OpenAI `thinking: {type}` object the other providers get -
+ * Google takes `thinking_config`, with `include_thoughts` deciding whether the reasoning
+ * is returned at all. Without it the model may think and never say so, which looks exactly
+ * like a model that is not thinking.
+ *
+ * The two families disagree on the control: 3.x selects a level and cannot be told to stop
+ * thinking, while 2.5 and earlier take a token budget where 0 means "do not think". The
+ * level is taken from the reasoning effort already configured for the model, so the effort
+ * setting means the same thing here as it does elsewhere.
+ */
+function forProvider(payload, provider, thinking) {
   if (!isGoogleProvider(provider)) return payload;
   const out = {};
   for (const key of Object.keys(payload)) {
     if (GOOGLE_COMPAT_FIELDS.has(key)) out[key] = payload[key];
   }
+
+  const model = String(out.model || "");
+  const level = String(out.reasoning_effort || "").toLowerCase();
+  const cfg = {};
+
+  // Gemma has no thinking pass at all, so it gets no config: sending one to a model that
+  // does not have the feature is the one way this could turn into an error.
+  const isGemini = /^gemini/i.test(model);
+
+  if (/^gemini-3/i.test(model)) {
+    // Level, not budget. There is no "off" for this family, so the switch picks the
+    // level instead.
+    if (thinking) cfg.thinking_level = level === "minimal" ? "low" : (level || "high");
+  } else if (isGemini) {
+    // A budget, and 0 is a real "do not think".
+    cfg.thinking_budget = thinking ? (GOOGLE_THINKING_BUDGET[level] || 8192) : 0;
+  }
+
+  if (isGemini && thinking) cfg.include_thoughts = true;
+
+  if (Object.keys(cfg).length) out.thinking_config = cfg;
   return out;
 }
 
@@ -8256,7 +8296,7 @@ async function streamCompletion({ messages, model, thinking, search, chatUrl, to
         "Content-Type": "application/json",
         "Authorization": `Bearer ${settings.apiKey}`,
       },
-      body: JSON.stringify(forProvider(payload, provider)),
+      body: JSON.stringify(forProvider(payload, provider, thinking)),
       signal,
     });
   } catch (err) {
