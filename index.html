@@ -1214,6 +1214,12 @@
   .fc-copy-all:hover { background: var(--hover); color: var(--text); }
   .fc-copy-all.success { color: var(--ds-success); border-color: var(--ds-success); }
 
+  /* The failed-command button sits beside "Copy all" and is the one that needs attention,
+     so it carries the error colour rather than looking like a second neutral action. */
+  .fc-copy-failed { color: var(--ds-error); border-color: var(--ds-error); }
+  .fc-copy-failed:hover { background: var(--ds-error-bg); color: var(--ds-error); }
+  .fc-copy-failed.success { color: var(--ds-success); border-color: var(--ds-success); background: transparent; }
+
   .fc-list { display: flex; flex-direction: column; }
   .fc-item { border-bottom: 1px solid var(--border); }
   .fc-item:last-child { border-bottom: none; }
@@ -6518,8 +6524,29 @@ function renderFileChangesCard(changes, messageIndex) {
 
   const changedFiles = changes.filter(c =>
     c.kind === "edit" || c.kind === "create" || c.kind === "overwrite");
-  const failed = changes.filter(c =>
-    c.kind === "nomatch" || c.kind === "missing");
+
+  // Every failed command in the card, flattened.
+  //
+  // A file can fail inside an otherwise successful change: three edits landed, one did
+  // not. Those failures used to be rendered as rows under the file, which turned the card
+  // into a wall of "text not found" for exactly the reply the reader wanted to act on. They
+  // are copied out instead - one button, everything that failed, ready to paste back and
+  // retry.
+  const failedEdits = [];
+  for (const c of changes) {
+    const edits = Array.isArray(c.edits) ? c.edits : [];
+    let sawFailure = false;
+    for (const e of edits) {
+      if (e.status !== "failed") continue;
+      sawFailure = true;
+      failedEdits.push({ file: c.file, kind: e.kind, find: e.find || "" });
+    }
+    // A file that failed outright keeps no edit records.
+    if (!edits.length && (c.kind === "nomatch" || c.kind === "missing")) {
+      failedEdits.push({ file: c.file, kind: c.kind, find: "" });
+    }
+    void sawFailure;
+  }
 
   const header = el("div", { className: "file-changes-header" });
 
@@ -6529,10 +6556,10 @@ function renderFileChangesCard(changes, messageIndex) {
 
   let title;
   if (changedFiles.length === 0) {
-    title = failed.length ? "No changes applied" : "No changes";
+    title = failedEdits.length ? "No changes applied" : "No changes";
   } else {
     title = changedFiles.length === 1 ? "1 file changed" : `${changedFiles.length} files changed`;
-    if (failed.length) title += ` · ${failed.length} failed`;
+    if (failedEdits.length) title += ` · ${failedEdits.length} failed`;
   }
   header.append(el("span", { className: "fc-title", textContent: title }));
 
@@ -6560,6 +6587,20 @@ function renderFileChangesCard(changes, messageIndex) {
     // to undo it.
   }
 
+  if (failedEdits.length) {
+    const copyFailed = el("button", {
+      className: "fc-copy-all fc-copy-failed",
+      type: "button",
+      textContent: "Copy failed",
+      title: "Copy the commands that failed, to paste back and retry",
+    });
+    copyFailed.addEventListener("click", async () => {
+      const ok = await copyText(failedCommandsText(failedEdits));
+      flashButton(copyFailed, ok, "Copy failed");
+    });
+    header.append(copyFailed);
+  }
+
   wrap.append(header);
 
   const list = el("div", { className: "fc-list" });
@@ -6569,6 +6610,23 @@ function renderFileChangesCard(changes, messageIndex) {
   wrap.append(list);
 
   return wrap;
+}
+
+/**
+ * The failed commands as plain text, ready to paste back to the model.
+ *
+ * The find text is what identifies the failure - "text not found" says nothing on its own,
+ * and the whole point of copying is to retry with the exact string. A missing file has no
+ * find text, so the header carries the reason instead.
+ */
+function failedCommandsText(failedEdits) {
+  const blocks = failedEdits.map((e) => {
+    const why = e.kind === "missing" ? "file not in workspace" : "find text not found";
+    const head = `=== ${e.file} — ${why} ===`;
+    const find = String(e.find || "").trim();
+    return find ? `${head}\n${find}` : head;
+  });
+  return blocks.join("\n\n");
 }
 
 function renderFileChangeItem(c) {
@@ -6635,54 +6693,12 @@ function renderFileChangeItem(c) {
 
   item.append(row);
 
-  // Only FAILURES are listed.
+  // No failure list under the row.
   //
-  // Successful edits need no detail: the row above already says the file changed, and the
-  // verb ("Edited") repeated once per edit was noise. A failure is the one thing worth
-  // reading - which text was not found, in which file - so it keeps its own line with the
-  // find text that identifies it.
-  const edits = Array.isArray(c.edits) && c.edits.length
-    ? c.edits
-    : [{ kind: c.kind === "nomatch" ? "nomatch" : c.kind === "missing" ? "missing" : "edit",
-         status: outcomeOf(c.kind) }];
-
-  const failures = edits.filter((e) => e.status === "failed");
-  if (!failures.length) return item;      // success needs no extra body
-
-  const body = el("div", { className: "fc-body" });
-  const editList = el("div", { className: "fc-edit-list" });
-
-  for (const edit of failures) {
-    const editRow = el("div", { className: "fc-edit fc-edit-failed" });
-
-    const mark = el("span", { className: "fc-edit-mark" });
-    mark.innerHTML = FAILURE_ICON;
-    editRow.append(mark);
-
-    editRow.append(el("span", {
-      className: "fc-edit-kind",
-      textContent: EDIT_KIND_LABEL[edit.kind] || "Failed to edit",
-    }));
-
-    // The find text is what distinguishes one failure from another on the same file.
-    if (edit.find) {
-      const snippet = String(edit.find).replace(/\s+/g, " ").trim().slice(0, 90);
-      if (snippet) editRow.append(el("span", { className: "fc-edit-find", textContent: snippet }));
-    }
-
-    editRow.append(el("span", {
-      className: "fc-edit-note",
-      // The two failures are different problems: the file is not there at all, versus the
-      // find text not appearing in it.
-      textContent: edit.kind === "missing" ? "file not in workspace" : "text not found",
-    }));
-
-    editList.append(editRow);
-  }
-
-  body.append(editList);
-  item.append(body);
-
+  // It used to spell out each failed edit with its find text. That is a lot of text to read
+  // where a reader wants one thing - the command that failed, ready to paste back - and the
+  // card header now offers exactly that as "Copy failed". The row's own note ("find text not
+  // found") still says what went wrong at a glance.
   return item;
 }
 
@@ -6719,6 +6735,30 @@ let liveEditMount = null;
 let liveAssistantMsg = null;
 let liveAssistantRow = null;
 
+/**
+ * Run a change to the transcript with the reader's place in it left exactly as it was.
+ *
+ * The editing window appears, grows and disappears while a reply streams, and every one of
+ * those changes the transcript's height. When the reader is following, the bottom should
+ * move - that is what following means. When they are not, nothing on screen may move, and
+ * relying on the anchor alone was not enough: the anchor only exists once they have
+ * scrolled, and a resize elsewhere could still shift the view by the window's height. The
+ * scrollTop is saved and put back, which is the one thing that is always stable for a
+ * change that happens at the very end of the transcript.
+ */
+function withReaderPositionHeld(mutate) {
+  const box = scrollBox();
+  if (!box || followOutput) {
+    mutate();
+    scheduleFollow();
+    return;
+  }
+  const top = box.scrollTop;
+  mutate();
+  writeScroll(box, top);
+  updateJumpButton();
+}
+
 function updateLiveEditWindow(text) {
   const box = $("liveEdit");
   if (!box) return;
@@ -6732,49 +6772,53 @@ function updateLiveEditWindow(text) {
     return;
   }
 
-  // Put it inside the message, at the end - where the reply is being written - rather
-  // than floating it over the page. Appending moves it if it is already there, which
-  // keeps it last as the reply grows.
-  const mount = liveEditMount && liveEditMount.isConnected
-    ? liveEditMount
-    : $("messagesInner");
-  if (mount && box.parentElement !== mount) mount.append(box);
+  withReaderPositionHeld(() => {
+    // Put it inside the message, at the end - where the reply is being written - rather
+    // than floating it over the page. Appending moves it if it is already there, which
+    // keeps it last as the reply grows.
+    const mount = liveEditMount && liveEditMount.isConnected
+      ? liveEditMount
+      : $("messagesInner");
+    if (mount && box.parentElement !== mount) mount.append(box);
 
-  const fileEl = $("liveEditFile");
-  const kindEl = $("liveEditKind");
-  const codeEl = $("liveEditCode");
+    const fileEl = $("liveEditFile");
+    const kindEl = $("liveEditKind");
+    const codeEl = $("liveEditCode");
 
-  const name = last.file.split("/").pop() || last.file;
-  if (fileEl.textContent !== name) fileEl.textContent = name;
-  if (kindEl.textContent !== last.kind) kindEl.textContent = last.kind;
-  if (codeEl.textContent !== last.body) {
-    codeEl.textContent = last.body;
-    // Keep the newest line in view, as the reasoning pane does.
-    const pre = box.querySelector(".live-edit-code");
-    if (pre) pre.scrollTop = pre.scrollHeight;
-  }
+    const name = last.file.split("/").pop() || last.file;
+    if (fileEl.textContent !== name) fileEl.textContent = name;
+    if (kindEl.textContent !== last.kind) kindEl.textContent = last.kind;
+    if (codeEl.textContent !== last.body) {
+      codeEl.textContent = last.body;
+      // Keep the newest line in view, as the reasoning pane does.
+      const pre = box.querySelector(".live-edit-code");
+      if (pre) pre.scrollTop = pre.scrollHeight;
+    }
 
-  box.hidden = false;
-  // It just changed the transcript's height, so let the follow keep up.
-  scheduleFollow();
+    box.hidden = false;
+  });
 }
 
 /** Hide the live edit window. */
 function hideLiveEditWindow() {
   const box = $("liveEdit");
   if (!box) return;
-  if (!box.hidden) box.hidden = true;
-  // Clear the content so the next one starts empty rather than flashing the previous file.
-  const codeEl = $("liveEditCode");
-  if (codeEl) codeEl.textContent = "";
+  if (box.hidden && box.parentElement === document.body) return;
 
-  // Park it outside the transcript.
-  //
-  // The reply's row is cleared with innerHTML when it finishes, which would destroy this
-  // element along with its children - and getElementById would then return null for the
-  // rest of the session, so no later reply could show a window.
-  if (box.parentElement !== document.body) document.body.appendChild(box);
-  liveEditMount = null;
+  withReaderPositionHeld(() => {
+    box.hidden = true;
+    // Clear the content so the next one starts empty rather than flashing the previous file.
+    const codeEl = $("liveEditCode");
+    if (codeEl) codeEl.textContent = "";
+
+    // Park it outside the transcript.
+    //
+    // The reply's row is cleared with innerHTML when it finishes, which would destroy this
+    // element along with its children - and getElementById would then return null for the
+    // rest of the session, so no later reply could show a window.
+    if (box.parentElement !== document.body) document.body.appendChild(box);
+    liveEditMount = null;
+  });
 }
 
 // =============================================================================
