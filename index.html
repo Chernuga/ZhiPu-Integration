@@ -1344,65 +1344,12 @@
     font-size: inherit;
   }
 
-  /* The expanded body: one row per edit, each with its own outcome.
-     This is what replaced the file preview - the content is a click away in the
-     workspace, but which of several edits to one file actually applied is only
-     knowable here. */
-  .fc-edit-list {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    padding: 2px 0 6px;
-  }
-  .fc-edit {
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-    padding: 5px 8px;
-    border-radius: 6px;
-    font-size: 12.5px;
-    line-height: 1.5;
-    color: var(--text-muted);
-  }
-  .fc-edit .fc-edit-mark {
-    width: 13px;
-    height: 13px;
-    flex-shrink: 0;
-    display: inline-flex;
-    align-self: center;
-  }
-  .fc-edit .fc-edit-mark svg {
-    width: 100%;
-    height: 100%;
-    display: block;
-  }
-  .fc-edit-done .fc-edit-mark { color: var(--text-dim); }
-  .fc-edit-failed .fc-edit-mark { color: var(--ds-error); }
-  .fc-edit-failed { background: var(--ds-error-bg); }
-
-  .fc-edit-kind {
-    flex-shrink: 0;
-    font-weight: 500;
-    color: var(--text-muted);
-  }
-  .fc-edit-failed .fc-edit-kind { color: var(--ds-error); }
-
-  /* The find text, on one line, monospaced because it is usually code. */
-  .fc-edit-find {
-    flex: 1;
-    min-width: 0;
-    font-family: var(--ds-font-code);
-    font-size: 11.5px;
-    color: var(--text-dim);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .fc-edit-note {
-    flex-shrink: 0;
-    font-size: 11.5px;
-    color: var(--text-dim);
-  }
+  /* The per-edit list that used to sit under a row is gone - failures are copied out
+     with the card's "Copy failed" button instead. Its rules are removed with it, which
+     also fixes the row: .fc-item carries a class of fc-<kind>, so an edit row was also
+     matching .fc-edit and inheriting the list's padding and flex layout. That made the
+     row stop filling the card, so Copy and Open sat in the middle instead of at the
+     right edge, and the row was indented. Create rows never matched it. */
 
   /* ===== Live edit window =====
      Appears IN the reply while a command is being written, then disappears once the
@@ -6480,6 +6427,28 @@ function buildReasoningBlock(reasoning, opts = {}) {
   return details;
 }
 
+/**
+ * Close a thinking block and label it as finished.
+ *
+ * A finished thought is a summary line - "Thought for 4s" - and the block closes with it.
+ * Open, labelled "Thinking…", is only true while the thought is still arriving.
+ */
+function collapseReasoningBlock(blockEl, durationMs) {
+  if (!blockEl) return;
+  blockEl.classList.remove("active");
+  blockEl.open = settings.reasoningExpanded === true;
+  const label = blockEl.querySelector(".reasoning-label");
+  if (!label) return;
+  label.textContent = "";
+  if (durationMs != null) {
+    const secs = Math.max(1, Math.round(durationMs / 1000));
+    label.append("Thought for ");
+    label.append(el("span", { className: "reasoning-time", textContent: `${secs}s` }));
+  } else {
+    label.textContent = "Thinking";
+  }
+}
+
 // =============================================================================
 // File changes card
 // =============================================================================
@@ -6870,8 +6839,10 @@ function hideLiveEditWindow() {
    ============================================================================ */
 
 /** Hard cap on one frame's movement, and the share of the gap closed per frame. */
-const SCROLL_STEP_MAX_PX = 140;
-const SCROLL_EASE = 0.22;
+const SCROLL_STEP_MAX_PX = 200;
+// 0.34 rather than 0.22: at 0.22 a fast reply outran the follow by ~140px and spent half a
+// second catching up, which reads as the transcript lagging behind the text.
+const SCROLL_EASE = 0.34;
 
 /** The scrollTop produced by our last write; a scroll event here is ours. */
 let wroteScrollTop = -1;
@@ -7059,20 +7030,20 @@ function onTranscriptScroll() {
     (performance.now() - wroteScrollAt) < 120;
   if (ours) return;
 
-  if (followOutput) {
+  // Arriving at the end is checked FIRST, before the follow can be cancelled.
+  //
+  // A scroll event does not only mean the reader moved: when the transcript gets shorter -
+  // the live edit window removed, a command collapsing into its status line - the browser
+  // clamps scrollTop, and that event was cancelling the follow for the rest of the turn
+  // even though nobody had touched the screen.
+  if (gapToEnd(m) <= 8) {
+    arriveAtEnd();
+  } else if (followOutput) {
     // Pulled away from a reply that is still arriving: stop for good. Auto-scroll
     // is a mode, so it does not silently re-arm when the end drifts back into
     // view - only reaching the end or the button does that.
     followOutput = false;
     stopAutoScroll();
-  } else if (gapToEnd(m) <= 8) {
-    // Scrolled back to the end by hand: the reader is at the bottom, so follow again.
-    //
-    // Without this the mode stayed off after any manual scroll, even once the reader had
-    // returned to the end - the reply then grew below them and the jump button stayed on
-    // screen, offering to do the thing that had already been done. Reaching the bottom is
-    // the signal that they want to be carried along again.
-    arriveAtEnd();
   }
   // The reader moved: the button is wanted again, and the settling clock restarts.
   noteReaderScroll();
@@ -7401,6 +7372,63 @@ function emptyState() {
   return wrap;
 }
 
+/**
+ * Command outcomes for each stored block, in the order they were applied.
+ *
+ * The change list is stored once for the whole message, so it is counted out block by
+ * block - each text block takes the states for the commands it contains.
+ */
+function statesPerBlock(msg, blocks) {
+  const all = statesFromFileChanges(msg) || [];
+  let cursor = 0;
+  return blocks.map((b) => {
+    if (b.kind === "thinking") return null;
+    const count = parseReplySegments(b.text || "").filter((s) => s.type === "command").length;
+    const slice = all.slice(cursor, cursor + count);
+    // A reply that recorded fewer outcomes than it has commands must not leave the tail
+    // pulsing for ever.
+    while (slice.length < count) slice.push("done");
+    cursor += count;
+    return slice;
+  });
+}
+
+/**
+ * The reply's blocks, in the order they arrived.
+ *
+ * `blocks` is the turn's own record - a thought, the text that followed, the next thought -
+ * so a reload shows the same order it streamed in. Messages stored before it existed fall
+ * back to one thought followed by the whole answer, which is all their data can say.
+ */
+function renderMessageBlocks(msg) {
+  const nodes = [];
+  const stored = Array.isArray(msg.blocks) ? msg.blocks.filter((b) => b && b.text) : null;
+
+  if (stored && stored.length) {
+    const states = statesPerBlock(msg, stored);
+    stored.forEach((b, i) => {
+      if (b.kind === "thinking") {
+        nodes.push(buildReasoningBlock(b.text, { durationMs: b.durationMs ?? null }));
+        return;
+      }
+      const content = el("div", { className: "content" });
+      content.innerHTML = renderContentWithStatuses(b.text, states[i]).join("");
+      decorateCodeBlocks(content);
+      nodes.push(content);
+    });
+    return nodes;
+  }
+
+  if (msg.reasoning) {
+    nodes.push(buildReasoningBlock(msg.reasoning, { durationMs: msg.reasoningMs ?? null }));
+  }
+  const content = el("div", { className: "content" });
+  content.innerHTML = renderContentWithStatuses(msg.content, statesFromFileChanges(msg)).join("");
+  decorateCodeBlocks(content);
+  nodes.push(content);
+  return nodes;
+}
+
 function renderMessage(msg, index) {
   if (msg.role === "user") {
     const row = el("div", { className: "msg msg-user" });
@@ -7466,19 +7494,8 @@ function renderMessage(msg, index) {
   const row = el("div", { className: "msg msg-assistant" });
   // Recorded so a re-render can hold this message's place on screen.
   row.dataset.index = String(index);
-  if (msg.reasoning) {
-    row.append(buildReasoningBlock(msg.reasoning, { durationMs: msg.reasoningMs ?? null }));
-  }
-
-  const content = el("div", { className: "content" });
-  // File commands render as status lines, from the change list already stored with the
-  // message - so a reloaded reply shows which edits succeeded and which did not.
-  content.innerHTML = renderContentWithStatuses(
-    msg.content,
-    statesFromFileChanges(msg)
-  ).join("");
-  decorateCodeBlocks(content);
-  row.append(content);
+  // The blocks in the order the turn produced them.
+  for (const node of renderMessageBlocks(msg)) row.append(node);
 
   if (msg.fileChanges && msg.fileChanges.length) {
     // The message's position is what lets the card step the workspace to this
@@ -8886,9 +8903,22 @@ async function runCompletion(conv) {
   const requestConvId = conv.id;
 
   const assistantRow = el("div", { className: "msg msg-assistant" });
-  const reasoningSlot = el("div");
   const statusSlot = el("div");
-  const contentEl = el("div", { className: "content" });
+
+  /**
+   * The reply as a list of blocks, in the order they arrive.
+   *
+   * A thought that starts after text has begun is a block of its own, placed after that
+   * text; the text that follows is then another block. That is all the ordering there is -
+   * whatever arrives next goes last, so the transcript shows the turn in the order it came
+   * down the wire. `blockLog` is the same list kept for storage, so a reload matches.
+   */
+  const blockLog = [];
+  let contentEl = null;     // the text block currently being written
+  let contentStart = 0;     // where its slice of the cumulative reply begins
+  let contentCovered = 0;   // how much earlier text blocks already show
+  let thinkingRecord = null;  // the {kind:"thinking", text} being filled
+  let contentRecord = null;   // the {kind:"content", text} being filled
 
   const spinnerNotice = el("div", { className: "retry-notice" });
   const spinner = el("span", { className: "retry-spinner" });
@@ -8896,7 +8926,7 @@ async function runCompletion(conv) {
   spinnerNotice.append(spinner, spinnerText);
   statusSlot.append(spinnerNotice);
 
-  assistantRow.append(reasoningSlot, statusSlot, contentEl);
+  assistantRow.append(statusSlot);
   inner.append(assistantRow);
   // The live command window belongs to this reply: it is appended inside the row, so it
   // appears in the conversation where the code is being written.
@@ -8986,6 +9016,8 @@ async function runCompletion(conv) {
   }
 
   const assistantMsg = { role: "assistant", content: "", reasoning: "" };
+  // The order the reply was produced in, kept on the message so a reload matches.
+  assistantMsg.blocks = blockLog;
   conv.messages.push(assistantMsg);
   conv.updatedAt = Date.now();
   // Now that the message exists, tie the live row to it: a rebuild during the stream can
@@ -9003,6 +9035,8 @@ async function runCompletion(conv) {
   let reasoningStartedAt = null;
   let reasoningBlockEl = null;
   let reasoningTextEl = null;
+  /** When the thinking block currently being written started, for its "Thought for Ns". */
+  let thinkingStartedAt = 0;
   /**
    * Everything the reasoner has said this round, whether or not it has been revealed yet.
    *
@@ -9020,14 +9054,30 @@ async function runCompletion(conv) {
     if (reasoningBlockEl) return;
     reasoningBlockEl = buildReasoningBlock("", { streaming: true });
     reasoningTextEl = reasoningBlockEl.querySelector(".reasoning-text");
-    // Appended, not replaced.
+    // Appended at the end of the row, so it lands where the turn is now: after any text
+    // that has already been written.
     //
-    // This used to clear the slot, which was right when a turn had exactly one thinking
-    // pass. A read (or a tool round) splits a turn into several passes, and clearing the
-    // slot erased the process the reader was watching - the thinking vanished at the
-    // moment the model went to fetch a file, so the turn looked like it had restarted.
-    // Blocks accumulate instead, and the whole process stays on screen.
-    reasoningSlot.append(reasoningBlockEl);
+    // The text block ends where the answer to the PREVIOUS round ended.
+    //
+    // Not "everything received so far": a delta can carry a thought and the text after it
+    // at the same time, so taking the live length would pull the start of this round's
+    // answer up into the block above the thought - which is how a word got split across two
+    // blocks ("new.j" / "ate:"). The round boundary is the only point that is unambiguous.
+    if (contentEl) {
+      const full = String(assistantMsg.content || "");
+      const end = roundContentBase > contentStart ? Math.min(roundContentBase, full.length) : full.length;
+      const text = full.slice(contentStart, end);
+      if (contentRecord) contentRecord.text = text;
+      contentEl.innerHTML = renderContentWithStatuses(text).join("");
+      for (const node of contentEl.children) decorateBlock(node);
+      contentCovered = end;
+      contentEl = null;
+    }
+
+    assistantRow.append(reasoningBlockEl);
+    thinkingRecord = { kind: "thinking", text: "" };
+    blockLog.push(thinkingRecord);
+    thinkingStartedAt = performance.now();
     attachReasoningFollow(reasoningTextEl);
   }
 
@@ -9077,6 +9127,8 @@ async function runCompletion(conv) {
         reasoningStreaming = true;
         if (reasoningBlockEl) reasoningBlockEl.dataset.streaming = "1";
         reasoningTextEl.textContent = text;
+        // Keep the stored block in step with what is on screen.
+        if (thinkingRecord) thinkingRecord.text = text;
         // Follow the newest thought, the same way the transcript follows the answer.
         //
         // This used to assign scrollTop = scrollHeight, which pinned the pane flat: a
@@ -9093,17 +9145,24 @@ async function runCompletion(conv) {
     adaptive: speedCfg.adaptive,
   });
 
-  /** Swap the plain-text reasoning for its formatted form, once. */
+  /** Swap the plain-text reasoning for its formatted form, once, and close it. */
   const finalizeReasoning = () => {
-    if (!reasoningStreaming || reasoningFrozen || !reasoningTextEl) return;
+    // Not gated on `reasoningStreaming`: that flag is only set by the typewriter's first
+    // paint, so a round that finished before a frame ran would never be finalised.
+    if (reasoningFrozen || !reasoningTextEl) return;
     reasoningStreaming = false;
     reasoningFrozen = true;
     if (reasoningBlockEl) delete reasoningBlockEl.dataset.streaming;
     // The whole thought, not the part the typewriter had reached.
     const text = reasoningFull || reasoningTextEl.textContent || "";
     if (!text) return;
+    if (thinkingRecord) thinkingRecord.text = text;
     reasoningTextEl.innerHTML = renderMarkdown(balanceCodeFences(text));
     decorateCodeBlocks(reasoningTextEl);
+    // The thought is finished, so it closes now rather than at the end of the turn.
+    const elapsed = thinkingStartedAt ? performance.now() - thinkingStartedAt : null;
+    if (thinkingRecord) thinkingRecord.durationMs = elapsed;
+    collapseReasoningBlock(reasoningBlockEl, elapsed);
     scheduleFollow();
   };
 
@@ -9129,7 +9188,7 @@ async function runCompletion(conv) {
   const resetStreamRender = () => {
     renderedBlocks = [];
     pendingShown = null;
-    contentEl.innerHTML = "";
+    if (contentEl) contentEl.innerHTML = "";
   };
 
   /**
@@ -9139,12 +9198,33 @@ async function runCompletion(conv) {
    * once and never touched again, and only the final block, still being typed,
    * is replaced each frame. Appending a block also decorates it, once, so the
    * copy buttons are paid for per block rather than per frame.
+   *
+   * `shown` is the whole reply so far. A text block shows only its own slice of it - the
+   * part before `contentStart` belongs to an earlier text block, above whatever thinking
+   * came between them.
    */
   const paintContent = (shown) => {
+    // Text arriving after a thought opens a new block, below that thought.
+    if (!contentEl) {
+      if (!shown || shown.length <= contentCovered) return;   // nothing new yet
+      contentEl = el("div", { className: "content" });
+      assistantRow.append(contentEl);
+      contentStart = contentCovered;
+      renderedBlocks = [];
+      pendingShown = null;
+      contentRecord = { kind: "content", text: "" };
+      blockLog.push(contentRecord);
+    }
+
+    const slice = shown.slice(contentStart);
+    if (contentRecord) contentRecord.text = slice;
+    // Everything this block shows is now spoken for, so the next text block starts after it.
+    contentCovered = contentStart + slice.length;
+
     // While a reply streams, every command is still running - the outcome is only known
     // once it has been applied at onDone. The parser drops each command's payload as it
     // goes, so a create/find block never flashes its code into the transcript.
-    const blocks = shown ? renderContentWithStatuses(shown) : [];
+    const blocks = slice ? renderContentWithStatuses(slice) : [];
 
     // Show the code of the command being written in the live window.
     //
@@ -9348,8 +9428,15 @@ async function runCompletion(conv) {
       reasoningTypewriter.reset();
       contentTypewriter.reset();
 
-      reasoningSlot.innerHTML = "";
-      contentEl.innerHTML = "";
+      // A retry starts the turn over, so the blocks from the failed attempt go with it.
+      blockLog.length = 0;
+      thinkingRecord = null;
+      contentEl = null;
+      contentStart = 0;
+      contentCovered = 0;
+      for (const node of [...assistantRow.children]) {
+        if (node !== statusSlot) node.remove();
+      }
       // The block cache now holds nothing that is on screen, so the next delta
       // must rebuild from scratch rather than diffing against stale entries.
       resetStreamRender();
@@ -9383,6 +9470,9 @@ async function runCompletion(conv) {
         }
 
         activeTypewriters = null;
+        // Settle the last thought too: the round-level finalise never ran for it, so it
+        // would keep its live label and stay open.
+        finalizeReasoning();
         // The thinking pane has stopped growing, so it no longer owns the jump button.
         detachReasoningFollow();
 
@@ -9428,16 +9518,10 @@ async function runCompletion(conv) {
         liveAssistantMsg = null;
 
         assistantRow.innerHTML = "";
-        if (assistantMsg.reasoning) {
-          assistantRow.append(buildReasoningBlock(assistantMsg.reasoning, { durationMs: reasoningMs }));
-        }
-        const c = el("div", { className: "content" });
-        c.innerHTML = renderContentWithStatuses(
-          assistantMsg.content,
-          statesFromFileChanges(assistantMsg)
-        ).join("");
-        decorateCodeBlocks(c);
-        assistantRow.append(c);
+        // Rebuild from the recorded blocks, so a finished reply keeps the order the turn
+        // actually had - thought, answer, read, thought, answer - instead of every thought
+        // moving to the top and merging into one.
+        for (const node of renderMessageBlocks(assistantMsg)) assistantRow.append(node);
 
         // Warn when the page cut the reply off for length.
         //
